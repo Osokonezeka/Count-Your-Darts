@@ -1,0 +1,33 @@
+import { Slot } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import React from "react";
+import { View } from "react-native";
+
+import { GameProvider } from "../context/GameContext";
+import { HapticsProvider } from "../context/HapticsContext";
+import { LanguageProvider } from "../context/LanguageContext";
+import { PlayersProvider } from "../context/PlayersContext";
+import { TerminologyProvider } from "../context/TerminologyContext";
+import { ThemeProvider } from "../context/ThemeContext";
+
+SplashScreen.preventAutoHideAsync();
+
+export default function Layout() {
+  return (
+    <View style={{ flex: 1 }}>
+      <ThemeProvider>
+        <LanguageProvider>
+          <TerminologyProvider>
+            <PlayersProvider>
+              <GameProvider>
+                <HapticsProvider>
+                  <Slot />
+                </HapticsProvider>
+              </GameProvider>
+            </PlayersProvider>
+          </TerminologyProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+    </View>
+  );
+}
