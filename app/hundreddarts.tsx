@@ -16,6 +16,7 @@ import CustomAlert, { AlertButton } from "../components/CustomAlert";
 import { useGame } from "../context/GameContext";
 import { useHaptics } from "../context/HapticsContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useSpeech } from "../context/SpeechContext";
 import { useTerminology } from "../context/TerminologyContext";
 import { useTheme } from "../context/ThemeContext";
 import { t } from "../lib/i18n";
@@ -42,6 +43,7 @@ type GameState = {
   currentIndex: number;
   throwsThisTurn: number;
   history: any[];
+  speechEvent?: { text: string; id: number } | null;
 };
 
 const formatThrow = (t: Throw) => {
@@ -76,6 +78,8 @@ function scoringReducer(state: GameState, action: any): GameState {
       const isTurnOver =
         state.throwsThisTurn === 2 || player.dartsCount === MAX_DARTS;
 
+      let newSpeechEvent = null;
+
       if (isTurnOver) {
         const turnSum = player.turnThrows.reduce(
           (sum, tr) => sum + tr.value * tr.multiplier,
@@ -89,6 +93,9 @@ function scoringReducer(state: GameState, action: any): GameState {
         if (player.dartsCount === MAX_DARTS) {
           player.isFinished = true;
         }
+
+        const newSpeechText = turnSum === 0 ? "noScore" : turnSum.toString();
+        newSpeechEvent = { text: newSpeechText, id: Date.now() };
       }
 
       updatedPlayers[state.currentIndex] = player;
@@ -106,6 +113,7 @@ function scoringReducer(state: GameState, action: any): GameState {
             ...state,
             playerStates: updatedPlayers,
             history: [...state.history, snapshot],
+            speechEvent: newSpeechEvent,
           };
         }
 
@@ -121,6 +129,7 @@ function scoringReducer(state: GameState, action: any): GameState {
           currentIndex: nextIdx,
           throwsThisTurn: 0,
           history: [...state.history, snapshot],
+          speechEvent: newSpeechEvent,
         };
       }
 
@@ -129,6 +138,7 @@ function scoringReducer(state: GameState, action: any): GameState {
         playerStates: updatedPlayers,
         throwsThisTurn: state.throwsThisTurn + 1,
         history: [...state.history, snapshot],
+        speechEvent: null,
       };
     }
 
@@ -137,6 +147,7 @@ function scoringReducer(state: GameState, action: any): GameState {
       return {
         ...state.history[state.history.length - 1],
         history: state.history.slice(0, -1),
+        speechEvent: null,
       };
     }
 
@@ -150,6 +161,7 @@ export default function OneHundredDarts() {
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
+  const { speak } = useSpeech();
   const { bullTerm, missTerm, tripleTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
@@ -170,6 +182,7 @@ export default function OneHundredDarts() {
     currentIndex: 0,
     throwsThisTurn: 0,
     history: [],
+    speechEvent: null,
   });
 
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
@@ -180,6 +193,16 @@ export default function OneHundredDarts() {
     message: "",
     buttons: [] as AlertButton[],
   });
+
+  useEffect(() => {
+    if (state.speechEvent) {
+      if (state.speechEvent.text === "noScore") {
+        speak(t(language, "noScore") || "No score");
+      } else {
+        speak(state.speechEvent.text);
+      }
+    }
+  }, [state.speechEvent, language]);
 
   const allDone = state.playerStates.every((p) => p.isFinished);
 
@@ -207,45 +230,20 @@ export default function OneHundredDarts() {
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
-      const mappedPlayers = state.playerStates.map((p, idx) => {
-        const rawTurns = state.history.map(
-          (h) => h.playerStates[idx].turnThrows,
-        );
-        if (p.turnThrows && p.turnThrows.length > 0)
-          rawTurns.push(p.turnThrows);
-
-        const validTurns = rawTurns
-          .filter((turn, i, arr) => {
-            const nextTurn = arr[i + 1];
-            return (
-              turn &&
-              turn.length > 0 &&
-              (!nextTurn || nextTurn.length < turn.length)
-            );
-          })
-          .map((turn) =>
-            turn.map((t: any) => ({ v: t.value, m: t.multiplier })),
-          );
-
-        return {
-          name: p.name,
-          score: p.score,
-          avg: ((p.score / MAX_DARTS) * 3).toFixed(1),
-          rank: p.rank,
-          s180: p.s180,
-          s140: p.s140,
-          s100: p.s100,
-          s60: p.s60,
-          allTurns: validTurns,
-        };
-      });
-
       const historyItem = {
         id: Date.now().toString(),
         date: formattedDate,
         duration: formatTime(matchTime),
         mode: "100 Darts",
-        players: mappedPlayers.sort((a, b) => (a.rank || 0) - (b.rank || 0)),
+        players: state.playerStates
+          .map((p) => ({
+            name: p.name,
+            score: p.score,
+            darts: p.dartsCount,
+            rank: p.rank,
+            avg: ((p.score / p.dartsCount) * 3).toFixed(1),
+          }))
+          .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
 
       const existingHistoryStr = await AsyncStorage.getItem(
@@ -259,7 +257,7 @@ export default function OneHundredDarts() {
         JSON.stringify([historyItem, ...existingHistory]),
       );
     } catch (e) {
-      console.error("Save Scoring error", e);
+      console.error("Save 100 Darts error", e);
     }
   };
 
@@ -268,9 +266,8 @@ export default function OneHundredDarts() {
       if (allDone) return;
       e.preventDefault();
       setAlertConfig({
-        title: t(language, "leaveGame") || "Leave training?",
-        message:
-          t(language, "leaveGameNoHistory") || "Progress won't be saved.",
+        title: t(language, "leaveGame") || "Leave game?",
+        message: t(language, "leaveGameNoHistory") || "Progress will be lost.",
         buttons: [
           { text: t(language, "cancel") || "Cancel", style: "cancel" },
           {
@@ -285,17 +282,27 @@ export default function OneHundredDarts() {
     return unsubscribe;
   }, [navigation, allDone]);
 
-  const handleThrow = (val: number) => {
+  const handleThrow = (value: number) => {
     if (allDone) return;
-    if ((val === 25 && multiplier === 3) || (val === 0 && multiplier !== 1))
+    if ((value === 25 && multiplier === 3) || (value === 0 && multiplier !== 1))
       return;
 
     triggerHaptic("tap");
-    dispatch({ type: "ADD_THROW", payload: { value: val, multiplier } });
+    dispatch({ type: "ADD_THROW", payload: { value, multiplier } });
     setMultiplier(1);
   };
 
-  const currentPlayer = state.playerStates[state.currentIndex];
+  const handleMiss = () => {
+    if (multiplier === 1) {
+      triggerHaptic("heavy");
+      handleThrow(0);
+    }
+  };
+
+  const handleMultiplierToggle = (newMult: 2 | 3) => {
+    triggerHaptic("heavy");
+    setMultiplier((prev) => (prev === newMult ? 1 : newMult));
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -304,8 +311,8 @@ export default function OneHundredDarts() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>100 DARTS SCORING</Text>
-          <Text style={styles.headerSub}>TARGET: MAX SCORE</Text>
+          <Text style={styles.headerTitle}>100 DARTS</Text>
+          <Text style={styles.headerSub}>HIGH SCORE</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.timerBadge}>
@@ -325,10 +332,6 @@ export default function OneHundredDarts() {
       >
         {state.playerStates.map((p, i) => {
           const isActive = i === state.currentIndex && !p.isFinished;
-          const avg =
-            p.dartsCount > 0
-              ? ((p.score / p.dartsCount) * 3).toFixed(1)
-              : "0.0";
 
           return (
             <View
@@ -340,7 +343,7 @@ export default function OneHundredDarts() {
               ]}
             >
               <View style={styles.scoreCol}>
-                {p.rank ? (
+                {p.isFinished ? (
                   <Text style={styles.rankText}>{p.rank}</Text>
                 ) : (
                   <Text
@@ -356,47 +359,44 @@ export default function OneHundredDarts() {
                 <>
                   <View style={styles.throwsCol}>
                     <View style={styles.throwsRow}>
-                      {[0, 1, 2].map((idx) => (
-                        <View
-                          key={idx}
-                          style={[
-                            styles.throwBox,
-                            isActive &&
-                              state.throwsThisTurn === idx &&
-                              styles.throwBoxActive,
-                          ]}
-                        >
-                          <Text
+                      {[0, 1, 2].map((idx) => {
+                        const len = p.turnThrows.length;
+                        const throwIdx = len - 1 - ((len - 1) % 3) + idx;
+                        const t = p.turnThrows[throwIdx];
+
+                        return (
+                          <View
+                            key={idx}
                             style={[
-                              styles.throwBoxText,
-                              p.turnThrows?.[idx]?.multiplier === 3 && {
-                                color: theme.colors.danger,
-                              },
-                              p.turnThrows?.[idx]?.multiplier === 2 && {
-                                color: theme.colors.success,
-                              },
+                              styles.throwBox,
+                              isActive &&
+                                state.throwsThisTurn === idx &&
+                                styles.throwBoxActive,
                             ]}
                           >
-                            {p.turnThrows?.[idx]
-                              ? formatThrow(p.turnThrows[idx])
-                              : ""}
-                          </Text>
-                        </View>
-                      ))}
+                            <Text
+                              style={styles.throwBoxText}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                            >
+                              {t ? formatThrow(t) : ""}
+                            </Text>
+                          </View>
+                        );
+                      })}
                     </View>
-                    <Text style={styles.progressText}>
-                      {p.dartsCount} / {MAX_DARTS} DARTS
+                    <Text style={styles.turnLabel}>
+                      THROWN: {p.dartsCount} / {MAX_DARTS}
                     </Text>
                   </View>
 
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
-                      <Text style={styles.avgIcon}>Ø</Text>
-                      <Text style={styles.statBold}>{avg}</Text>
-                    </View>
-                    <View style={styles.highScoreBadge}>
-                      <Text style={styles.highScoreText}>
-                        140+: {p.s140} | 180: {p.s180}
+                      <Text style={styles.statLabel}>AVG</Text>
+                      <Text style={styles.statBold}>
+                        {p.dartsCount > 0
+                          ? ((p.score / p.dartsCount) * 3).toFixed(1)
+                          : "0.0"}
                       </Text>
                     </View>
                   </View>
@@ -420,7 +420,9 @@ export default function OneHundredDarts() {
                 return (
                   <Pressable
                     key={k}
-                    onPress={() => !isBullDisabled && handleThrow(k)}
+                    onPress={() => {
+                      if (!isBullDisabled) handleThrow(k);
+                    }}
                     style={[styles.key, isBullDisabled && styles.disabledKey]}
                   >
                     <Text
@@ -439,7 +441,7 @@ export default function OneHundredDarts() {
 
           <View style={styles.keyRow4}>
             <Pressable
-              onPress={() => multiplier === 1 && handleThrow(0)}
+              onPress={handleMiss}
               style={[styles.keyAction, multiplier !== 1 && styles.disabledKey]}
             >
               <Text
@@ -451,9 +453,8 @@ export default function OneHundredDarts() {
                 {missTerm}
               </Text>
             </Pressable>
-
             <Pressable
-              onPress={() => setMultiplier((m) => (m === 2 ? 1 : 2))}
+              onPress={() => handleMultiplierToggle(2)}
               style={[
                 styles.keyAction,
                 multiplier === 2 && styles.activeModifier,
@@ -462,14 +463,14 @@ export default function OneHundredDarts() {
               <Text
                 style={[
                   styles.keyTextAction,
-                  multiplier === 2 && { color: "#fff" },
+                  multiplier === 2 && styles.activeModifierText,
                 ]}
               >
                 Double
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => setMultiplier((m) => (m === 3 ? 1 : 3))}
+              onPress={() => handleMultiplierToggle(3)}
               style={[
                 styles.keyAction,
                 multiplier === 3 && styles.activeModifier,
@@ -478,13 +479,12 @@ export default function OneHundredDarts() {
               <Text
                 style={[
                   styles.keyTextAction,
-                  multiplier === 3 && { color: "#fff" },
+                  multiplier === 3 && styles.activeModifierText,
                 ]}
               >
                 {tripleTerm}
               </Text>
             </Pressable>
-
             <Pressable
               onPress={() => dispatch({ type: "UNDO" })}
               style={[styles.keyAction, styles.undoKey]}
@@ -640,10 +640,10 @@ const getStyles = (theme: any) =>
       fontWeight: "bold",
       color: theme.colors.textMain,
     },
-    progressText: {
+    turnLabel: {
       fontSize: 10,
       fontWeight: "800",
-      color: theme.colors.textMuted,
+      color: theme.colors.primary,
     },
 
     statsCol: { flex: 1.3, alignItems: "flex-end", justifyContent: "center" },
@@ -654,17 +654,10 @@ const getStyles = (theme: any) =>
       marginBottom: 4,
     },
     statBold: { fontWeight: "700", color: theme.colors.textMain, fontSize: 13 },
-    avgIcon: { fontSize: 14, color: theme.colors.textMuted, fontWeight: "700" },
-    highScoreBadge: {
-      backgroundColor: theme.colors.background,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-    },
-    highScoreText: {
-      fontSize: 9,
-      fontWeight: "800",
-      color: theme.colors.textLight,
+    statLabel: {
+      fontSize: 11,
+      color: theme.colors.textMuted,
+      fontWeight: "700",
     },
 
     keyboard: {
@@ -685,7 +678,6 @@ const getStyles = (theme: any) =>
       elevation: 2,
     },
     keyText: { fontSize: 18, fontWeight: "700", color: theme.colors.textMain },
-
     keyAction: {
       flex: 1,
       height: 58,
@@ -701,14 +693,14 @@ const getStyles = (theme: any) =>
       color: theme.colors.textMain,
     },
     activeModifier: { backgroundColor: theme.colors.primaryDark },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
-
+    activeModifierText: { color: "#fff" },
     disabledKey: {
       backgroundColor: theme.colors.cardBorder,
-      elevation: 0,
       opacity: 0.5,
+      elevation: 0,
     },
     disabledKeyText: { color: theme.colors.textLight },
+    undoKey: { backgroundColor: theme.colors.dangerLight },
 
     modalOverlay: {
       flex: 1,

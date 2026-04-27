@@ -116,5 +116,8 @@
   "trainingFinished": "Training finished!",
   "trainingSaved": "Your results have been saved to history.",
   "gameOver": "Game over!",
-  "allBust": "All players went bust!"
+  "allBust": "All players went bust!",
+  "speech": "Announcer",
+  "noScore": "No score",
+  "bust": "Bust"
 }

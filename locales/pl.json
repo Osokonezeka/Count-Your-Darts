@@ -116,5 +116,8 @@
   "trainingFinished": "Trening zakończony!",
   "trainingSaved": "Twoje wyniki zostały zapisane w historii.",
   "gameOver": "Koniec gry!",
-  "allBust": "Wszyscy gracze przegrali!"
+  "allBust": "Wszyscy gracze przegrali!",
+  "speech": "Lektor",
+  "noScore": "Bez punktów",
+  "bust": "Koniec"
 }

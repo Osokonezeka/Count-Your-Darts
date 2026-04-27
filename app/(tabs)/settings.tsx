@@ -16,6 +16,7 @@ import {
 
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
 import { availableLanguages, t } from "../../lib/i18n";
@@ -40,6 +41,7 @@ export default function Settings() {
   } = useTerminology();
   const { isHapticsEnabled, toggleHaptics, intensity, setIntensity } =
     useHaptics();
+  const { isSpeechEnabled, toggleSpeech } = useSpeech();
 
   const [isLangModalVisible, setLangModalVisible] = useState(false);
   const animValue = useRef(new Animated.Value(0)).current;
@@ -328,6 +330,31 @@ export default function Settings() {
             <Text style={styles.sectionTitle}>
               {t(language, "preferences") || "Preferences"}
             </Text>
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons
+                name="volume-high-outline"
+                size={22}
+                color={theme.colors.textMuted}
+                style={{ marginRight: 10 }}
+              />
+              <Text style={styles.settingLabel}>
+                {t(language, "speech") || "Announcer"}
+              </Text>
+            </View>
+            <Switch
+              value={isSpeechEnabled}
+              onValueChange={toggleSpeech}
+              trackColor={{
+                false: theme.colors.cardBorder,
+                true: theme.colors.primaryLight,
+              }}
+              thumbColor={
+                isSpeechEnabled ? theme.colors.primary : theme.colors.textLight
+              }
+            />
           </View>
 
           <View style={styles.settingRow}>
