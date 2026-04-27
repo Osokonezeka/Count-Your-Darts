@@ -1,50 +1,74 @@
-# Welcome to your Expo app 👋
+# 🎯 Count Your Darts
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A feature-rich React Native mobile application built with [Expo](https://expo.dev/) to help you track your dart games, manage players, and analyze your performance.
 
-## Get started
+## ✨ Features
 
-1. Install dependencies
+- **Multiple Game Modes**:
+  - X01 (Standard Darts)
+  - Cricket
+  - Around the Clock
+  - Bob's 27
+  - 100 Darts
+- **Player Management**: Keep track of multiple players and their individual progress.
+- **Match History & Statistics**: View past games and analyze performance with detailed charts.
+- **Multilingual Support**: Available in English and Polish (i18n).
+- **Customizable Experience**:
+  - Dark and Light themes.
+  - Haptic feedback for better interaction.
+  - Speech synthesis (reads out scores).
+- **Offline Ready**: All data is securely stored locally on your device.
 
+## 🚀 Tech Stack
+
+- **Framework**: [React Native](https://reactnative.dev/) & [Expo](https://expo.dev/)
+- **Navigation**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based routing) & React Navigation
+- **State Management**: React Context API
+- **Storage**: `@react-native-async-storage/async-storage`
+- **Charts**: `react-native-chart-kit`
+- **i18n**: `i18next` & `react-i18next`
+
+## 📦 Getting Started
+
+### Prerequisites
+
+Make sure you have Node.js installed. We recommend using `npm`.
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd Count-Your-Darts
+   ```
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Start the app
+### Running the App
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Start the Expo development server:
 
 ```bash
-npm run reset-project
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Press `a` to open on an Android emulator, `i` for an iOS simulator, or scan the QR code with the Expo Go app on your physical device.
 
-## Learn more
+## 📂 Project Structure
 
-To learn more about developing your project with Expo, look at the following resources:
+- `/app` - Expo Router screens and tab navigation.
+- `/components` - Reusable UI components.
+- `/context` - Global state management (Game, Players, Theme, Language, etc.).
+- `/lib` - Utility functions (Checkouts logic, Storage helpers, Theme definitions).
+- `/locales` - Translation files (`en.json`, `pl.json`).
+- `/assets` - Images, icons, and splash screens.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 🤝 Contributing
 
-## Join the community
+Contributions, issues, and feature requests are welcome!
 
-Join our community of developers creating universal apps.
+## 📄 License
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This project is open-source and available under the MIT License.
