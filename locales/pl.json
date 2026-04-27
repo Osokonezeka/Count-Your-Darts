@@ -119,5 +119,16 @@
   "allBust": "Wszyscy gracze przegrali!",
   "speech": "Lektor",
   "noScore": "Bez punktów",
-  "bust": "Koniec"
+  "bust": "Koniec",
+  "sharePlayerStats": "STATYSTYKI GRACZA",
+  "shareDartsThrown": "RZUCONE LOTKI",
+  "shareGamesWon": "MECZE / WYGRANE",
+  "shareFirst9Avg": "PIERWSZE 9 / ŚREDNIA",
+  "shareGameDartsHit": "LOTKI KOŃCZĄCE / % TRAFIEŃ",
+  "shareScoring": "100+ / 140+ / 180",
+  "shareAvgLast10": "ŚREDNIA Z OSTATNICH 10 MECZÓW",
+  "shareGeneratedOn": "Wygenerowano",
+  "shareStatsTitle": "Udostępnij statystyki",
+  "shareStatsDesc": "Wybierz gracza, aby wygenerować kartę",
+  "noDataFilters": "Brak danych dla obecnych filtrów."
 }

@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useNavigation } from "expo-router";
+import * as Sharing from "expo-sharing";
 import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -24,6 +26,7 @@ import DraggableFlatList, {
   ScaleDecorator,
 } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import ViewShot from "react-native-view-shot";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -52,6 +55,247 @@ const parseDateString = (dateStr: string) => {
   } catch (e) {
     return new Date(0);
   }
+};
+
+const ShareStatBox = ({ label, value, theme }: any) => (
+  <View
+    style={{
+      width: "48%",
+      backgroundColor: theme.colors.card,
+      padding: 16,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+      minHeight: 75,
+      justifyContent: "center",
+      marginBottom: 12,
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 10,
+        fontWeight: "800",
+        color: theme.colors.textMuted,
+        marginBottom: 6,
+      }}
+    >
+      {label}
+    </Text>
+    <Text
+      style={{
+        fontSize: 16,
+        fontWeight: "900",
+        color: theme.colors.textMain,
+      }}
+      adjustsFontSizeToFit
+      numberOfLines={1}
+    >
+      {value}
+    </Text>
+  </View>
+);
+
+const ShareCard = ({ playerName, stats, trendData, theme, language }: any) => {
+  if (!stats)
+    return (
+      <View
+        style={{
+          width: 400,
+          height: 400,
+          backgroundColor: theme.colors.background,
+        }}
+      />
+    );
+
+  const winPct =
+    stats.mPlayed > 0 ? ((stats.mWon / stats.mPlayed) * 100).toFixed(0) : "0";
+  const hitPct =
+    stats.checkoutDarts > 0
+      ? ((stats.checkoutHits / stats.checkoutDarts) * 100).toFixed(1)
+      : "0";
+  const avg =
+    stats.totalDarts > 0
+      ? ((stats.totalPoints / stats.totalDarts) * 3).toFixed(1)
+      : "0.0";
+  const first9 =
+    stats.first9Count > 0
+      ? ((stats.first9Points / stats.first9Count) * 3).toFixed(1)
+      : "0.0";
+
+  return (
+    <View
+      collapsable={false}
+      style={{
+        width: 400,
+        backgroundColor: theme.colors.background,
+        padding: 24,
+        paddingBottom: 30,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          marginBottom: 12,
+          marginTop: 10,
+        }}
+      >
+        <View style={{ width: "48%", paddingBottom: 12 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "800",
+              color: theme.colors.primary,
+              letterSpacing: 1.5,
+              marginBottom: 4,
+            }}
+          >
+            {t(language, "sharePlayerStats") || "PLAYER STATS"} • X01
+          </Text>
+          <Text
+            style={{
+              fontSize: 32,
+              fontWeight: "900",
+              color: theme.colors.textMain,
+              textTransform: "uppercase",
+            }}
+            adjustsFontSizeToFit
+            numberOfLines={1}
+          >
+            {playerName}
+          </Text>
+        </View>
+
+        <ShareStatBox
+          label={t(language, "shareDartsThrown") || "DARTS THROWN"}
+          value={stats.totalDarts.toString()}
+          theme={theme}
+        />
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <ShareStatBox
+          label={t(language, "shareGamesWon") || "GAMES / WON"}
+          value={`${stats.mPlayed} / ${stats.mWon} (${winPct}%)`}
+          theme={theme}
+        />
+        <ShareStatBox
+          label={t(language, "shareFirst9Avg") || "FIRST 9 / AVG"}
+          value={`${first9} / ${avg}`}
+          theme={theme}
+        />
+        <ShareStatBox
+          label={t(language, "shareGameDartsHit") || "GAME DARTS / HIT %"}
+          value={`${stats.checkoutDarts} / ${hitPct}%`}
+          theme={theme}
+        />
+        <ShareStatBox
+          label={t(language, "shareScoring") || "100+ / 140+ / 180"}
+          value={`${stats.s100} / ${stats.s140} / ${stats.s180}`}
+          theme={theme}
+        />
+      </View>
+
+      {trendData &&
+        trendData.datasets &&
+        trendData.datasets[0].data.length > 0 && (
+          <View
+            style={{
+              backgroundColor: theme.colors.card,
+              borderRadius: 16,
+              padding: 16,
+              paddingLeft: 4,
+              marginBottom: 24,
+              borderWidth: 1,
+              borderColor: theme.colors.cardBorder,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "800",
+                color: theme.colors.textMuted,
+                marginBottom: 12,
+                textAlign: "center",
+                paddingLeft: 12,
+              }}
+            >
+              {t(language, "shareAvgLast10") || "AVERAGE OVER LAST 10 GAMES"}
+            </Text>
+            <LineChart
+              data={trendData}
+              width={340}
+              height={160}
+              formatYLabel={(yValue) =>
+                " " + Math.round(Number(yValue)).toString()
+              }
+              chartConfig={{
+                backgroundColor: theme.colors.card,
+                backgroundGradientFrom: theme.colors.card,
+                backgroundGradientTo: theme.colors.card,
+                decimalPlaces: 0,
+                color: (opacity = 1) => theme.colors.primary,
+                labelColor: (opacity = 1) => theme.colors.textMuted,
+                propsForDots: {
+                  r: "4",
+                  strokeWidth: "2",
+                  stroke: theme.colors.primaryDark,
+                },
+                propsForLabels: {
+                  fontSize: 10,
+                  fontWeight: "bold",
+                },
+              }}
+              bezier
+              withVerticalLines={false}
+              style={{
+                borderRadius: 8,
+                paddingRight: 35,
+              }}
+            />
+          </View>
+        )}
+
+      <View
+        style={{
+          alignItems: "center",
+          marginTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.cardBorder,
+          paddingTop: 20,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: "900",
+            color: theme.colors.textMain,
+          }}
+        >
+          🎯 Count Your Darts
+        </Text>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "600",
+            color: theme.colors.textMuted,
+            marginTop: 4,
+          }}
+        >
+          {t(language, "shareGeneratedOn") || "Generated on"}{" "}
+          {new Date().toLocaleDateString()}
+        </Text>
+      </View>
+    </View>
+  );
 };
 
 const TrendCard = ({ data, theme, language, isOpen, onToggle, drag }: any) => {
@@ -573,7 +817,13 @@ export default function Statistics() {
   const [appliedNames, setAppliedNames] = useState<string[]>([]);
   const [tempNames, setTempNames] = useState<string[]>([]);
   const [showPlayerFilter, setShowPlayerFilter] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedSharePlayer, setSelectedSharePlayer] = useState<string | null>(
+    null,
+  );
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
+
+  const viewShotRef = useRef<any>(null);
 
   const defaultSections: Section[] = [
     { id: "trend" },
@@ -641,15 +891,34 @@ export default function Statistics() {
     navigation.setOptions({
       headerTitle: `${t(language, "stats") || "Statistics"} (${t(language, "x01") || "X01"})`,
       headerRight: () => (
-        <Pressable
-          onPress={() => {
-            setTempNames(appliedNames);
-            setShowPlayerFilter(true);
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            marginRight: 10,
           }}
-          style={{ marginRight: 20, padding: 5 }}
         >
-          <Ionicons name="filter" size={24} color={theme.colors.primary} />
-        </Pressable>
+          <Pressable
+            onPress={() => setShowShareModal(true)}
+            style={{ padding: 5 }}
+          >
+            <Ionicons
+              name="share-outline"
+              size={24}
+              color={theme.colors.primary}
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setTempNames(appliedNames);
+              setShowPlayerFilter(true);
+            }}
+            style={{ padding: 5 }}
+          >
+            <Ionicons name="filter" size={24} color={theme.colors.primary} />
+          </Pressable>
+        </View>
       ),
     });
   }, [navigation, appliedNames, language, theme]);
@@ -818,6 +1087,27 @@ export default function Statistics() {
     });
   }, []);
 
+  const handleShareAction = async (playerName: string) => {
+    setSelectedSharePlayer(playerName);
+    setShowShareModal(false);
+
+    setTimeout(async () => {
+      if (viewShotRef.current && viewShotRef.current.capture) {
+        try {
+          const uri = await viewShotRef.current.capture();
+          await Sharing.shareAsync(uri, {
+            dialogTitle: "Share your Darts Stats!",
+            mimeType: "image/jpeg",
+          });
+        } catch (error) {
+          console.error("Oops, snapshot failed", error);
+        } finally {
+          setSelectedSharePlayer(null);
+        }
+      }
+    }, 750);
+  };
+
   const renderItem = useCallback(
     ({ item, drag }: RenderItemParams<Section>) => {
       if (item.id === "trend") {
@@ -896,6 +1186,7 @@ export default function Statistics() {
         contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
         activationDistance={15}
       />
+
       <Modal visible={showPlayerFilter} transparent animationType="fade">
         <Pressable
           style={styles.modalOverlay}
@@ -951,6 +1242,92 @@ export default function Statistics() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal visible={showShareModal} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowShareModal(false)}
+        >
+          <View
+            style={styles.modalContent}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={styles.modalTitle}>
+              {t(language, "shareStatsTitle") || "Share Stats"} (X01)
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                textAlign: "center",
+                marginBottom: 20,
+                fontWeight: "600",
+              }}
+            >
+              {t(language, "shareStatsDesc") ||
+                "Select a player to generate a sharing card"}
+            </Text>
+            <FlatList
+              data={stats.map((s: any) => s.name)}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.filterRow}
+                  onPress={() => handleShareAction(item)}
+                >
+                  <Text style={styles.filterRowText}>{item}</Text>
+                  <Ionicons
+                    name="share-outline"
+                    size={24}
+                    color={theme.colors.primary}
+                  />
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.emptyText}>
+                  {t(language, "noDataFilters") ||
+                    "No data available for applied filters."}
+                </Text>
+              }
+            />
+            <Pressable
+              style={[
+                styles.closeBtn,
+                { backgroundColor: theme.colors.cardBorder },
+              ]}
+              onPress={() => setShowShareModal(false)}
+            >
+              <Text
+                style={[styles.closeBtnText, { color: theme.colors.textMain }]}
+              >
+                {t(language, "cancel") || "Cancel"}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {selectedSharePlayer && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            zIndex: -10,
+            opacity: 0.01,
+            pointerEvents: "none",
+          }}
+        >
+          <ViewShot ref={viewShotRef} options={{ format: "jpg", quality: 1 }}>
+            <ShareCard
+              playerName={selectedSharePlayer}
+              stats={stats.find((s: any) => s.name === selectedSharePlayer)}
+              trendData={trendData[selectedSharePlayer]}
+              theme={theme}
+              language={language}
+            />
+          </ViewShot>
+        </View>
+      )}
     </GestureHandlerRootView>
   );
 }
@@ -1088,7 +1465,7 @@ const getStyles = (theme: any) =>
     modalTitle: {
       fontSize: 22,
       fontWeight: "900",
-      marginBottom: 20,
+      marginBottom: 5,
       color: theme.colors.textMain,
       textAlign: "center",
     },
