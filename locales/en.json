@@ -119,5 +119,16 @@
   "allBust": "All players went bust!",
   "speech": "Announcer",
   "noScore": "No score",
-  "bust": "Bust"
+  "bust": "Bust",
+  "sharePlayerStats": "PLAYER STATS",
+  "shareDartsThrown": "DARTS THROWN",
+  "shareGamesWon": "GAMES / WON",
+  "shareFirst9Avg": "FIRST 9 / AVG",
+  "shareGameDartsHit": "GAME DARTS / HIT %",
+  "shareScoring": "100+ / 140+ / 180",
+  "shareAvgLast10": "AVERAGE OVER LAST 10 GAMES",
+  "shareGeneratedOn": "Generated on",
+  "shareStatsTitle": "Share Stats",
+  "shareStatsDesc": "Select a player to generate a sharing card",
+  "noDataFilters": "No data available for applied filters."
 }
