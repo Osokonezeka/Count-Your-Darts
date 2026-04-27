@@ -22,6 +22,7 @@ import CustomAlert, { AlertButton } from "../components/CustomAlert";
 import { useGame } from "../context/GameContext";
 import { useHaptics } from "../context/HapticsContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useSpeech } from "../context/SpeechContext";
 import { useTerminology } from "../context/TerminologyContext";
 import { useTheme } from "../context/ThemeContext";
 import { getCheckoutInfo } from "../lib/checkouts";
@@ -65,6 +66,7 @@ type GameState = {
   setWinner: PlayerState | null;
   matchWinner: PlayerState | null;
   finishedPlayersCount: number;
+  speechEvent?: { text: string; id: number } | null;
 };
 
 const initialState = (players: string[], settings: GameSettings): GameState => {
@@ -94,6 +96,7 @@ const initialState = (players: string[], settings: GameSettings): GameState => {
     setWinner: null,
     matchWinner: null,
     finishedPlayersCount: 0,
+    speechEvent: null,
   };
 };
 
@@ -158,6 +161,23 @@ function gameReducer(state: GameState, action: any): GameState {
         if (outRule === "double" || outRule === "master") isBust = true;
       }
 
+      const currentDartScore = value * multiplier;
+      const previousDartsScore = player.turnThrows
+        .slice(0, -1)
+        .reduce((sum: number, t: any) => sum + t.value * t.multiplier, 0);
+      const turnSumTotal = previousDartsScore + currentDartScore;
+
+      let newSpeechText: string | null = null;
+      if (isBust) {
+        newSpeechText = "noScore";
+      } else if (isWin || state.throwsThisTurn === 2) {
+        newSpeechText =
+          turnSumTotal === 0 ? "noScore" : turnSumTotal.toString();
+      }
+      const newSpeechEvent = newSpeechText
+        ? { text: newSpeechText, id: Date.now() }
+        : null;
+
       player.score = isWin ? 0 : isBust ? player.roundStartScore : newScore;
       if (isBust) player.hasOpened = player.roundStartHasOpened;
       updatedPlayers[playerIndex] = player;
@@ -177,6 +197,7 @@ function gameReducer(state: GameState, action: any): GameState {
             playerStates: updatedPlayers,
             matchWinner: player,
             history: [...state.history, snapshot],
+            speechEvent: newSpeechEvent,
           };
         } else if (isSetWin) {
           player.legs += 1;
@@ -186,6 +207,7 @@ function gameReducer(state: GameState, action: any): GameState {
             playerStates: updatedPlayers,
             setWinner: player,
             history: [...state.history, snapshot],
+            speechEvent: newSpeechEvent,
           };
         } else {
           player.legs += 1;
@@ -194,6 +216,7 @@ function gameReducer(state: GameState, action: any): GameState {
             playerStates: updatedPlayers,
             legWinner: player,
             history: [...state.history, snapshot],
+            speechEvent: newSpeechEvent,
           };
         }
       }
@@ -214,6 +237,7 @@ function gameReducer(state: GameState, action: any): GameState {
           currentIndex: nextIdx,
           throwsThisTurn: 0,
           history: [...state.history, snapshot],
+          speechEvent: newSpeechEvent,
         };
       }
 
@@ -222,6 +246,7 @@ function gameReducer(state: GameState, action: any): GameState {
         playerStates: updatedPlayers,
         throwsThisTurn: state.throwsThisTurn + 1,
         history: [...state.history, snapshot],
+        speechEvent: newSpeechEvent,
       };
     }
 
@@ -253,6 +278,7 @@ function gameReducer(state: GameState, action: any): GameState {
         legWinner: null,
         setWinner: null,
         matchWinner: null,
+        speechEvent: null,
       };
     }
 
@@ -277,6 +303,7 @@ function gameReducer(state: GameState, action: any): GameState {
           playerStates: updatedPlayers,
           finishedPlayersCount: newFinishedCount,
           matchWinner: null,
+          speechEvent: null,
         };
 
       let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
@@ -292,6 +319,7 @@ function gameReducer(state: GameState, action: any): GameState {
         throwsThisTurn: 0,
         finishedPlayersCount: newFinishedCount,
         matchWinner: null,
+        speechEvent: null,
       };
     }
 
@@ -300,6 +328,7 @@ function gameReducer(state: GameState, action: any): GameState {
       return {
         ...state.history[state.history.length - 1],
         history: state.history.slice(0, -1),
+        speechEvent: null,
       };
     }
 
@@ -335,6 +364,7 @@ export default function Game() {
   const { tripleTerm, missTerm, bullTerm } = useTerminology();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
+  const { speak } = useSpeech();
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -399,6 +429,16 @@ export default function Game() {
       sets: settings.sets || 1,
     }),
   );
+
+  useEffect(() => {
+    if (state.speechEvent) {
+      if (state.speechEvent.text === "noScore") {
+        speak(t(language, "noScore") || "No score");
+      } else {
+        speak(state.speechEvent.text);
+      }
+    }
+  }, [state.speechEvent, language]);
 
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [countdown, setCountdown] = useState(3);

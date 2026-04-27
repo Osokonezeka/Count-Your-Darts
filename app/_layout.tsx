@@ -7,6 +7,7 @@ import { GameProvider } from "../context/GameContext";
 import { HapticsProvider } from "../context/HapticsContext";
 import { LanguageProvider } from "../context/LanguageContext";
 import { PlayersProvider } from "../context/PlayersContext";
+import { SpeechProvider } from "../context/SpeechContext";
 import { TerminologyProvider } from "../context/TerminologyContext";
 import { ThemeProvider } from "../context/ThemeContext";
 
@@ -17,15 +18,17 @@ export default function Layout() {
     <View style={{ flex: 1 }}>
       <ThemeProvider>
         <LanguageProvider>
-          <TerminologyProvider>
-            <PlayersProvider>
-              <GameProvider>
-                <HapticsProvider>
-                  <Slot />
-                </HapticsProvider>
-              </GameProvider>
-            </PlayersProvider>
-          </TerminologyProvider>
+          <SpeechProvider>
+            <TerminologyProvider>
+              <PlayersProvider>
+                <GameProvider>
+                  <HapticsProvider>
+                    <Slot />
+                  </HapticsProvider>
+                </GameProvider>
+              </PlayersProvider>
+            </TerminologyProvider>
+          </SpeechProvider>
         </LanguageProvider>
       </ThemeProvider>
     </View>

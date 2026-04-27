@@ -16,6 +16,7 @@ import CustomAlert, { AlertButton } from "../components/CustomAlert";
 import { useGame } from "../context/GameContext";
 import { useHaptics } from "../context/HapticsContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useSpeech } from "../context/SpeechContext";
 import { useTerminology } from "../context/TerminologyContext";
 import { useTheme } from "../context/ThemeContext";
 import { t } from "../lib/i18n";
@@ -42,6 +43,7 @@ type GameState = {
   throwsThisTurn: number;
   history: any[];
   finishedCount: number;
+  speechEvent?: { text: string; id: number } | null;
 };
 
 const formatTime = (seconds: number) => {
@@ -69,9 +71,11 @@ function bobsReducer(state: GameState, action: any): GameState {
 
       if (isTurnOver) {
         const hitsCount = player.turnThrows.filter((h) => h).length;
+        let turnPoints = 0;
 
         if (hitsCount > 0) {
-          player.score += currentTargetValue * 2 * hitsCount;
+          turnPoints = currentTargetValue * 2 * hitsCount;
+          player.score += turnPoints;
         } else {
           player.score -= currentTargetValue * 2;
         }
@@ -80,12 +84,25 @@ function bobsReducer(state: GameState, action: any): GameState {
           player.highScore = player.score;
         }
 
+        let newSpeechText: string | null = null;
+
         if (player.score <= 0) {
           player.isBust = true;
           player.score = 0;
-        } else if (player.currentTargetIdx === TARGETS.length - 1) {
-          player.isFinished = true;
+          newSpeechText = "bust";
+        } else if (hitsCount === 0) {
+          newSpeechText = "-" + (currentTargetValue * 2).toString();
         } else {
+          newSpeechText = turnPoints.toString();
+        }
+
+        const newSpeechEvent = newSpeechText
+          ? { text: newSpeechText, id: Date.now() }
+          : null;
+
+        if (!player.isBust && player.currentTargetIdx === TARGETS.length - 1) {
+          player.isFinished = true;
+        } else if (!player.isBust) {
           player.currentTargetIdx += 1;
         }
 
@@ -104,6 +121,7 @@ function bobsReducer(state: GameState, action: any): GameState {
             ...state,
             playerStates: updatedPlayers,
             history: [...state.history, snapshot],
+            speechEvent: newSpeechEvent,
           };
         }
 
@@ -123,6 +141,7 @@ function bobsReducer(state: GameState, action: any): GameState {
           currentIndex: nextIdx,
           throwsThisTurn: 0,
           history: [...state.history, snapshot],
+          speechEvent: newSpeechEvent,
         };
       }
 
@@ -132,6 +151,7 @@ function bobsReducer(state: GameState, action: any): GameState {
         playerStates: updatedPlayers,
         throwsThisTurn: state.throwsThisTurn + 1,
         history: [...state.history, snapshot],
+        speechEvent: null,
       };
     }
 
@@ -140,6 +160,7 @@ function bobsReducer(state: GameState, action: any): GameState {
       return {
         ...state.history[state.history.length - 1],
         history: state.history.slice(0, -1),
+        speechEvent: null,
       };
     }
 
@@ -153,6 +174,7 @@ export default function BobsTwentySeven() {
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
+  const { speak } = useSpeech();
   const { bullTerm, missTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
@@ -173,6 +195,7 @@ export default function BobsTwentySeven() {
     throwsThisTurn: 0,
     history: [],
     finishedCount: 0,
+    speechEvent: null,
   });
 
   const [matchTime, setMatchTime] = useState(0);
@@ -204,6 +227,18 @@ export default function BobsTwentySeven() {
       saveBobsStats();
     }
   }, [allDone, isGameOver]);
+
+  useEffect(() => {
+    if (state.speechEvent) {
+      if (state.speechEvent.text === "bust") {
+        speak(t(language, "bust") || "Bust");
+      } else if (state.speechEvent.text === "noScore") {
+        speak(t(language, "noScore") || "No score");
+      } else {
+        speak(state.speechEvent.text);
+      }
+    }
+  }, [state.speechEvent, language]);
 
   const saveBobsStats = async () => {
     try {
