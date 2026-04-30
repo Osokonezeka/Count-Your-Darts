@@ -425,7 +425,12 @@ export default function Game() {
       }
 
       const hasStarted = state.playerStates.some(
-        (p) => p.score !== state.settings.startPoints || p.darts > 0,
+        (p) =>
+          p.score !== state.settings.startPoints ||
+          p.darts > 0 ||
+          p.legs > 0 ||
+          p.sets > 0 ||
+          (p.totalMatchDarts && p.totalMatchDarts > 0),
       );
 
       if (!hasStarted) {

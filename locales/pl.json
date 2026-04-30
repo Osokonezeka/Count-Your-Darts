@@ -130,6 +130,13 @@
   "shareGeneratedOn": "Wygenerowano",
   "shareStatsTitle": "Udostępnij statystyki",
   "shareStatsDesc": "Wybierz gracza, aby wygenerować kartę",
+  "shareTournaments": "TURNIEJE (1. / 2. MSC)",
+  "shareMatchesPlayed": "ROZEGRANE MECZE",
+  "shareCheckoutsHit": "CHECKOUTY / % TRAFIEŃ",
+  "tournamentsHeader": "Turnieje (Rozegrane / 1. / 2. msc)",
+  "playedShort": "Rozegr.",
+  "deselectAll": "Odznacz wszystkie",
+  "selectAll": "Zaznacz wszystkie",
   "noDataFilters": "Brak danych dla obecnych filtrów.",
   "tournament": "Turniej",
 

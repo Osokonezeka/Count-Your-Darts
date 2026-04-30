@@ -309,6 +309,17 @@ export default function TournamentScreen() {
             {t(language, "tournamentHistory") || "Tournament History"}
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.historyBtn}
+          activeOpacity={0.8}
+          onPress={() => router.push("../tournament/statistics")}
+        >
+          <Ionicons name="stats-chart" size={24} color={theme.colors.primary} />
+          <Text style={styles.historyBtnText}>
+            {t(language, "tournamentStatistics") || "Tournament Statistics"}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     );
   }
