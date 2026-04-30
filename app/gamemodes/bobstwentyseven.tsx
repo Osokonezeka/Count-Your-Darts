@@ -12,30 +12,29 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../components/CustomAlert";
-import { useGame } from "../context/GameContext";
-import { useHaptics } from "../context/HapticsContext";
-import { useLanguage } from "../context/LanguageContext";
-import { useSpeech } from "../context/SpeechContext";
-import { useTerminology } from "../context/TerminologyContext";
-import { useTheme } from "../context/ThemeContext";
-import { t } from "../lib/i18n";
+import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import { useGame } from "../../context/GameContext";
+import { useHaptics } from "../../context/HapticsContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { useSpeech } from "../../context/SpeechContext";
+import { useTerminology } from "../../context/TerminologyContext";
+import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
 
-const MAX_DARTS = 100;
-
-type Throw = { value: number; multiplier: number };
+const TARGETS = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
+];
 
 type PlayerState = {
   name: string;
   score: number;
-  dartsCount: number;
-  turnThrows: Throw[];
+  highScore: number;
+  currentTargetIdx: number;
+  darts: number;
+  turnThrows: boolean[];
   isFinished: boolean;
+  isBust: boolean;
   rank?: number;
-  s60: number;
-  s100: number;
-  s140: number;
-  s180: number;
 };
 
 type GameState = {
@@ -43,14 +42,8 @@ type GameState = {
   currentIndex: number;
   throwsThisTurn: number;
   history: any[];
+  finishedCount: number;
   speechEvent?: { text: string; id: number } | null;
-};
-
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
 };
 
 const formatTime = (seconds: number) => {
@@ -61,53 +54,68 @@ const formatTime = (seconds: number) => {
   return `${m}:${s}`;
 };
 
-function scoringReducer(state: GameState, action: any): GameState {
+function bobsReducer(state: GameState, action: any): GameState {
   switch (action.type) {
-    case "ADD_THROW": {
-      const { value, multiplier } = action.payload;
+    case "THROW": {
+      const { hit } = action.payload;
       const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
 
       const updatedPlayers = [...state.playerStates];
       const player = { ...updatedPlayers[state.currentIndex] };
+      const currentTargetValue = TARGETS[player.currentTargetIdx];
 
-      const hitPoints = value * multiplier;
-      player.score += hitPoints;
-      player.dartsCount += 1;
-      player.turnThrows = [...player.turnThrows, { value, multiplier }];
+      player.darts += 1;
+      player.turnThrows = [...player.turnThrows, hit];
 
-      const isTurnOver =
-        state.throwsThisTurn === 2 || player.dartsCount === MAX_DARTS;
-
-      let newSpeechEvent = null;
+      const isTurnOver = state.throwsThisTurn === 2;
 
       if (isTurnOver) {
-        const turnSum = player.turnThrows.reduce(
-          (sum, tr) => sum + tr.value * tr.multiplier,
-          0,
-        );
-        if (turnSum >= 180) player.s180++;
-        else if (turnSum >= 140) player.s140++;
-        else if (turnSum >= 100) player.s100++;
-        else if (turnSum >= 60) player.s60++;
+        const hitsCount = player.turnThrows.filter((h) => h).length;
+        let turnPoints = 0;
 
-        if (player.dartsCount === MAX_DARTS) {
-          player.isFinished = true;
+        if (hitsCount > 0) {
+          turnPoints = currentTargetValue * 2 * hitsCount;
+          player.score += turnPoints;
+        } else {
+          player.score -= currentTargetValue * 2;
         }
 
-        const newSpeechText = turnSum === 0 ? "noScore" : turnSum.toString();
-        newSpeechEvent = { text: newSpeechText, id: Date.now() };
-      }
+        if (player.score > player.highScore) {
+          player.highScore = player.score;
+        }
 
-      updatedPlayers[state.currentIndex] = player;
+        let newSpeechText: string | null = null;
 
-      if (isTurnOver) {
-        const allDone = updatedPlayers.every((p) => p.isFinished);
+        if (player.score <= 0) {
+          player.isBust = true;
+          player.score = 0;
+          newSpeechText = "bust";
+        } else if (hitsCount === 0) {
+          newSpeechText = "-" + (currentTargetValue * 2).toString();
+        } else {
+          newSpeechText = turnPoints.toString();
+        }
+
+        const newSpeechEvent = newSpeechText
+          ? { text: newSpeechText, id: Date.now() }
+          : null;
+
+        if (!player.isBust && player.currentTargetIdx === TARGETS.length - 1) {
+          player.isFinished = true;
+        } else if (!player.isBust) {
+          player.currentTargetIdx += 1;
+        }
+
+        updatedPlayers[state.currentIndex] = player;
+
+        const allDone = updatedPlayers.every((p) => p.isBust || p.isFinished);
         if (allDone) {
-          const finishers = [...updatedPlayers].sort(
-            (a, b) => b.score - a.score,
-          );
-          updatedPlayers.forEach((p) => {
-            p.rank = finishers.findIndex((f) => f.name === p.name) + 1;
+          const finishers = updatedPlayers
+            .map((p, idx) => ({ ...p, originalIdx: idx }))
+            .sort((a, b) => b.score - a.score || a.darts - b.darts);
+
+          finishers.forEach((f, rankIdx) => {
+            updatedPlayers[f.originalIdx].rank = rankIdx + 1;
           });
           return {
             ...state,
@@ -118,9 +126,13 @@ function scoringReducer(state: GameState, action: any): GameState {
         }
 
         let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-        while (updatedPlayers[nextIdx].isFinished) {
+        while (
+          updatedPlayers[nextIdx].isBust ||
+          updatedPlayers[nextIdx].isFinished
+        ) {
           nextIdx = (nextIdx + 1) % state.playerStates.length;
         }
+
         updatedPlayers[nextIdx].turnThrows = [];
 
         return {
@@ -133,6 +145,7 @@ function scoringReducer(state: GameState, action: any): GameState {
         };
       }
 
+      updatedPlayers[state.currentIndex] = player;
       return {
         ...state,
         playerStates: updatedPlayers,
@@ -156,36 +169,35 @@ function scoringReducer(state: GameState, action: any): GameState {
   }
 }
 
-export default function OneHundredDarts() {
+export default function BobsTwentySeven() {
   const { players } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
   const { speak } = useSpeech();
-  const { bullTerm, missTerm, tripleTerm } = useTerminology();
+  const { bullTerm, missTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
   const styles = getStyles(theme);
 
-  const [state, dispatch] = useReducer(scoringReducer, {
+  const [state, dispatch] = useReducer(bobsReducer, {
     playerStates: players.map((name) => ({
       name,
-      score: 0,
-      dartsCount: 0,
+      score: 27,
+      highScore: 27,
+      currentTargetIdx: 0,
+      darts: 0,
       turnThrows: [],
       isFinished: false,
-      s180: 0,
-      s140: 0,
-      s100: 0,
-      s60: 0,
+      isBust: false,
     })),
     currentIndex: 0,
     throwsThisTurn: 0,
     history: [],
+    finishedCount: 0,
     speechEvent: null,
   });
 
-  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [matchTime, setMatchTime] = useState(0);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -194,17 +206,8 @@ export default function OneHundredDarts() {
     buttons: [] as AlertButton[],
   });
 
-  useEffect(() => {
-    if (state.speechEvent) {
-      if (state.speechEvent.text === "noScore") {
-        speak(t(language, "noScore") || "No score");
-      } else {
-        speak(state.speechEvent.text);
-      }
-    }
-  }, [state.speechEvent, language]);
-
-  const allDone = state.playerStates.every((p) => p.isFinished);
+  const allDone = state.playerStates.every((p) => p.isBust || p.isFinished);
+  const isGameOver = allDone && state.playerStates.every((p) => p.isBust);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -220,12 +223,24 @@ export default function OneHundredDarts() {
 
   useEffect(() => {
     if (allDone) {
-      triggerHaptic("success");
-      saveScoringStats();
+      triggerHaptic(isGameOver ? "heavy" : "success");
+      saveBobsStats();
     }
-  }, [allDone]);
+  }, [allDone, isGameOver]);
 
-  const saveScoringStats = async () => {
+  useEffect(() => {
+    if (state.speechEvent) {
+      if (state.speechEvent.text === "bust") {
+        speak(t(language, "bust") || "Bust");
+      } else if (state.speechEvent.text === "noScore") {
+        speak(t(language, "noScore") || "No score");
+      } else {
+        speak(state.speechEvent.text);
+      }
+    }
+  }, [state.speechEvent, language]);
+
+  const saveBobsStats = async () => {
     try {
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
@@ -234,14 +249,15 @@ export default function OneHundredDarts() {
         id: Date.now().toString(),
         date: formattedDate,
         duration: formatTime(matchTime),
-        mode: "100 Darts",
+        mode: "Bob's 27",
         players: state.playerStates
           .map((p) => ({
             name: p.name,
             score: p.score,
-            darts: p.dartsCount,
+            highScore: p.highScore,
+            darts: p.darts,
             rank: p.rank,
-            avg: ((p.score / p.dartsCount) * 3).toFixed(1),
+            status: p.isBust ? "BUST" : "CLEARED",
           }))
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
@@ -257,7 +273,7 @@ export default function OneHundredDarts() {
         JSON.stringify([historyItem, ...existingHistory]),
       );
     } catch (e) {
-      console.error("Save 100 Darts error", e);
+      console.error("Save Bob's 27 error", e);
     }
   };
 
@@ -282,27 +298,13 @@ export default function OneHundredDarts() {
     return unsubscribe;
   }, [navigation, allDone]);
 
-  const handleThrow = (value: number) => {
+  const handleThrow = (hit: boolean) => {
     if (allDone) return;
-    if ((value === 25 && multiplier === 3) || (value === 0 && multiplier !== 1))
-      return;
-
-    triggerHaptic("tap");
-    dispatch({ type: "ADD_THROW", payload: { value, multiplier } });
-    setMultiplier(1);
+    triggerHaptic(hit ? "tap" : "heavy");
+    dispatch({ type: "THROW", payload: { hit } });
   };
 
-  const handleMiss = () => {
-    if (multiplier === 1) {
-      triggerHaptic("heavy");
-      handleThrow(0);
-    }
-  };
-
-  const handleMultiplierToggle = (newMult: 2 | 3) => {
-    triggerHaptic("heavy");
-    setMultiplier((prev) => (prev === newMult ? 1 : newMult));
-  };
+  const currentPlayer = state.playerStates[state.currentIndex];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -311,8 +313,8 @@ export default function OneHundredDarts() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>100 DARTS</Text>
-          <Text style={styles.headerSub}>HIGH SCORE</Text>
+          <Text style={styles.headerTitle}>BOB'S 27</Text>
+          <Text style={styles.headerSub}>D1 ➔ D20 ➔ D-BULL</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.timerBadge}>
@@ -331,7 +333,9 @@ export default function OneHundredDarts() {
         contentContainerStyle={styles.scoreBoardContent}
       >
         {state.playerStates.map((p, i) => {
-          const isActive = i === state.currentIndex && !p.isFinished;
+          const isActive =
+            i === state.currentIndex && !p.isBust && !p.isFinished;
+          const target = TARGETS[p.currentTargetIdx];
 
           return (
             <View
@@ -339,15 +343,19 @@ export default function OneHundredDarts() {
               style={[
                 styles.playerRow,
                 isActive && styles.activePlayerRow,
-                p.isFinished && styles.finishedPlayerRow,
+                (p.isBust || p.isFinished) && styles.finishedPlayerRow,
               ]}
             >
               <View style={styles.scoreCol}>
-                {p.isFinished ? (
+                {p.rank && !p.isBust ? (
                   <Text style={styles.rankText}>{p.rank}</Text>
                 ) : (
                   <Text
-                    style={[styles.playerScore, isActive && styles.activeText]}
+                    style={[
+                      styles.playerScore,
+                      isActive && styles.activeText,
+                      p.isBust && { color: theme.colors.danger },
+                    ]}
                   >
                     {p.score}
                   </Text>
@@ -355,52 +363,83 @@ export default function OneHundredDarts() {
                 <Text style={styles.playerName}>{p.name}</Text>
               </View>
 
-              {!p.isFinished && (
+              {!p.isBust && !p.isFinished && (
                 <>
                   <View style={styles.throwsCol}>
                     <View style={styles.throwsRow}>
-                      {[0, 1, 2].map((idx) => {
-                        const len = p.turnThrows.length;
-                        const throwIdx = len - 1 - ((len - 1) % 3) + idx;
-                        const t = p.turnThrows[throwIdx];
-
-                        return (
-                          <View
-                            key={idx}
+                      {[0, 1, 2].map((idx) => (
+                        <View
+                          key={idx}
+                          style={[
+                            styles.throwBox,
+                            isActive &&
+                              state.throwsThisTurn === idx &&
+                              styles.throwBoxActive,
+                          ]}
+                        >
+                          <Text
                             style={[
-                              styles.throwBox,
-                              isActive &&
-                                state.throwsThisTurn === idx &&
-                                styles.throwBoxActive,
+                              styles.throwBoxText,
+                              p.turnThrows[idx] === true && {
+                                color: theme.colors.success,
+                              },
+                              p.turnThrows[idx] === false && {
+                                color: theme.colors.danger,
+                              },
                             ]}
                           >
-                            <Text
-                              style={styles.throwBoxText}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit
-                            >
-                              {t ? formatThrow(t) : ""}
-                            </Text>
-                          </View>
-                        );
-                      })}
+                            {p.turnThrows[idx] === true
+                              ? "✔"
+                              : p.turnThrows[idx] === false
+                                ? "✘"
+                                : ""}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
-                    <Text style={styles.turnLabel}>
-                      THROWN: {p.dartsCount} / {MAX_DARTS}
+                    <Text style={styles.targetLabel}>
+                      TARGET: D{target === 25 ? bullTerm : target}
                     </Text>
                   </View>
 
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
-                      <Text style={styles.statLabel}>AVG</Text>
-                      <Text style={styles.statBold}>
-                        {p.dartsCount > 0
-                          ? ((p.score / p.dartsCount) * 3).toFixed(1)
-                          : "0.0"}
-                      </Text>
+                      <Ionicons
+                        name="locate-outline"
+                        size={14}
+                        color={theme.colors.textMuted}
+                      />
+                      <Text style={styles.statBold}>{p.darts}</Text>
+                    </View>
+                    <View style={styles.statusBadge}>
+                      <Text style={styles.statusText}>ACTIVE</Text>
                     </View>
                   </View>
                 </>
+              )}
+
+              {(p.isBust || p.isFinished) && (
+                <View style={styles.statusColEnd}>
+                  <Ionicons
+                    name={p.isBust ? "close-circle" : "checkmark-circle"}
+                    size={24}
+                    color={
+                      p.isBust ? theme.colors.danger : theme.colors.success
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.statusTextEnd,
+                      {
+                        color: p.isBust
+                          ? theme.colors.danger
+                          : theme.colors.success,
+                      },
+                    ]}
+                  >
+                    {p.isBust ? "BUST" : "CLEARED"}
+                  </Text>
+                </View>
               )}
             </View>
           );
@@ -409,80 +448,30 @@ export default function OneHundredDarts() {
 
       {!allDone && (
         <View style={styles.keyboard}>
-          {[
-            [1, 2, 3, 4, 5, 6, 7],
-            [8, 9, 10, 11, 12, 13, 14],
-            [15, 16, 17, 18, 19, 20, 25],
-          ].map((row, i) => (
-            <View key={i} style={styles.keyRow7}>
-              {row.map((k) => {
-                const isBullDisabled = k === 25 && multiplier === 3;
-                return (
-                  <Pressable
-                    key={k}
-                    onPress={() => {
-                      if (!isBullDisabled) handleThrow(k);
-                    }}
-                    style={[styles.key, isBullDisabled && styles.disabledKey]}
-                  >
-                    <Text
-                      style={[
-                        styles.keyText,
-                        isBullDisabled && styles.disabledKeyText,
-                      ]}
-                    >
-                      {k === 25 ? bullTerm : k}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ))}
-
-          <View style={styles.keyRow4}>
-            <Pressable
-              onPress={handleMiss}
-              style={[styles.keyAction, multiplier !== 1 && styles.disabledKey]}
-            >
-              <Text
-                style={[
-                  styles.keyTextAction,
-                  multiplier !== 1 && styles.disabledKeyText,
-                ]}
-              >
-                {missTerm}
+          <View style={styles.keyboardHeader}>
+            <Text style={styles.instructionText}>
+              {currentPlayer.name}, hit:{" "}
+              <Text style={{ color: theme.colors.primary, fontWeight: "900" }}>
+                D
+                {TARGETS[currentPlayer.currentTargetIdx] === 25
+                  ? bullTerm
+                  : TARGETS[currentPlayer.currentTargetIdx]}
               </Text>
+            </Text>
+          </View>
+          <View style={styles.keyRow}>
+            <Pressable
+              onPress={() => handleThrow(false)}
+              style={styles.keyAction}
+            >
+              <Text style={styles.keyTextAction}>{missTerm}</Text>
             </Pressable>
             <Pressable
-              onPress={() => handleMultiplierToggle(2)}
-              style={[
-                styles.keyAction,
-                multiplier === 2 && styles.activeModifier,
-              ]}
+              onPress={() => handleThrow(true)}
+              style={[styles.keyAction, styles.keyHit]}
             >
-              <Text
-                style={[
-                  styles.keyTextAction,
-                  multiplier === 2 && styles.activeModifierText,
-                ]}
-              >
-                Double
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => handleMultiplierToggle(3)}
-              style={[
-                styles.keyAction,
-                multiplier === 3 && styles.activeModifier,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.keyTextAction,
-                  multiplier === 3 && styles.activeModifierText,
-                ]}
-              >
-                {tripleTerm}
+              <Text style={[styles.keyTextAction, { color: "#fff" }]}>
+                HIT DOUBLE
               </Text>
             </Pressable>
             <Pressable
@@ -502,19 +491,31 @@ export default function OneHundredDarts() {
       <Modal visible={allDone} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.trophyWrapper}>
-              <Text style={{ fontSize: 40 }}>🏆</Text>
+            <View
+              style={[
+                styles.trophyWrapper,
+                isGameOver && { backgroundColor: theme.colors.danger },
+              ]}
+            >
+              <Text style={{ fontSize: 40 }}>{isGameOver ? "💀" : "🏆"}</Text>
             </View>
             <Text style={styles.modalTitle}>
-              {t(language, "trainingFinished") || "Training Finished!"}
+              {isGameOver
+                ? t(language, "gameOver") || "Game Over!"
+                : t(language, "trainingFinished") || "Training Finished!"}
             </Text>
             <Text style={styles.modalSub}>
-              {t(language, "trainingSaved") ||
-                "Your results have been saved to history."}
+              {isGameOver
+                ? t(language, "allBust") || "All players are bust. Try again!"
+                : t(language, "trainingSaved") ||
+                  "Your results have been saved to history."}
             </Text>
             <View style={styles.modalActionsCol}>
               <Pressable
-                style={styles.modalBtnCont}
+                style={[
+                  styles.modalBtnCont,
+                  isGameOver && { backgroundColor: theme.colors.danger },
+                ]}
                 onPress={() => router.push("/play")}
               >
                 <Text style={styles.modalBtnText}>
@@ -635,15 +636,11 @@ const getStyles = (theme: any) =>
       borderRadius: 6,
     },
     throwBoxActive: { borderColor: theme.colors.primary, borderWidth: 2 },
-    throwBoxText: {
-      fontSize: 13,
-      fontWeight: "bold",
-      color: theme.colors.textMain,
-    },
-    turnLabel: {
+    throwBoxText: { fontSize: 18, fontWeight: "900" },
+    targetLabel: {
       fontSize: 10,
       fontWeight: "800",
-      color: theme.colors.primary,
+      color: theme.colors.textMuted,
     },
 
     statsCol: { flex: 1.3, alignItems: "flex-end", justifyContent: "center" },
@@ -654,30 +651,39 @@ const getStyles = (theme: any) =>
       marginBottom: 4,
     },
     statBold: { fontWeight: "700", color: theme.colors.textMain, fontSize: 13 },
-    statLabel: {
-      fontSize: 11,
-      color: theme.colors.textMuted,
-      fontWeight: "700",
+    statusBadge: {
+      backgroundColor: theme.colors.background,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    statusText: {
+      fontSize: 9,
+      fontWeight: "800",
+      color: theme.colors.textLight,
     },
 
-    keyboard: {
-      padding: 8,
-      gap: 6,
-      backgroundColor: theme.colors.cardBorder,
-      paddingBottom: 20,
-    },
-    keyRow7: { flexDirection: "row", gap: 6 },
-    keyRow4: { flexDirection: "row", gap: 6, marginTop: 4 },
-    key: {
-      flex: 1,
-      height: 52,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
+    statusColEnd: {
+      flex: 2.8,
+      flexDirection: "row",
       alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
+      justifyContent: "flex-end",
+      gap: 8,
     },
-    keyText: { fontSize: 18, fontWeight: "700", color: theme.colors.textMain },
+    statusTextEnd: { fontSize: 16, fontWeight: "900", letterSpacing: 1 },
+
+    keyboard: {
+      padding: 16,
+      backgroundColor: theme.colors.cardBorder,
+      paddingBottom: 30,
+    },
+    keyboardHeader: { marginBottom: 12, alignItems: "center" },
+    instructionText: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.colors.textMain,
+    },
+    keyRow: { flexDirection: "row", gap: 6 },
     keyAction: {
       flex: 1,
       height: 58,
@@ -687,20 +693,13 @@ const getStyles = (theme: any) =>
       borderRadius: 8,
       elevation: 2,
     },
+    keyHit: { backgroundColor: theme.colors.primary },
+    undoKey: { backgroundColor: theme.colors.dangerLight },
     keyTextAction: {
       fontSize: 15,
       fontWeight: "800",
       color: theme.colors.textMain,
     },
-    activeModifier: { backgroundColor: theme.colors.primaryDark },
-    activeModifierText: { color: "#fff" },
-    disabledKey: {
-      backgroundColor: theme.colors.cardBorder,
-      opacity: 0.5,
-      elevation: 0,
-    },
-    disabledKeyText: { color: theme.colors.textLight },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
 
     modalOverlay: {
       flex: 1,

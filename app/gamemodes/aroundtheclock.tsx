@@ -12,13 +12,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../components/CustomAlert";
-import { useGame } from "../context/GameContext";
-import { useHaptics } from "../context/HapticsContext";
-import { useLanguage } from "../context/LanguageContext";
-import { useTerminology } from "../context/TerminologyContext";
-import { useTheme } from "../context/ThemeContext";
-import { t } from "../lib/i18n";
+import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import { useGame } from "../../context/GameContext";
+import { useHaptics } from "../../context/HapticsContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { useTerminology } from "../../context/TerminologyContext";
+import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
 
 const TARGETS = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
@@ -257,7 +257,9 @@ export default function AroundTheClock() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>AROUND THE CLOCK</Text>
+          <Text style={styles.headerTitle}>
+            {t(language, "aroundTheClock")?.toUpperCase() || "AROUND THE CLOCK"}
+          </Text>
           <Text style={styles.headerSub}>
             1 ➔ 20 ➔ {bullTerm.toUpperCase()}
           </Text>
@@ -335,7 +337,9 @@ export default function AroundTheClock() {
                         );
                       })}
                     </View>
-                    <Text style={styles.targetLabel}>TARGET</Text>
+                    <Text style={styles.targetLabel}>
+                      {t(language, "target")?.toUpperCase() || "TARGET"}
+                    </Text>
                   </View>
 
                   <View style={styles.statsCol}>
@@ -348,7 +352,9 @@ export default function AroundTheClock() {
                       <Text style={styles.statBold}>{p.darts}</Text>
                     </View>
                     <View style={styles.statRow}>
-                      <Text style={styles.statLabel}>ACC:</Text>
+                      <Text style={styles.statLabel}>
+                        {t(language, "accuracyShort") || "ACC"}:
+                      </Text>
                       <Text style={styles.statBold}>
                         {p.darts > 0
                           ? ((p.hits / p.darts) * 100).toFixed(0)
@@ -368,7 +374,7 @@ export default function AroundTheClock() {
         <View style={styles.keyboard}>
           <View style={styles.keyboardHeader}>
             <Text style={styles.instructionText}>
-              {currentPlayer.name}, hit:{" "}
+              {currentPlayer.name}, {t(language, "hitLower") || "hit"}:{" "}
               <Text style={{ color: theme.colors.primary, fontWeight: "900" }}>
                 {TARGETS[currentPlayer.currentTargetIdx] === 25
                   ? bullTerm
@@ -388,7 +394,9 @@ export default function AroundTheClock() {
               onPress={() => handleThrow(true)}
               style={[styles.keyAction, styles.keyHit]}
             >
-              <Text style={[styles.keyTextAction, { color: "#fff" }]}>HIT</Text>
+              <Text style={[styles.keyTextAction, { color: "#fff" }]}>
+                {t(language, "hit")?.toUpperCase() || "HIT"}
+              </Text>
             </Pressable>
 
             <Pressable

@@ -1013,7 +1013,10 @@ export default function Statistics() {
     const playerMap: Record<string, any> = {};
     filteredHistory.forEach((match) => {
       const winner = [...match.players].sort(
-        (a, b) => b.sets - a.sets || b.legs - a.legs || a.score - b.score,
+        (a, b) =>
+          (b.sets || 0) - (a.sets || 0) ||
+          (b.legs || 0) - (a.legs || 0) ||
+          (a.score || 0) - (b.score || 0),
       )[0];
       match.players.forEach((p: any) => {
         if (!appliedNames.includes(p.name)) return;

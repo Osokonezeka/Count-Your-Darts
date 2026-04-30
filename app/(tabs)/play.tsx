@@ -111,7 +111,9 @@ export default function Play() {
     setAlertConfig({
       title,
       message,
-      buttons: buttons || [{ text: "OK", style: "default" }],
+      buttons: buttons || [
+        { text: t(language, "ok") || "OK", style: "default" },
+      ],
     });
     setAlertVisible(true);
   };
@@ -552,15 +554,15 @@ export default function Play() {
               trainingMode,
             });
 
-            if (gameMode === "X01") router.push("/dart");
-            else if (gameMode === "Cricket") router.push("/cricket");
+            if (gameMode === "X01") router.push("/gamemodes/dart");
+            else if (gameMode === "Cricket") router.push("/gamemodes/cricket");
             else if (gameMode === "Training") {
               if (trainingMode === "around_the_clock")
-                router.push("/aroundtheclock" as any);
+                router.push("/gamemodes/aroundtheclock" as any);
               else if (trainingMode === "100_darts")
-                router.push("/hundreddarts" as any);
+                router.push("/gamemodes/hundreddarts" as any);
               else if (trainingMode === "bobs_27")
-                router.push("/bobstwentyseven" as any);
+                router.push("/gamemodes/bobstwentyseven" as any);
             }
           }}
           style={[

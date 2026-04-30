@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
@@ -10,7 +11,9 @@ export default function TabsLayout() {
   const { language } = useLanguage();
   const { theme, themeMode } = useTheme();
   const systemColorScheme = useColorScheme();
-
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 65 + insets.bottom;
+  const tabBarPaddingBottom = insets.bottom > 0 ? insets.bottom : 10;
   const resolvedTheme =
     themeMode === "auto" ? systemColorScheme || "light" : themeMode;
 
@@ -30,9 +33,7 @@ export default function TabsLayout() {
             borderBottomColor: theme.colors.cardBorder,
           },
           headerTintColor: theme.colors.textMain,
-          headerTitleStyle: {
-            fontWeight: "800",
-          },
+          headerTitleStyle: { fontWeight: "800" },
           tabBarStyle: {
             backgroundColor: theme.colors.card,
             borderTopColor: theme.colors.cardBorder,
@@ -41,7 +42,16 @@ export default function TabsLayout() {
             shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.05,
             shadowRadius: 4,
+
+            height: tabBarHeight,
+            paddingBottom: tabBarPaddingBottom,
+            paddingTop: 8,
           },
+          tabBarItemStyle: {
+            justifyContent: "center",
+            paddingVertical: 4,
+          },
+
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.textMuted,
           tabBarLabelStyle: {
@@ -86,6 +96,15 @@ export default function TabsLayout() {
             title: t(language, "settings") || "Ustawienia",
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="settings" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="tournament"
+          options={{
+            title: t(language, "tournament") || "Turniej",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="trophy" size={size} color={color} />
             ),
           }}
         />

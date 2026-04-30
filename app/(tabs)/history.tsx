@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useNavigation } from "expo-router";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
@@ -28,6 +28,8 @@ export type MatchHistory = {
   mode: string;
   settings?: any;
   players: any[];
+  isUnfinished?: boolean;
+  gameState?: any;
 };
 
 const MODE_COLORS: Record<string, { bg: string; text: string; label: string }> =
@@ -524,6 +526,7 @@ const MatchStatCard = React.memo(
 export default function History() {
   const { tripleTerm, missTerm, bullTerm } = useTerminology();
   const navigation = useNavigation();
+  const router = useRouter();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const styles = getStyles(theme);
@@ -708,7 +711,10 @@ export default function History() {
 
     const playerMap: Record<string, any> = {};
     const winner = [...selectedMatch.players].sort(
-      (a, b) => b.sets - a.sets || b.legs - a.legs || a.score - b.score,
+      (a, b) =>
+        (b.sets || 0) - (a.sets || 0) ||
+        (b.legs || 0) - (a.legs || 0) ||
+        (a.score || 0) - (b.score || 0),
     )[0];
 
     selectedMatch.players.forEach((p: any) => {
@@ -783,10 +789,20 @@ export default function History() {
       );
     }
 
+    const isUnfinished = item.isUnfinished;
+
     const sortedPlayers = [...item.players].sort((a, b) => {
       if (isCricket)
-        return b.sets - a.sets || b.legs - a.legs || b.score - a.score;
-      return b.sets - a.sets || b.legs - a.legs || a.score - b.score;
+        return (
+          (b.sets || 0) - (a.sets || 0) ||
+          (b.legs || 0) - (a.legs || 0) ||
+          (b.score || 0) - (a.score || 0)
+        );
+      return (
+        (b.sets || 0) - (a.sets || 0) ||
+        (b.legs || 0) - (a.legs || 0) ||
+        (a.score || 0) - (b.score || 0)
+      );
     });
 
     let badgeBg = isCricket
@@ -847,6 +863,23 @@ export default function History() {
             )}
           </View>
           <View style={styles.cardHeaderActions}>
+            {isUnfinished && (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push({
+                    pathname: "/gamemodes/dart",
+                    params: { resumeData: JSON.stringify(item) },
+                  });
+                }}
+                style={styles.resumeBtn}
+              >
+                <Ionicons name="play" size={14} color="#fff" />
+                <Text style={styles.resumeBtnText}>
+                  {t(language, "resume") || "Resume"}
+                </Text>
+              </Pressable>
+            )}
             <View style={[styles.modeBadge, { backgroundColor: badgeBg }]}>
               <Text style={[styles.modeBadgeText, { color: badgeText }]}>
                 {badgeLabel}
@@ -876,7 +909,7 @@ export default function History() {
 
         <View style={styles.playersList}>
           {sortedPlayers.map((p, index) => {
-            const isWinner = index === 0;
+            const isWinner = index === 0 && !isUnfinished;
             return (
               <View key={p.name} style={styles.playerRow}>
                 <View style={styles.playerInfo}>
@@ -896,6 +929,14 @@ export default function History() {
                       name="trophy"
                       size={16}
                       color={theme.colors.warning}
+                      style={{ marginLeft: 6 }}
+                    />
+                  )}
+                  {isUnfinished && index === 0 && (
+                    <Ionicons
+                      name="time"
+                      size={16}
+                      color={theme.colors.textMuted}
                       style={{ marginLeft: 6 }}
                     />
                   )}
@@ -1176,6 +1217,23 @@ const getStyles = (theme: any) =>
     modeBadgeText: {
       fontSize: 11,
       fontWeight: "900",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    resumeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.warning || "#f0ad4e",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      marginRight: 6,
+    },
+    resumeBtnText: {
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: "900",
+      marginLeft: 4,
       textTransform: "uppercase",
       letterSpacing: 0.5,
     },

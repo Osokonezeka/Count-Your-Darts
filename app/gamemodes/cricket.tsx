@@ -18,14 +18,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../components/CustomAlert";
-import { useGame } from "../context/GameContext";
-import { useHaptics } from "../context/HapticsContext";
-import { useLanguage } from "../context/LanguageContext";
-import { useSpeech } from "../context/SpeechContext";
-import { useTerminology } from "../context/TerminologyContext";
-import { useTheme } from "../context/ThemeContext";
-import { t } from "../lib/i18n";
+import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import { useGame } from "../../context/GameContext";
+import { useHaptics } from "../../context/HapticsContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { useSpeech } from "../../context/SpeechContext";
+import { useTerminology } from "../../context/TerminologyContext";
+import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
 
 const TARGETS = [20, 19, 18, 17, 16, 15, 25];
 const COLUMN_WIDTH = 100;

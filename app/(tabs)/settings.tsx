@@ -138,7 +138,7 @@ export default function Settings() {
                   tripleTerm === "Triple" && styles.segmentTextActive,
                 ]}
               >
-                Triple
+                {t(language, "triple") || "Triple"}
               </Text>
             </Pressable>
             <Pressable
@@ -154,12 +154,14 @@ export default function Settings() {
                   tripleTerm === "Treble" && styles.segmentTextActive,
                 ]}
               >
-                Treble
+                {t(language, "treble") || "Treble"}
               </Text>
             </Pressable>
           </View>
 
-          <Text style={[styles.subLabel, { marginTop: 16 }]}>Miss</Text>
+          <Text style={[styles.subLabel, { marginTop: 16 }]}>
+            {t(language, "miss") || "Miss"}
+          </Text>
           <View style={styles.segmentedControl}>
             <Pressable
               onPress={() => setMissTerm("0")}
@@ -190,12 +192,14 @@ export default function Settings() {
                   missTerm === "Miss" && styles.segmentTextActive,
                 ]}
               >
-                Miss
+                {t(language, "miss") || "Miss"}
               </Text>
             </Pressable>
           </View>
 
-          <Text style={[styles.subLabel, { marginTop: 16 }]}>Bullseye</Text>
+          <Text style={[styles.subLabel, { marginTop: 16 }]}>
+            {t(language, "bullseye") || "Bullseye"}
+          </Text>
           <View style={styles.segmentedControl}>
             <Pressable
               onPress={() => setBullTerm("25")}
@@ -226,7 +230,7 @@ export default function Settings() {
                   bullTerm === "Bull" && styles.segmentTextActive,
                 ]}
               >
-                Bull
+                {t(language, "bull") || "Bull"}
               </Text>
             </Pressable>
           </View>

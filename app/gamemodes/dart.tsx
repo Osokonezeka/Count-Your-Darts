@@ -1,7 +1,8 @@
-import { useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -18,15 +19,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import CustomAlert, { AlertButton } from "../components/CustomAlert";
-import { useGame } from "../context/GameContext";
-import { useHaptics } from "../context/HapticsContext";
-import { useLanguage } from "../context/LanguageContext";
-import { useSpeech } from "../context/SpeechContext";
-import { useTerminology } from "../context/TerminologyContext";
-import { useTheme } from "../context/ThemeContext";
-import { getCheckoutInfo } from "../lib/checkouts";
-import { t } from "../lib/i18n";
+import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import { useGame } from "../../context/GameContext";
+import { useHaptics } from "../../context/HapticsContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { useSpeech } from "../../context/SpeechContext";
+import { useTerminology } from "../../context/TerminologyContext";
+import { useTheme } from "../../context/ThemeContext";
+import { getCheckoutInfo } from "../../lib/checkouts";
+import { t } from "../../lib/i18n";
 
 type Throw = { value: number; multiplier: number };
 
@@ -368,6 +369,16 @@ export default function Game() {
   const router = useRouter();
   const navigation = useNavigation();
 
+  const { resumeData } = useLocalSearchParams();
+  const parsedResume = useMemo(
+    () => (resumeData ? JSON.parse(resumeData as string) : null),
+    [resumeData],
+  );
+
+  const [matchId] = useState(() =>
+    parsedResume ? parsedResume.id : Date.now().toString(),
+  );
+
   const isExiting = useRef(false);
   const styles = getStyles(theme);
 
@@ -378,6 +389,25 @@ export default function Game() {
     buttons: [] as AlertButton[],
   });
 
+  const [state, dispatch] = useReducer(
+    gameReducer,
+    parsedResume
+      ? parsedResume.gameState
+      : initialState(players, {
+          inRule: settings.inRule || "straight",
+          outRule: settings.outRule || "double",
+          startPoints: settings.startPoints || 501,
+          legs: settings.legs || 1,
+          sets: settings.sets || 1,
+        }),
+  );
+
+  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
+  const [countdown, setCountdown] = useState(3);
+  const [matchTime, setMatchTime] = useState(
+    () => parsedResume?.gameState?.savedMatchTime || 0,
+  );
+
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
       if (isExiting.current) {
@@ -386,25 +416,44 @@ export default function Game() {
 
       e.preventDefault();
 
+      if (state.finishedPlayersCount > 0 || state.matchWinner) {
+        saveMatchToHistory(false).then(() => {
+          isExiting.current = true;
+          navigation.dispatch(e.data.action);
+        });
+        return;
+      }
+
+      const hasStarted = state.playerStates.some(
+        (p) => p.score !== state.settings.startPoints || p.darts > 0,
+      );
+
+      if (!hasStarted) {
+        isExiting.current = true;
+        navigation.dispatch(e.data.action);
+        return;
+      }
+
       setAlertConfig({
-        title:
-          t(language, "leaveGame") ||
-          "Are you sure you want to leave the game?",
+        title: t(language, "exitMatchTitle") || "Exit match?",
         message:
-          t(language, "leaveGameNoHistory") ||
-          "Match wouldn't be saved in history",
+          t(language, "exitMatchMsg") ||
+          "Do you want to exit? The score will be saved and you can continue later.",
         buttons: [
           {
             text: t(language, "cancel") || "Cancel",
             style: "cancel",
-            onPress: () => {},
+            onPress: () => setAlertVisible(false),
           },
           {
-            text: t(language, "leave") || "Leave",
-            style: "destructive",
+            text: t(language, "exitAndSave") || "Exit and save",
+            style: "default",
             onPress: () => {
-              isExiting.current = true;
-              navigation.dispatch(e.data.action);
+              setAlertVisible(false);
+              saveMatchToHistory(false).then(() => {
+                isExiting.current = true;
+                navigation.dispatch(e.data.action);
+              });
             },
           },
         ],
@@ -413,22 +462,11 @@ export default function Game() {
     });
 
     return unsubscribe;
-  }, [navigation, language]);
+  }, [navigation, language, state, matchTime]);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
-
-  const [state, dispatch] = useReducer(
-    gameReducer,
-    initialState(players, {
-      inRule: settings.inRule || "straight",
-      outRule: settings.outRule || "double",
-      startPoints: settings.startPoints || 501,
-      legs: settings.legs || 1,
-      sets: settings.sets || 1,
-    }),
-  );
 
   useEffect(() => {
     if (state.speechEvent) {
@@ -440,10 +478,6 @@ export default function Game() {
     }
   }, [state.speechEvent, language]);
 
-  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
-  const [countdown, setCountdown] = useState(3);
-  const [matchTime, setMatchTime] = useState(0);
-
   const currentPlayer = state.playerStates[state.currentIndex];
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -451,7 +485,7 @@ export default function Game() {
     let interval: ReturnType<typeof setInterval>;
     if (!state.matchWinner) {
       interval = setInterval(() => {
-        setMatchTime((prev) => prev + 1);
+        setMatchTime((prev: number) => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -470,7 +504,7 @@ export default function Game() {
     if (state.legWinner || state.setWinner) {
       setCountdown(3);
       const interval = setInterval(() => {
-        setCountdown((prev) => {
+        setCountdown((prev: number) => {
           if (prev <= 1) {
             clearInterval(interval);
             dispatch({ type: "START_NEXT_LEG" });
@@ -490,9 +524,9 @@ export default function Game() {
     }
   }, [state.matchWinner, state.setWinner, state.legWinner]);
 
-  const saveMatchToHistory = async () => {
+  const saveMatchToHistory = async (navigateAway: boolean = true) => {
     try {
-      isExiting.current = true;
+      if (navigateAway) isExiting.current = true;
 
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
@@ -536,13 +570,20 @@ export default function Game() {
         return b.sets - a.sets || b.legs - a.legs || a.score - b.score;
       });
 
+      const isUnfinished =
+        state.matchWinner === null && state.finishedPlayersCount === 0;
+
       const historyItem = {
-        id: Date.now().toString(),
+        id: matchId,
         date: formattedDate,
         duration: formatTime(matchTime),
         mode: "X01",
         settings: state.settings,
         players: mappedPlayers,
+        isUnfinished,
+        gameState: isUnfinished
+          ? { ...state, history: [], savedMatchTime: matchTime }
+          : undefined,
       };
 
       const existingHistoryStr = await AsyncStorage.getItem(
@@ -552,15 +593,24 @@ export default function Game() {
         ? JSON.parse(existingHistoryStr)
         : [];
 
-      const newHistory = [historyItem, ...existingHistory];
+      const existingIndex = existingHistory.findIndex(
+        (h: any) => h.id === matchId,
+      );
+      if (existingIndex > -1) {
+        existingHistory[existingIndex] = historyItem;
+      } else {
+        existingHistory.unshift(historyItem);
+      }
+
       await AsyncStorage.setItem(
         "@dart_match_history",
-        JSON.stringify(newHistory),
+        JSON.stringify(existingHistory),
       );
-      router.push("/play");
+
+      if (navigateAway) router.push("/play");
     } catch (error) {
       console.error("Error saving history", error);
-      router.push("/play");
+      if (navigateAway) router.push("/play");
     }
   };
 
@@ -585,7 +635,7 @@ export default function Game() {
 
   const handleMultiplierToggle = (newMult: 2 | 3) => {
     triggerHaptic("heavy");
-    setMultiplier((prev) => (prev === newMult ? 1 : newMult));
+    setMultiplier((prev: 1 | 2 | 3) => (prev === newMult ? 1 : newMult));
   };
 
   const handleUndo = () => {
@@ -945,7 +995,10 @@ export default function Game() {
                   >
                     <Pressable
                       style={[styles.modalBtnCont, { flex: 1 }]}
-                      onPress={() => dispatch({ type: "CONTINUE_AFTER_WIN" })}
+                      onPress={() => {
+                        saveMatchToHistory(false);
+                        dispatch({ type: "CONTINUE_AFTER_WIN" });
+                      }}
                     >
                       <Text style={styles.modalBtnText}>
                         {t(language, "continue") || "Continue"}
@@ -953,7 +1006,7 @@ export default function Game() {
                     </Pressable>
                     <Pressable
                       style={[styles.modalBtnFin, { flex: 1 }]}
-                      onPress={saveMatchToHistory}
+                      onPress={() => saveMatchToHistory(true)}
                     >
                       <Text style={styles.modalBtnTextFin}>
                         {t(language, "endMatch") || "End"}
@@ -963,7 +1016,7 @@ export default function Game() {
                 ) : (
                   <Pressable
                     style={styles.modalBtnCont}
-                    onPress={saveMatchToHistory}
+                    onPress={() => saveMatchToHistory(true)}
                   >
                     <Text style={styles.modalBtnText}>
                       {t(language, "endMatch") || "End"}
