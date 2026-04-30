@@ -130,6 +130,13 @@
   "shareGeneratedOn": "Generated on",
   "shareStatsTitle": "Share Stats",
   "shareStatsDesc": "Select a player to generate a sharing card",
+  "shareTournaments": "TOURNAMENTS (1st / 2nd)",
+  "shareMatchesPlayed": "MATCHES PLAYED",
+  "shareCheckoutsHit": "CHECKOUTS / HIT %",
+  "tournamentsHeader": "Tournaments (Played / 1st / 2nd)",
+  "playedShort": "Played",
+  "deselectAll": "Deselect all",
+  "selectAll": "Select all",
   "noDataFilters": "No data available for applied filters.",
   "tournament": "Tournament",
 

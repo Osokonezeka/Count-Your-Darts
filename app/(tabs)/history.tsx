@@ -834,7 +834,10 @@ export default function History() {
     else settingsStr = item.mode.toUpperCase();
 
     return (
-      <Pressable onPress={() => setSelectedMatch(item)} style={styles.card}>
+      <Pressable
+        onPress={() => setSelectedMatch(item)}
+        style={[styles.card, isUnfinished && styles.unfinishedCard]}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.dateRow}>
             <Ionicons
@@ -863,23 +866,6 @@ export default function History() {
             )}
           </View>
           <View style={styles.cardHeaderActions}>
-            {isUnfinished && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  router.push({
-                    pathname: "/gamemodes/dart",
-                    params: { resumeData: JSON.stringify(item) },
-                  });
-                }}
-                style={styles.resumeBtn}
-              >
-                <Ionicons name="play" size={14} color="#fff" />
-                <Text style={styles.resumeBtnText}>
-                  {t(language, "resume") || "Resume"}
-                </Text>
-              </Pressable>
-            )}
             <View style={[styles.modeBadge, { backgroundColor: badgeBg }]}>
               <Text style={[styles.modeBadgeText, { color: badgeText }]}>
                 {badgeLabel}
@@ -1108,19 +1094,45 @@ export default function History() {
           style={{ flex: 1, backgroundColor: theme.colors.background }}
         >
           <View style={styles.modalHeader}>
-            <View>
+            <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={styles.modalHeaderTitle}>Statystyki Meczu</Text>
               <Text style={styles.modalHeaderSubtitle}>
                 {selectedMatch?.date}{" "}
                 {selectedMatch?.duration && `• ⏱ ${selectedMatch.duration}`}
               </Text>
             </View>
-            <Pressable
-              onPress={() => setSelectedMatch(null)}
-              style={styles.modalCloseBtn}
+
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
             >
-              <Ionicons name="close" size={24} color={theme.colors.textMain} />
-            </Pressable>
+              {selectedMatch?.isUnfinished && (
+                <Pressable
+                  onPress={() => {
+                    setSelectedMatch(null);
+                    router.push({
+                      pathname: "/gamemodes/dart",
+                      params: { resumeData: JSON.stringify(selectedMatch) },
+                    });
+                  }}
+                  style={styles.resumeBtnModal}
+                >
+                  <Ionicons name="play" size={16} color="#fff" />
+                  <Text style={styles.resumeBtnText}>
+                    {t(language, "resume") || "Resume"}
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => setSelectedMatch(null)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons
+                  name="close"
+                  size={24}
+                  color={theme.colors.textMain}
+                />
+              </Pressable>
+            </View>
           </View>
           <ScrollView
             contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
@@ -1194,6 +1206,10 @@ const getStyles = (theme: any) =>
       borderColor: theme.colors.card,
       elevation: 2,
     },
+    unfinishedCard: {
+      borderColor: theme.colors.warning,
+      borderWidth: 2,
+    },
     cardHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -1219,6 +1235,14 @@ const getStyles = (theme: any) =>
       fontWeight: "900",
       textTransform: "uppercase",
       letterSpacing: 0.5,
+    },
+    resumeBtnModal: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.warning || "#f0ad4e",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
     },
     resumeBtn: {
       flexDirection: "row",
