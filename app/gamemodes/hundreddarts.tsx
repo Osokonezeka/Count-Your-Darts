@@ -12,29 +12,30 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../components/CustomAlert";
-import { useGame } from "../context/GameContext";
-import { useHaptics } from "../context/HapticsContext";
-import { useLanguage } from "../context/LanguageContext";
-import { useSpeech } from "../context/SpeechContext";
-import { useTerminology } from "../context/TerminologyContext";
-import { useTheme } from "../context/ThemeContext";
-import { t } from "../lib/i18n";
+import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import { useGame } from "../../context/GameContext";
+import { useHaptics } from "../../context/HapticsContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { useSpeech } from "../../context/SpeechContext";
+import { useTerminology } from "../../context/TerminologyContext";
+import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
 
-const TARGETS = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
-];
+const MAX_DARTS = 100;
+
+type Throw = { value: number; multiplier: number };
 
 type PlayerState = {
   name: string;
   score: number;
-  highScore: number;
-  currentTargetIdx: number;
-  darts: number;
-  turnThrows: boolean[];
+  dartsCount: number;
+  turnThrows: Throw[];
   isFinished: boolean;
-  isBust: boolean;
   rank?: number;
+  s60: number;
+  s100: number;
+  s140: number;
+  s180: number;
 };
 
 type GameState = {
@@ -42,8 +43,14 @@ type GameState = {
   currentIndex: number;
   throwsThisTurn: number;
   history: any[];
-  finishedCount: number;
   speechEvent?: { text: string; id: number } | null;
+};
+
+const formatThrow = (t: Throw) => {
+  if (t.value === 0) return "0";
+  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
+  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
+  return `${prefix}${t.value}`;
 };
 
 const formatTime = (seconds: number) => {
@@ -54,68 +61,53 @@ const formatTime = (seconds: number) => {
   return `${m}:${s}`;
 };
 
-function bobsReducer(state: GameState, action: any): GameState {
+function scoringReducer(state: GameState, action: any): GameState {
   switch (action.type) {
-    case "THROW": {
-      const { hit } = action.payload;
+    case "ADD_THROW": {
+      const { value, multiplier } = action.payload;
       const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
 
       const updatedPlayers = [...state.playerStates];
       const player = { ...updatedPlayers[state.currentIndex] };
-      const currentTargetValue = TARGETS[player.currentTargetIdx];
 
-      player.darts += 1;
-      player.turnThrows = [...player.turnThrows, hit];
+      const hitPoints = value * multiplier;
+      player.score += hitPoints;
+      player.dartsCount += 1;
+      player.turnThrows = [...player.turnThrows, { value, multiplier }];
 
-      const isTurnOver = state.throwsThisTurn === 2;
+      const isTurnOver =
+        state.throwsThisTurn === 2 || player.dartsCount === MAX_DARTS;
+
+      let newSpeechEvent = null;
 
       if (isTurnOver) {
-        const hitsCount = player.turnThrows.filter((h) => h).length;
-        let turnPoints = 0;
+        const turnSum = player.turnThrows.reduce(
+          (sum, tr) => sum + tr.value * tr.multiplier,
+          0,
+        );
+        if (turnSum >= 180) player.s180++;
+        else if (turnSum >= 140) player.s140++;
+        else if (turnSum >= 100) player.s100++;
+        else if (turnSum >= 60) player.s60++;
 
-        if (hitsCount > 0) {
-          turnPoints = currentTargetValue * 2 * hitsCount;
-          player.score += turnPoints;
-        } else {
-          player.score -= currentTargetValue * 2;
-        }
-
-        if (player.score > player.highScore) {
-          player.highScore = player.score;
-        }
-
-        let newSpeechText: string | null = null;
-
-        if (player.score <= 0) {
-          player.isBust = true;
-          player.score = 0;
-          newSpeechText = "bust";
-        } else if (hitsCount === 0) {
-          newSpeechText = "-" + (currentTargetValue * 2).toString();
-        } else {
-          newSpeechText = turnPoints.toString();
-        }
-
-        const newSpeechEvent = newSpeechText
-          ? { text: newSpeechText, id: Date.now() }
-          : null;
-
-        if (!player.isBust && player.currentTargetIdx === TARGETS.length - 1) {
+        if (player.dartsCount === MAX_DARTS) {
           player.isFinished = true;
-        } else if (!player.isBust) {
-          player.currentTargetIdx += 1;
         }
 
-        updatedPlayers[state.currentIndex] = player;
+        const newSpeechText = turnSum === 0 ? "noScore" : turnSum.toString();
+        newSpeechEvent = { text: newSpeechText, id: Date.now() };
+      }
 
-        const allDone = updatedPlayers.every((p) => p.isBust || p.isFinished);
+      updatedPlayers[state.currentIndex] = player;
+
+      if (isTurnOver) {
+        const allDone = updatedPlayers.every((p) => p.isFinished);
         if (allDone) {
-          const finishers = updatedPlayers
-            .map((p, idx) => ({ ...p, originalIdx: idx }))
-            .sort((a, b) => b.score - a.score || a.darts - b.darts);
-
-          finishers.forEach((f, rankIdx) => {
-            updatedPlayers[f.originalIdx].rank = rankIdx + 1;
+          const finishers = [...updatedPlayers].sort(
+            (a, b) => b.score - a.score,
+          );
+          updatedPlayers.forEach((p) => {
+            p.rank = finishers.findIndex((f) => f.name === p.name) + 1;
           });
           return {
             ...state,
@@ -126,13 +118,9 @@ function bobsReducer(state: GameState, action: any): GameState {
         }
 
         let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-        while (
-          updatedPlayers[nextIdx].isBust ||
-          updatedPlayers[nextIdx].isFinished
-        ) {
+        while (updatedPlayers[nextIdx].isFinished) {
           nextIdx = (nextIdx + 1) % state.playerStates.length;
         }
-
         updatedPlayers[nextIdx].turnThrows = [];
 
         return {
@@ -145,7 +133,6 @@ function bobsReducer(state: GameState, action: any): GameState {
         };
       }
 
-      updatedPlayers[state.currentIndex] = player;
       return {
         ...state,
         playerStates: updatedPlayers,
@@ -169,35 +156,36 @@ function bobsReducer(state: GameState, action: any): GameState {
   }
 }
 
-export default function BobsTwentySeven() {
+export default function OneHundredDarts() {
   const { players } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
   const { speak } = useSpeech();
-  const { bullTerm, missTerm } = useTerminology();
+  const { bullTerm, missTerm, tripleTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
   const styles = getStyles(theme);
 
-  const [state, dispatch] = useReducer(bobsReducer, {
+  const [state, dispatch] = useReducer(scoringReducer, {
     playerStates: players.map((name) => ({
       name,
-      score: 27,
-      highScore: 27,
-      currentTargetIdx: 0,
-      darts: 0,
+      score: 0,
+      dartsCount: 0,
       turnThrows: [],
       isFinished: false,
-      isBust: false,
+      s180: 0,
+      s140: 0,
+      s100: 0,
+      s60: 0,
     })),
     currentIndex: 0,
     throwsThisTurn: 0,
     history: [],
-    finishedCount: 0,
     speechEvent: null,
   });
 
+  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [matchTime, setMatchTime] = useState(0);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -206,8 +194,17 @@ export default function BobsTwentySeven() {
     buttons: [] as AlertButton[],
   });
 
-  const allDone = state.playerStates.every((p) => p.isBust || p.isFinished);
-  const isGameOver = allDone && state.playerStates.every((p) => p.isBust);
+  useEffect(() => {
+    if (state.speechEvent) {
+      if (state.speechEvent.text === "noScore") {
+        speak(t(language, "noScore") || "No score");
+      } else {
+        speak(state.speechEvent.text);
+      }
+    }
+  }, [state.speechEvent, language]);
+
+  const allDone = state.playerStates.every((p) => p.isFinished);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -223,24 +220,12 @@ export default function BobsTwentySeven() {
 
   useEffect(() => {
     if (allDone) {
-      triggerHaptic(isGameOver ? "heavy" : "success");
-      saveBobsStats();
+      triggerHaptic("success");
+      saveScoringStats();
     }
-  }, [allDone, isGameOver]);
+  }, [allDone]);
 
-  useEffect(() => {
-    if (state.speechEvent) {
-      if (state.speechEvent.text === "bust") {
-        speak(t(language, "bust") || "Bust");
-      } else if (state.speechEvent.text === "noScore") {
-        speak(t(language, "noScore") || "No score");
-      } else {
-        speak(state.speechEvent.text);
-      }
-    }
-  }, [state.speechEvent, language]);
-
-  const saveBobsStats = async () => {
+  const saveScoringStats = async () => {
     try {
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
@@ -249,15 +234,14 @@ export default function BobsTwentySeven() {
         id: Date.now().toString(),
         date: formattedDate,
         duration: formatTime(matchTime),
-        mode: "Bob's 27",
+        mode: "100 Darts",
         players: state.playerStates
           .map((p) => ({
             name: p.name,
             score: p.score,
-            highScore: p.highScore,
-            darts: p.darts,
+            darts: p.dartsCount,
             rank: p.rank,
-            status: p.isBust ? "BUST" : "CLEARED",
+            avg: ((p.score / p.dartsCount) * 3).toFixed(1),
           }))
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
@@ -273,7 +257,7 @@ export default function BobsTwentySeven() {
         JSON.stringify([historyItem, ...existingHistory]),
       );
     } catch (e) {
-      console.error("Save Bob's 27 error", e);
+      console.error("Save 100 Darts error", e);
     }
   };
 
@@ -298,13 +282,27 @@ export default function BobsTwentySeven() {
     return unsubscribe;
   }, [navigation, allDone]);
 
-  const handleThrow = (hit: boolean) => {
+  const handleThrow = (value: number) => {
     if (allDone) return;
-    triggerHaptic(hit ? "tap" : "heavy");
-    dispatch({ type: "THROW", payload: { hit } });
+    if ((value === 25 && multiplier === 3) || (value === 0 && multiplier !== 1))
+      return;
+
+    triggerHaptic("tap");
+    dispatch({ type: "ADD_THROW", payload: { value, multiplier } });
+    setMultiplier(1);
   };
 
-  const currentPlayer = state.playerStates[state.currentIndex];
+  const handleMiss = () => {
+    if (multiplier === 1) {
+      triggerHaptic("heavy");
+      handleThrow(0);
+    }
+  };
+
+  const handleMultiplierToggle = (newMult: 2 | 3) => {
+    triggerHaptic("heavy");
+    setMultiplier((prev) => (prev === newMult ? 1 : newMult));
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -313,8 +311,12 @@ export default function BobsTwentySeven() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>BOB'S 27</Text>
-          <Text style={styles.headerSub}>D1 ➔ D20 ➔ D-BULL</Text>
+          <Text style={styles.headerTitle}>
+            {t(language, "100Darts")?.toUpperCase() || "100 DARTS"}
+          </Text>
+          <Text style={styles.headerSub}>
+            {t(language, "highScore")?.toUpperCase() || "HIGH SCORE"}
+          </Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.timerBadge}>
@@ -333,9 +335,7 @@ export default function BobsTwentySeven() {
         contentContainerStyle={styles.scoreBoardContent}
       >
         {state.playerStates.map((p, i) => {
-          const isActive =
-            i === state.currentIndex && !p.isBust && !p.isFinished;
-          const target = TARGETS[p.currentTargetIdx];
+          const isActive = i === state.currentIndex && !p.isFinished;
 
           return (
             <View
@@ -343,19 +343,15 @@ export default function BobsTwentySeven() {
               style={[
                 styles.playerRow,
                 isActive && styles.activePlayerRow,
-                (p.isBust || p.isFinished) && styles.finishedPlayerRow,
+                p.isFinished && styles.finishedPlayerRow,
               ]}
             >
               <View style={styles.scoreCol}>
-                {p.rank && !p.isBust ? (
+                {p.isFinished ? (
                   <Text style={styles.rankText}>{p.rank}</Text>
                 ) : (
                   <Text
-                    style={[
-                      styles.playerScore,
-                      isActive && styles.activeText,
-                      p.isBust && { color: theme.colors.danger },
-                    ]}
+                    style={[styles.playerScore, isActive && styles.activeText]}
                   >
                     {p.score}
                   </Text>
@@ -363,83 +359,55 @@ export default function BobsTwentySeven() {
                 <Text style={styles.playerName}>{p.name}</Text>
               </View>
 
-              {!p.isBust && !p.isFinished && (
+              {!p.isFinished && (
                 <>
                   <View style={styles.throwsCol}>
                     <View style={styles.throwsRow}>
-                      {[0, 1, 2].map((idx) => (
-                        <View
-                          key={idx}
-                          style={[
-                            styles.throwBox,
-                            isActive &&
-                              state.throwsThisTurn === idx &&
-                              styles.throwBoxActive,
-                          ]}
-                        >
-                          <Text
+                      {[0, 1, 2].map((idx) => {
+                        const len = p.turnThrows.length;
+                        const throwIdx = len - 1 - ((len - 1) % 3) + idx;
+                        const t = p.turnThrows[throwIdx];
+
+                        return (
+                          <View
+                            key={idx}
                             style={[
-                              styles.throwBoxText,
-                              p.turnThrows[idx] === true && {
-                                color: theme.colors.success,
-                              },
-                              p.turnThrows[idx] === false && {
-                                color: theme.colors.danger,
-                              },
+                              styles.throwBox,
+                              isActive &&
+                                state.throwsThisTurn === idx &&
+                                styles.throwBoxActive,
                             ]}
                           >
-                            {p.turnThrows[idx] === true
-                              ? "✔"
-                              : p.turnThrows[idx] === false
-                                ? "✘"
-                                : ""}
-                          </Text>
-                        </View>
-                      ))}
+                            <Text
+                              style={styles.throwBoxText}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                            >
+                              {t ? formatThrow(t) : ""}
+                            </Text>
+                          </View>
+                        );
+                      })}
                     </View>
-                    <Text style={styles.targetLabel}>
-                      TARGET: D{target === 25 ? bullTerm : target}
+                    <Text style={styles.turnLabel}>
+                      {t(language, "thrown")?.toUpperCase() || "THROWN"}:{" "}
+                      {p.dartsCount} / {MAX_DARTS}
                     </Text>
                   </View>
 
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
-                      <Ionicons
-                        name="locate-outline"
-                        size={14}
-                        color={theme.colors.textMuted}
-                      />
-                      <Text style={styles.statBold}>{p.darts}</Text>
-                    </View>
-                    <View style={styles.statusBadge}>
-                      <Text style={styles.statusText}>ACTIVE</Text>
+                      <Text style={styles.statLabel}>
+                        {t(language, "avgShort") || "AVG"}
+                      </Text>
+                      <Text style={styles.statBold}>
+                        {p.dartsCount > 0
+                          ? ((p.score / p.dartsCount) * 3).toFixed(1)
+                          : "0.0"}
+                      </Text>
                     </View>
                   </View>
                 </>
-              )}
-
-              {(p.isBust || p.isFinished) && (
-                <View style={styles.statusColEnd}>
-                  <Ionicons
-                    name={p.isBust ? "close-circle" : "checkmark-circle"}
-                    size={24}
-                    color={
-                      p.isBust ? theme.colors.danger : theme.colors.success
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.statusTextEnd,
-                      {
-                        color: p.isBust
-                          ? theme.colors.danger
-                          : theme.colors.success,
-                      },
-                    ]}
-                  >
-                    {p.isBust ? "BUST" : "CLEARED"}
-                  </Text>
-                </View>
               )}
             </View>
           );
@@ -448,30 +416,80 @@ export default function BobsTwentySeven() {
 
       {!allDone && (
         <View style={styles.keyboard}>
-          <View style={styles.keyboardHeader}>
-            <Text style={styles.instructionText}>
-              {currentPlayer.name}, hit:{" "}
-              <Text style={{ color: theme.colors.primary, fontWeight: "900" }}>
-                D
-                {TARGETS[currentPlayer.currentTargetIdx] === 25
-                  ? bullTerm
-                  : TARGETS[currentPlayer.currentTargetIdx]}
-              </Text>
-            </Text>
-          </View>
-          <View style={styles.keyRow}>
+          {[
+            [1, 2, 3, 4, 5, 6, 7],
+            [8, 9, 10, 11, 12, 13, 14],
+            [15, 16, 17, 18, 19, 20, 25],
+          ].map((row, i) => (
+            <View key={i} style={styles.keyRow7}>
+              {row.map((k) => {
+                const isBullDisabled = k === 25 && multiplier === 3;
+                return (
+                  <Pressable
+                    key={k}
+                    onPress={() => {
+                      if (!isBullDisabled) handleThrow(k);
+                    }}
+                    style={[styles.key, isBullDisabled && styles.disabledKey]}
+                  >
+                    <Text
+                      style={[
+                        styles.keyText,
+                        isBullDisabled && styles.disabledKeyText,
+                      ]}
+                    >
+                      {k === 25 ? bullTerm : k}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+
+          <View style={styles.keyRow4}>
             <Pressable
-              onPress={() => handleThrow(false)}
-              style={styles.keyAction}
+              onPress={handleMiss}
+              style={[styles.keyAction, multiplier !== 1 && styles.disabledKey]}
             >
-              <Text style={styles.keyTextAction}>{missTerm}</Text>
+              <Text
+                style={[
+                  styles.keyTextAction,
+                  multiplier !== 1 && styles.disabledKeyText,
+                ]}
+              >
+                {missTerm}
+              </Text>
             </Pressable>
             <Pressable
-              onPress={() => handleThrow(true)}
-              style={[styles.keyAction, styles.keyHit]}
+              onPress={() => handleMultiplierToggle(2)}
+              style={[
+                styles.keyAction,
+                multiplier === 2 && styles.activeModifier,
+              ]}
             >
-              <Text style={[styles.keyTextAction, { color: "#fff" }]}>
-                HIT DOUBLE
+              <Text
+                style={[
+                  styles.keyTextAction,
+                  multiplier === 2 && styles.activeModifierText,
+                ]}
+              >
+                {t(language, "double") || "Double"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleMultiplierToggle(3)}
+              style={[
+                styles.keyAction,
+                multiplier === 3 && styles.activeModifier,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.keyTextAction,
+                  multiplier === 3 && styles.activeModifierText,
+                ]}
+              >
+                {tripleTerm}
               </Text>
             </Pressable>
             <Pressable
@@ -491,31 +509,19 @@ export default function BobsTwentySeven() {
       <Modal visible={allDone} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View
-              style={[
-                styles.trophyWrapper,
-                isGameOver && { backgroundColor: theme.colors.danger },
-              ]}
-            >
-              <Text style={{ fontSize: 40 }}>{isGameOver ? "💀" : "🏆"}</Text>
+            <View style={styles.trophyWrapper}>
+              <Text style={{ fontSize: 40 }}>🏆</Text>
             </View>
             <Text style={styles.modalTitle}>
-              {isGameOver
-                ? t(language, "gameOver") || "Game Over!"
-                : t(language, "trainingFinished") || "Training Finished!"}
+              {t(language, "trainingFinished") || "Training Finished!"}
             </Text>
             <Text style={styles.modalSub}>
-              {isGameOver
-                ? t(language, "allBust") || "All players are bust. Try again!"
-                : t(language, "trainingSaved") ||
-                  "Your results have been saved to history."}
+              {t(language, "trainingSaved") ||
+                "Your results have been saved to history."}
             </Text>
             <View style={styles.modalActionsCol}>
               <Pressable
-                style={[
-                  styles.modalBtnCont,
-                  isGameOver && { backgroundColor: theme.colors.danger },
-                ]}
+                style={styles.modalBtnCont}
                 onPress={() => router.push("/play")}
               >
                 <Text style={styles.modalBtnText}>
@@ -636,11 +642,15 @@ const getStyles = (theme: any) =>
       borderRadius: 6,
     },
     throwBoxActive: { borderColor: theme.colors.primary, borderWidth: 2 },
-    throwBoxText: { fontSize: 18, fontWeight: "900" },
-    targetLabel: {
+    throwBoxText: {
+      fontSize: 13,
+      fontWeight: "bold",
+      color: theme.colors.textMain,
+    },
+    turnLabel: {
       fontSize: 10,
       fontWeight: "800",
-      color: theme.colors.textMuted,
+      color: theme.colors.primary,
     },
 
     statsCol: { flex: 1.3, alignItems: "flex-end", justifyContent: "center" },
@@ -651,39 +661,30 @@ const getStyles = (theme: any) =>
       marginBottom: 4,
     },
     statBold: { fontWeight: "700", color: theme.colors.textMain, fontSize: 13 },
-    statusBadge: {
-      backgroundColor: theme.colors.background,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
+    statLabel: {
+      fontSize: 11,
+      color: theme.colors.textMuted,
+      fontWeight: "700",
     },
-    statusText: {
-      fontSize: 9,
-      fontWeight: "800",
-      color: theme.colors.textLight,
-    },
-
-    statusColEnd: {
-      flex: 2.8,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      gap: 8,
-    },
-    statusTextEnd: { fontSize: 16, fontWeight: "900", letterSpacing: 1 },
 
     keyboard: {
-      padding: 16,
+      padding: 8,
+      gap: 6,
       backgroundColor: theme.colors.cardBorder,
-      paddingBottom: 30,
+      paddingBottom: 20,
     },
-    keyboardHeader: { marginBottom: 12, alignItems: "center" },
-    instructionText: {
-      fontSize: 15,
-      fontWeight: "700",
-      color: theme.colors.textMain,
+    keyRow7: { flexDirection: "row", gap: 6 },
+    keyRow4: { flexDirection: "row", gap: 6, marginTop: 4 },
+    key: {
+      flex: 1,
+      height: 52,
+      backgroundColor: theme.colors.card,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 8,
+      elevation: 2,
     },
-    keyRow: { flexDirection: "row", gap: 6 },
+    keyText: { fontSize: 18, fontWeight: "700", color: theme.colors.textMain },
     keyAction: {
       flex: 1,
       height: 58,
@@ -693,13 +694,20 @@ const getStyles = (theme: any) =>
       borderRadius: 8,
       elevation: 2,
     },
-    keyHit: { backgroundColor: theme.colors.primary },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
     keyTextAction: {
       fontSize: 15,
       fontWeight: "800",
       color: theme.colors.textMain,
     },
+    activeModifier: { backgroundColor: theme.colors.primaryDark },
+    activeModifierText: { color: "#fff" },
+    disabledKey: {
+      backgroundColor: theme.colors.cardBorder,
+      opacity: 0.5,
+      elevation: 0,
+    },
+    disabledKeyText: { color: theme.colors.textLight },
+    undoKey: { backgroundColor: theme.colors.dangerLight },
 
     modalOverlay: {
       flex: 1,
