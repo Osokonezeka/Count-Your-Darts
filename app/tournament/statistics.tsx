@@ -9,13 +9,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  FlatList,
-  Modal,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, Modal, Pressable, Text, View } from "react-native";
 import DraggableFlatList, {
   RenderItemParams,
 } from "react-native-draggable-flatlist";
@@ -59,7 +53,7 @@ export default function TournamentStatistics() {
   const [selectedSharePlayer, setSelectedSharePlayer] = useState<string | null>(
     null,
   );
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
 
   const viewShotRef = useRef<any>(null);
 
@@ -112,6 +106,7 @@ export default function TournamentStatistics() {
 
   useFocusEffect(
     useCallback(() => {
+      setTimeFilter("today");
       AsyncStorage.getItem(TOURNAMENT_HISTORY_KEY).then((saved) => {
         if (saved) {
           const parsed = JSON.parse(saved);

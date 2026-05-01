@@ -41,6 +41,8 @@ export function SelectPlayersModal({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View
