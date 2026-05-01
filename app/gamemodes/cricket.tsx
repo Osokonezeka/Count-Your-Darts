@@ -9,26 +9,28 @@ import React, {
   useState,
 } from "react";
 import {
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
+import { FinishModal } from "../../components/modals/FinishModal";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 
 const TARGETS = [20, 19, 18, 17, 16, 15, 25];
-const COLUMN_WIDTH = 100;
+const COLUMN_WIDTH = 105;
 
 type PlayerCricketState = {
   name: string;
@@ -184,6 +186,7 @@ function cricketReducer(
       if (!state.history || state.history.length === 0) return state;
       return {
         ...state.history[state.history.length - 1],
+        history: state.history.slice(0, -1),
         speechEvent: null,
       };
     }
@@ -386,9 +389,12 @@ export default function Cricket() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.customHeader}>
-        <Pressable onPress={() => router.back()} style={styles.headerBackBtn}>
+        <AnimatedPressable
+          onPress={() => router.back()}
+          style={styles.headerBackBtn}
+        >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
-        </Pressable>
+        </AnimatedPressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>CRICKET</Text>
           <Text style={styles.headerSub}>
@@ -412,7 +418,13 @@ export default function Cricket() {
           <View style={styles.emptyCorner} />
           {TARGETS.map((t) => (
             <View key={`target-${t}`} style={styles.targetCell}>
-              <Text style={styles.targetText}>{t === 25 ? "B" : t}</Text>
+              <Text
+                style={styles.targetText}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+              >
+                {t === 25 ? bullTerm : t}
+              </Text>
             </View>
           ))}
           {settings.cricketMode === "standard" && (
@@ -510,13 +522,13 @@ export default function Cricket() {
       <View style={styles.keyboard}>
         <View style={styles.keyRow}>
           {[20, 19, 18, 17].map((num) => (
-            <Pressable
+            <TouchableOpacity
               key={`key-${num}`}
               style={styles.keyNum}
               onPress={() => handleThrow(num)}
             >
               <Text style={styles.keyTextNum}>{num}</Text>
-            </Pressable>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -524,7 +536,7 @@ export default function Cricket() {
           {[16, 15, 25].map((num) => {
             const isBullDisabled = num === 25 && multiplier === 3;
             return (
-              <Pressable
+              <TouchableOpacity
                 key={`key-${num}`}
                 style={[styles.keyNum, isBullDisabled && styles.disabledKey]}
                 onPress={() => {
@@ -539,16 +551,12 @@ export default function Cricket() {
                 >
                   {num === 25 ? bullTerm : num}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
-          <Pressable
+          <TouchableOpacity
             onPress={handleMiss}
-            style={[
-              styles.keyNum,
-              { backgroundColor: theme.colors.cardBorder },
-              multiplier !== 1 && styles.disabledKey,
-            ]}
+            style={[styles.keyNum, multiplier !== 1 && styles.disabledKey]}
           >
             <Text
               style={[
@@ -558,11 +566,11 @@ export default function Cricket() {
             >
               {missTerm}
             </Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.keyRowModifiers}>
-          <Pressable
+          <TouchableOpacity
             onPress={() => handleMultiplierToggle(2)}
             style={[
               styles.keyAction,
@@ -575,10 +583,10 @@ export default function Cricket() {
                 multiplier === 2 && styles.activeModifierText,
               ]}
             >
-              Double
+              {t(language, "double") || "Double"}
             </Text>
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => handleMultiplierToggle(3)}
             style={[
               styles.keyAction,
@@ -593,43 +601,32 @@ export default function Cricket() {
             >
               {tripleTerm}
             </Text>
-          </Pressable>
+          </TouchableOpacity>
 
-          <Pressable
+          <TouchableOpacity
             onPress={handleUndo}
             style={[styles.keyAction, styles.undoKey]}
           >
             <Ionicons name="arrow-undo" size={28} color={theme.colors.danger} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <Modal visible={!!state.matchWinner} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.trophyWrapper}>
-              <Text style={{ fontSize: 40 }}>🏆</Text>
-            </View>
-
-            <Text style={styles.modalTitle}>
-              {(
-                t(language, "playerFinished") || "{{name}} finished the game!"
-              ).replace("{{name}}", state.matchWinner?.name || "")}
-            </Text>
-
-            <View style={styles.modalActionsCol}>
-              <Pressable
-                style={styles.modalBtnCont}
-                onPress={saveCricketHistory}
-              >
-                <Text style={styles.modalBtnText}>
-                  {t(language, "endMatch") || "End"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+      <FinishModal
+        visible={!!state.matchWinner}
+        title={(
+          t(language, "playerFinished") || "{{name}} finished the game!"
+        ).replace("{{name}}", state.matchWinner?.name || "")}
+        theme={theme}
+      >
+        <View style={styles.modalActionsCol}>
+          <AnimatedPrimaryButton
+            title={t(language, "endMatch") || "End"}
+            theme={theme}
+            onPress={saveCricketHistory}
+          />
         </View>
-      </Modal>
+      </FinishModal>
 
       <CustomAlert
         visible={alertVisible}
@@ -693,29 +690,28 @@ const getStyles = (theme: any) =>
       marginTop: 4,
     },
     targetsCol: {
-      width: 50,
+      width: 56,
       backgroundColor: theme.colors.cardBorder,
-      paddingVertical: 10,
+      paddingVertical: 22,
       borderTopRightRadius: 16,
       borderBottomRightRadius: 16,
       alignItems: "center",
-      justifyContent: "flex-start",
+      justifyContent: "space-between",
       elevation: 2,
     },
-    emptyCorner: { height: 40, marginBottom: 8 },
+    emptyCorner: { height: 42 },
     targetCell: {
-      width: 40,
-      height: 40,
+      width: 46,
+      height: 42,
       justifyContent: "center",
       alignItems: "center",
-      marginBottom: 8,
       backgroundColor: theme.colors.card,
       borderRadius: 8,
       borderWidth: 1,
       borderColor: theme.colors.cardBorder,
     },
     targetText: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: "900",
       color: theme.colors.textMain,
     },
@@ -730,38 +726,37 @@ const getStyles = (theme: any) =>
       backgroundColor: theme.colors.card,
       borderRadius: 16,
       marginHorizontal: 4,
-      paddingVertical: 8,
+      paddingVertical: 10,
       borderWidth: 2,
       borderColor: theme.colors.card,
       elevation: 1,
+      justifyContent: "space-between",
     },
     activePlayerCol: {
       borderColor: theme.colors.primary,
       backgroundColor: theme.colors.primaryLight,
     },
     playerHeaderCell: {
-      height: 32,
+      height: 42,
       justifyContent: "center",
       alignItems: "center",
-      marginBottom: 8,
       paddingHorizontal: 4,
     },
     playerNameText: {
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: "800",
       color: theme.colors.textMuted,
       textTransform: "uppercase",
     },
 
     markCell: {
-      width: 40,
-      height: 40,
+      width: 46,
+      height: 42,
       justifyContent: "center",
       alignItems: "center",
-      marginBottom: 8,
     },
     markText: {
-      fontSize: 28,
+      fontSize: 32,
       fontWeight: "900",
       color: theme.colors.textMain,
     },
@@ -770,17 +765,15 @@ const getStyles = (theme: any) =>
     },
 
     scoreCell: {
-      width: COLUMN_WIDTH - 20,
-      height: 40,
+      width: COLUMN_WIDTH - 16,
+      height: 42,
       justifyContent: "center",
       alignItems: "center",
       backgroundColor: theme.colors.background,
       borderRadius: 8,
-      marginTop: "auto",
-      marginBottom: 4,
     },
     scoreText: {
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: "900",
       color: theme.colors.textMain,
     },
@@ -876,48 +869,5 @@ const getStyles = (theme: any) =>
     disabledKeyText: { color: theme.colors.textLight },
     undoKey: { backgroundColor: theme.colors.dangerLight },
 
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 20,
-    },
-    modalContent: {
-      backgroundColor: theme.colors.card,
-      padding: 25,
-      borderRadius: 24,
-      width: "100%",
-      alignItems: "center",
-    },
-    trophyWrapper: {
-      width: 80,
-      height: 80,
-      backgroundColor: theme.colors.warning,
-      opacity: 0.8,
-      borderRadius: 40,
-      justifyContent: "center",
-      alignItems: "center",
-      marginBottom: 15,
-    },
-    modalTitle: {
-      fontSize: 24,
-      fontWeight: "900",
-      textAlign: "center",
-      color: theme.colors.textMain,
-      marginBottom: 20,
-    },
     modalActionsCol: { width: "100%", gap: 12 },
-    modalBtnCont: {
-      backgroundColor: theme.colors.primary,
-      padding: 16,
-      borderRadius: 14,
-      alignItems: "center",
-      shadowColor: theme.colors.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 4,
-    },
-    modalBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   });

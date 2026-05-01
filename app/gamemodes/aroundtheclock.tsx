@@ -2,22 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRouter } from "expo-router";
 import React, { useEffect, useLayoutEffect, useReducer, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
+import { TrainingKeyboard } from "../../components/keyboards/TrainingKeyboard";
+import { FinishModal } from "../../components/modals/FinishModal";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 
 const TARGETS = [
@@ -253,9 +250,12 @@ export default function AroundTheClock() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.customHeader}>
-        <Pressable onPress={() => router.back()} style={styles.headerBackBtn}>
+        <AnimatedPressable
+          onPress={() => router.back()}
+          style={styles.headerBackBtn}
+        >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
-        </Pressable>
+        </AnimatedPressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
             {t(language, "aroundTheClock")?.toUpperCase() || "AROUND THE CLOCK"}
@@ -371,75 +371,40 @@ export default function AroundTheClock() {
       </ScrollView>
 
       {!allFinished && (
-        <View style={styles.keyboard}>
-          <View style={styles.keyboardHeader}>
-            <Text style={styles.instructionText}>
-              {currentPlayer.name}, {t(language, "hitLower") || "hit"}:{" "}
-              <Text style={{ color: theme.colors.primary, fontWeight: "900" }}>
-                {TARGETS[currentPlayer.currentTargetIdx] === 25
-                  ? bullTerm
-                  : TARGETS[currentPlayer.currentTargetIdx]}
-              </Text>
-            </Text>
-          </View>
-          <View style={styles.keyRow}>
-            <Pressable
-              onPress={() => handleThrow(false)}
-              style={styles.keyAction}
-            >
-              <Text style={styles.keyTextAction}>{missTerm}</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleThrow(true)}
-              style={[styles.keyAction, styles.keyHit]}
-            >
-              <Text style={[styles.keyTextAction, { color: "#fff" }]}>
-                {t(language, "hit")?.toUpperCase() || "HIT"}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => dispatch({ type: "UNDO" })}
-              style={[styles.keyAction, styles.undoKey]}
-            >
-              <Ionicons
-                name="arrow-undo"
-                size={28}
-                color={theme.colors.danger}
-              />
-            </Pressable>
-          </View>
-        </View>
+        <TrainingKeyboard
+          playerName={currentPlayer.name}
+          instructionText={(t(language, "hitLower") || "hit") + ":"}
+          targetValue={
+            TARGETS[currentPlayer.currentTargetIdx] === 25
+              ? bullTerm
+              : TARGETS[currentPlayer.currentTargetIdx].toString()
+          }
+          hitLabel={t(language, "hit")?.toUpperCase() || "HIT"}
+          missLabel={missTerm}
+          onHit={() => handleThrow(true)}
+          onMiss={() => handleThrow(false)}
+          onUndo={() => dispatch({ type: "UNDO" })}
+          theme={theme}
+        />
       )}
 
-      <Modal visible={allFinished} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.trophyWrapper}>
-              <Text style={{ fontSize: 40 }}>🏆</Text>
-            </View>
-            <Text style={styles.modalTitle}>
-              {t(language, "trainingFinished") || "Training Finished!"}
-            </Text>
-            <Text style={styles.modalSub}>
-              {t(language, "trainingSaved") ||
-                "Your results have been saved to history."}
-            </Text>
-
-            <View style={styles.modalActionsCol}>
-              <Pressable
-                style={styles.modalBtnCont}
-                onPress={() => router.push("/play")}
-              >
-                <Text style={styles.modalBtnText}>
-                  {t(language, "endMatch") || "End"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+      <FinishModal
+        visible={allFinished}
+        title={t(language, "trainingFinished") || "Training Finished!"}
+        subtitle={
+          t(language, "trainingSaved") ||
+          "Your results have been saved to history."
+        }
+        theme={theme}
+      >
+        <View style={styles.modalActionsCol}>
+          <AnimatedPrimaryButton
+            title={t(language, "endMatch") || "End"}
+            theme={theme}
+            onPress={() => router.push("/play")}
+          />
         </View>
-      </Modal>
+      </FinishModal>
 
       <CustomAlert
         visible={alertVisible}
@@ -575,79 +540,5 @@ const getStyles = (theme: any) =>
       fontWeight: "700",
     },
 
-    keyboard: {
-      padding: 16,
-      backgroundColor: theme.colors.cardBorder,
-      paddingBottom: 30,
-    },
-    keyboardHeader: { marginBottom: 12, alignItems: "center" },
-    instructionText: {
-      fontSize: 15,
-      fontWeight: "700",
-      color: theme.colors.textMain,
-    },
-
-    keyRow: { flexDirection: "row", gap: 6 },
-    keyAction: {
-      flex: 1,
-      height: 58,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
-    keyHit: { backgroundColor: theme.colors.primary },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
-    keyTextAction: {
-      fontSize: 15,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
-
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 20,
-    },
-    modalContent: {
-      backgroundColor: theme.colors.card,
-      padding: 25,
-      borderRadius: 24,
-      width: "100%",
-      alignItems: "center",
-    },
-    trophyWrapper: {
-      width: 80,
-      height: 80,
-      backgroundColor: theme.colors.warning,
-      opacity: 0.8,
-      borderRadius: 40,
-      justifyContent: "center",
-      alignItems: "center",
-      marginBottom: 15,
-    },
-    modalTitle: {
-      fontSize: 24,
-      fontWeight: "900",
-      textAlign: "center",
-      color: theme.colors.textMain,
-      marginBottom: 10,
-    },
-    modalSub: {
-      fontSize: 15,
-      color: theme.colors.textMuted,
-      textAlign: "center",
-      marginBottom: 25,
-    },
     modalActionsCol: { width: "100%", gap: 12 },
-    modalBtnCont: {
-      backgroundColor: theme.colors.primary,
-      padding: 16,
-      borderRadius: 14,
-      alignItems: "center",
-    },
-    modalBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   });

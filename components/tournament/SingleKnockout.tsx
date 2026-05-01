@@ -11,10 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useLanguage } from "../context/LanguageContext";
-import { useTheme } from "../context/ThemeContext";
-import { t } from "../lib/i18n";
-import CustomAlert from "./CustomAlert";
+import { useLanguage } from "../../context/LanguageContext";
+import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
+import CustomAlert from "../modals/CustomAlert";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 

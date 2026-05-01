@@ -161,6 +161,7 @@
   "deleteTournamentPrompt": "Are you sure you want to delete tournament '{{name}}'? All results will be permanently lost.",
   "deletePermanently": "Delete permanently",
   "tournamentHistory": "Tournament History",
+  "tournamentStatistics": "Tournament Statistics",
   "changeMode": "Change mode",
   "multiplayerOptions": "Multiplayer options",
   "hostGame": "Host game",
@@ -208,10 +209,15 @@
   "resume": "Resume",
 
   "singleKnockout": "Single Knockout",
+  "singleKnockoutDesc": "Players are eliminated after one loss.",
   "doubleKnockout": "Double Knockout",
+  "doubleKnockoutDesc": "Players are eliminated after two losses.",
   "roundRobin": "Round Robin",
+  "roundRobinDesc": "Every player plays against everyone else.",
   "groupsAndKnockout": "Groups + Knockout",
+  "groupsAndKnockoutDesc": "Group stage followed by single elimination.",
   "groupsAndDoubleKnockout": "Groups + Double Knockout",
+  "groupsAndDoubleKnockoutDesc": "Group stage followed by double elimination.",
   "noTournamentData": "No tournament data.",
   "goBack": "Go back",
   "selectPlayersTitle": "Select players",
@@ -285,5 +291,10 @@
   "matchLogsTitle": "Match Logs",
   "legNumber": "Leg {{number}}",
   "noLogsAvailable": "No logs available for this match.",
-  "checkout": "Checkout (Win)"
+  "checkout": "Checkout (Win)",
+  "inputModeDart": "Dart",
+  "inputModeScore": "Score",
+  "inputModeBoard": "Board",
+  "boardZoomHint": "Pinch / Hold to zoom in and aim precisely 🔍",
+  "heatmap": "Heatmap"
 }

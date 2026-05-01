@@ -16,10 +16,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import CustomAlert from "../../components/CustomAlert";
-import GroupsAndKnockout from "../../components/GroupsAndKnockout";
-import RoundRobin from "../../components/RoundRobin";
-import SingleKnockout from "../../components/SingleKnockout";
+import CustomAlert from "../../components/modals/CustomAlert";
+import GroupsAndKnockout from "../../components/tournament/GroupsAndKnockout";
+import RoundRobin from "../../components/tournament/RoundRobin";
+import SingleKnockout from "../../components/tournament/SingleKnockout";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";

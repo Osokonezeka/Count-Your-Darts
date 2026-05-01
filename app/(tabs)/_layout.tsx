@@ -89,22 +89,21 @@ export default function TabsLayout() {
             ),
           }}
         />
-
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: t(language, "settings") || "Ustawienia",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="settings" size={size} color={color} />
-            ),
-          }}
-        />
         <Tabs.Screen
           name="tournament"
           options={{
             title: t(language, "tournament") || "Turniej",
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="trophy" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: t(language, "settings") || "Ustawienia",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="settings" size={size} color={color} />
             ),
           }}
         />

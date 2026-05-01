@@ -19,6 +19,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { availableLanguages, t } from "../../lib/i18n";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -124,116 +125,41 @@ export default function Settings() {
           <Text style={styles.subLabel}>
             {t(language, "x3Multiplier") || "X3 Multiplier"}
           </Text>
-          <View style={styles.segmentedControl}>
-            <Pressable
-              onPress={() => setTripleTerm("Triple")}
-              style={[
-                styles.segmentBtn,
-                tripleTerm === "Triple" && styles.segmentBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  tripleTerm === "Triple" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "triple") || "Triple"}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setTripleTerm("Treble")}
-              style={[
-                styles.segmentBtn,
-                tripleTerm === "Treble" && styles.segmentBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  tripleTerm === "Treble" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "treble") || "Treble"}
-              </Text>
-            </Pressable>
-          </View>
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={tripleTerm}
+            onSelect={setTripleTerm}
+            options={[
+              { id: "Triple", label: t(language, "triple") || "Triple" },
+              { id: "Treble", label: t(language, "treble") || "Treble" },
+            ]}
+          />
 
           <Text style={[styles.subLabel, { marginTop: 16 }]}>
             {t(language, "miss") || "Miss"}
           </Text>
-          <View style={styles.segmentedControl}>
-            <Pressable
-              onPress={() => setMissTerm("0")}
-              style={[
-                styles.segmentBtn,
-                missTerm === "0" && styles.segmentBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  missTerm === "0" && styles.segmentTextActive,
-                ]}
-              >
-                0
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setMissTerm("Miss")}
-              style={[
-                styles.segmentBtn,
-                missTerm === "Miss" && styles.segmentBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  missTerm === "Miss" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "miss") || "Miss"}
-              </Text>
-            </Pressable>
-          </View>
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={missTerm}
+            onSelect={setMissTerm}
+            options={[
+              { id: "0", label: "0" },
+              { id: "Miss", label: t(language, "miss") || "Miss" },
+            ]}
+          />
 
           <Text style={[styles.subLabel, { marginTop: 16 }]}>
             {t(language, "bullseye") || "Bullseye"}
           </Text>
-          <View style={styles.segmentedControl}>
-            <Pressable
-              onPress={() => setBullTerm("25")}
-              style={[
-                styles.segmentBtn,
-                bullTerm === "25" && styles.segmentBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  bullTerm === "25" && styles.segmentTextActive,
-                ]}
-              >
-                25
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setBullTerm("Bull")}
-              style={[
-                styles.segmentBtn,
-                bullTerm === "Bull" && styles.segmentBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  bullTerm === "Bull" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "bull") || "Bull"}
-              </Text>
-            </Pressable>
-          </View>
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={bullTerm}
+            onSelect={setBullTerm}
+            options={[
+              { id: "25", label: "25" },
+              { id: "Bull", label: t(language, "bull") || "Bull" },
+            ]}
+          />
         </View>
 
         <View style={styles.card}>
@@ -250,76 +176,46 @@ export default function Settings() {
             </Text>
           </View>
 
-          <View style={styles.segmentedControl}>
-            <Pressable
-              onPress={() => setThemeMode("light")}
-              style={[
-                styles.segmentBtn,
-                themeMode === "light" && styles.segmentBtnActive,
-              ]}
-            >
-              <Ionicons
-                name="sunny"
-                size={18}
-                color={themeMode === "light" ? "#fff" : theme.colors.textMuted}
-                style={{ marginRight: 6 }}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  themeMode === "light" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "lightTheme") || "Light"}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setThemeMode("auto")}
-              style={[
-                styles.segmentBtn,
-                themeMode === "auto" && styles.segmentBtnActive,
-              ]}
-            >
-              <Ionicons
-                name="contrast"
-                size={18}
-                color={themeMode === "auto" ? "#fff" : theme.colors.textMuted}
-                style={{ marginRight: 6 }}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  themeMode === "auto" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "autoTheme") || "Auto"}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setThemeMode("dark")}
-              style={[
-                styles.segmentBtn,
-                themeMode === "dark" && styles.segmentBtnActive,
-              ]}
-            >
-              <Ionicons
-                name="moon"
-                size={18}
-                color={themeMode === "dark" ? "#fff" : theme.colors.textMuted}
-                style={{ marginRight: 6 }}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  themeMode === "dark" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "darkTheme") || "Dark"}
-              </Text>
-            </Pressable>
-          </View>
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={themeMode}
+            onSelect={setThemeMode}
+            options={[
+              {
+                id: "light",
+                label: t(language, "lightTheme") || "Light",
+                icon: (isActive: boolean) => (
+                  <Ionicons
+                    name="sunny"
+                    size={18}
+                    color={isActive ? "#fff" : theme.colors.textMuted}
+                  />
+                ),
+              },
+              {
+                id: "auto",
+                label: t(language, "autoTheme") || "Auto",
+                icon: (isActive: boolean) => (
+                  <Ionicons
+                    name="contrast"
+                    size={18}
+                    color={isActive ? "#fff" : theme.colors.textMuted}
+                  />
+                ),
+              },
+              {
+                id: "dark",
+                label: t(language, "darkTheme") || "Dark",
+                icon: (isActive: boolean) => (
+                  <Ionicons
+                    name="moon"
+                    size={18}
+                    color={isActive ? "#fff" : theme.colors.textMuted}
+                  />
+                ),
+              },
+            ]}
+          />
         </View>
 
         <View style={styles.card}>
@@ -391,58 +287,16 @@ export default function Settings() {
               <Text style={styles.subLabel}>
                 {t(language, "intensity") || "Intensity"}
               </Text>
-              <View style={styles.segmentedControl}>
-                <Pressable
-                  onPress={() => setIntensity("light")}
-                  style={[
-                    styles.segmentBtn,
-                    intensity === "light" && styles.segmentBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      intensity === "light" && styles.segmentTextActive,
-                    ]}
-                  >
-                    {t(language, "light") || "Light"}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setIntensity("medium")}
-                  style={[
-                    styles.segmentBtn,
-                    intensity === "medium" && styles.segmentBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      intensity === "medium" && styles.segmentTextActive,
-                    ]}
-                  >
-                    {t(language, "medium") || "Medium"}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setIntensity("heavy")}
-                  style={[
-                    styles.segmentBtn,
-                    intensity === "heavy" && styles.segmentBtnActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      intensity === "heavy" && styles.segmentTextActive,
-                    ]}
-                  >
-                    {t(language, "heavy") || "Heavy"}
-                  </Text>
-                </Pressable>
-              </View>
+              <AnimatedSegmentedControl
+                theme={theme}
+                activeOption={intensity}
+                onSelect={setIntensity}
+                options={[
+                  { id: "light", label: t(language, "light") || "Light" },
+                  { id: "medium", label: t(language, "medium") || "Medium" },
+                  { id: "heavy", label: t(language, "heavy") || "Heavy" },
+                ]}
+              />
             </View>
           )}
         </View>
@@ -581,32 +435,6 @@ const getStyles = (theme: any) =>
       fontWeight: "600",
       color: theme.colors.textMain,
     },
-    segmentedControl: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.background,
-      borderRadius: 10,
-      padding: 4,
-    },
-    segmentBtn: {
-      flex: 1,
-      flexDirection: "row",
-      justifyContent: "center",
-      paddingVertical: 12,
-      alignItems: "center",
-      borderRadius: 8,
-    },
-    segmentBtnActive: {
-      backgroundColor: theme.colors.primaryDark,
-      elevation: 1,
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-    },
-    segmentText: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: theme.colors.textMuted,
-    },
-    segmentTextActive: { color: "#fff", fontWeight: "700" },
 
     settingRow: {
       flexDirection: "row",

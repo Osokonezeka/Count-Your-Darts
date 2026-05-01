@@ -15,8 +15,6 @@ import React, {
 } from "react";
 import {
   FlatList,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -24,9 +22,11 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import CustomAlert from "../../components/CustomAlert";
+import CustomAlert from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { PlayerModal } from "../../components/modals/PlayerModal";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { t } from "../../lib/i18n";
 
 type Player = { id: string; name: string };
@@ -109,12 +109,9 @@ export default function TournamentPlayersScreen() {
   const [playerSearchQuery, setPlayerSearchQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(25);
 
-  const [isCreateModalVisible, setCreateModalVisible] = useState(false);
-  const [newPlayerName, setNewPlayerName] = useState("");
-
-  const [isEditModalVisible, setEditModalVisible] = useState(false);
+  const [isPlayerModalVisible, setPlayerModalVisible] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
-  const [editPlayerName, setEditPlayerName] = useState("");
+  const [playerNameInput, setPlayerNameInput] = useState("");
 
   const [isBackModalVisible, setBackModalVisible] = useState(false);
   const [duplicateErrorVisible, setDuplicateErrorVisible] = useState(false);
@@ -224,50 +221,13 @@ export default function TournamentPlayersScreen() {
     [hasExistingBracket],
   );
 
-  const handleCreatePlayer = async () => {
-    const trimmed = newPlayerName.trim();
+  const handleSavePlayer = async () => {
+    const trimmed = playerNameInput.trim();
     if (trimmed.length === 0) return;
 
     const exists = tournamentPlayersDb.some(
-      (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
-    );
-    if (exists) {
-      setDuplicateErrorVisible(true);
-      return;
-    }
-
-    const newPlayer: Player = { id: Date.now().toString(), name: trimmed };
-    const updatedDb = [...tournamentPlayersDb, newPlayer];
-    const newSelection = [...selectedPlayerIds, newPlayer.id];
-
-    setTournamentPlayersDb(updatedDb);
-    setSelectedPlayerIds(newSelection);
-    setNewPlayerName("");
-    setPlayerSearchQuery("");
-    setCreateModalVisible(false);
-
-    saveToDb(updatedDb);
-    if (selectedPlayersKey) {
-      await AsyncStorage.setItem(
-        selectedPlayersKey,
-        JSON.stringify(newSelection),
-      );
-    }
-  };
-
-  const startEdit = useCallback((player: Player) => {
-    setEditingPlayer(player);
-    setEditPlayerName(player.name);
-    setEditModalVisible(true);
-  }, []);
-
-  const handleUpdatePlayer = () => {
-    const trimmed = editPlayerName.trim();
-    if (!editingPlayer || trimmed.length === 0) return;
-
-    const exists = tournamentPlayersDb.some(
       (p) =>
-        p.id !== editingPlayer.id &&
+        (editingPlayer ? p.id !== editingPlayer.id : true) &&
         p.name.toLowerCase() === trimmed.toLowerCase(),
     );
     if (exists) {
@@ -275,14 +235,41 @@ export default function TournamentPlayersScreen() {
       return;
     }
 
-    const updatedDb = tournamentPlayersDb.map((p) =>
-      p.id === editingPlayer.id ? { ...p, name: trimmed } : p,
-    );
+    let updatedDb;
+    if (editingPlayer) {
+      updatedDb = tournamentPlayersDb.map((p) =>
+        p.id === editingPlayer.id ? { ...p, name: trimmed } : p,
+      );
+    } else {
+      const newPlayer: Player = { id: Date.now().toString(), name: trimmed };
+      updatedDb = [...tournamentPlayersDb, newPlayer];
+      const newSelection = [...selectedPlayerIds, newPlayer.id];
+      setSelectedPlayerIds(newSelection);
+      if (selectedPlayersKey) {
+        await AsyncStorage.setItem(
+          selectedPlayersKey,
+          JSON.stringify(newSelection),
+        );
+      }
+      setPlayerSearchQuery("");
+    }
+
     setTournamentPlayersDb(updatedDb);
-    setEditModalVisible(false);
-    setEditingPlayer(null);
     saveToDb(updatedDb);
+    closePlayerModal();
   };
+
+  const closePlayerModal = () => {
+    setPlayerModalVisible(false);
+    setEditingPlayer(null);
+    setPlayerNameInput("");
+  };
+
+  const startEdit = useCallback((player: Player) => {
+    setEditingPlayer(player);
+    setPlayerNameInput(player.name);
+    setPlayerModalVisible(true);
+  }, []);
 
   const togglePlayerSelection = useCallback(
     (id: string) => {
@@ -364,7 +351,11 @@ export default function TournamentPlayersScreen() {
           {t(language, "selectPlayersTitle") || "Select players"}
         </Text>
         <TouchableOpacity
-          onPress={() => setCreateModalVisible(true)}
+          onPress={() => {
+            setEditingPlayer(null);
+            setPlayerNameInput("");
+            setPlayerModalVisible(true);
+          }}
           style={styles.headerBtn}
         >
           <Ionicons name="person-add" size={24} color={theme.colors.primary} />
@@ -482,13 +473,15 @@ export default function TournamentPlayersScreen() {
       />
 
       <View style={styles.fixedBottomContainer}>
-        <TouchableOpacity
-          style={[
-            styles.startBtn,
-            selectedPlayerIds.length < minPlayers && styles.startBtnDisabled,
-            { marginTop: 0, marginBottom: 0 },
-          ]}
-          activeOpacity={0.8}
+        <AnimatedPrimaryButton
+          title={
+            hasExistingBracket
+              ? t(language, "returnToTournament") || "Return to tournament"
+              : t(language, "startTournament") || "Start tournament"
+          }
+          iconName="play"
+          theme={theme}
+          fontSize={18}
           disabled={selectedPlayerIds.length < minPlayers}
           onPress={async () => {
             const selectedPlayers = tournamentPlayersDb.filter((p) =>
@@ -515,14 +508,7 @@ export default function TournamentPlayersScreen() {
               },
             });
           }}
-        >
-          <Text style={styles.startBtnText}>
-            {hasExistingBracket
-              ? t(language, "returnToTournament") || "Return to tournament"
-              : t(language, "startTournament") || "Start tournament"}
-          </Text>
-          <Ionicons name="play" size={24} color="#fff" />
-        </TouchableOpacity>
+        />
       </View>
 
       <CustomAlert
@@ -551,109 +537,24 @@ export default function TournamentPlayersScreen() {
         ]}
       />
 
-      <Modal
-        visible={isCreateModalVisible}
-        transparent={true}
-        animationType="fade"
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => {
-            setCreateModalVisible(false);
-            setNewPlayerName("");
-          }}
-        >
-          <View
-            style={styles.modalContent}
-            onStartShouldSetResponder={() => true}
-          >
-            <Text style={styles.modalTitle}>
-              {t(language, "addPlayer") || "Add player"}
-            </Text>
-            <TextInput
-              style={styles.addPlayerInput}
-              placeholder={t(language, "nameOrNickname") || "Name or nickname"}
-              placeholderTextColor={theme.colors.textMuted}
-              value={newPlayerName}
-              onChangeText={setNewPlayerName}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalBtnCancel}
-                onPress={() => {
-                  setCreateModalVisible(false);
-                  setNewPlayerName("");
-                }}
-              >
-                <Text style={styles.modalBtnCancelText}>
-                  {t(language, "cancel") || "Cancel"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalBtnAdd}
-                onPress={() => executeWithCheck(handleCreatePlayer)}
-              >
-                <Text style={styles.modalBtnAddText}>
-                  {t(language, "save") || "Save"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        visible={isEditModalVisible}
-        transparent={true}
-        animationType="fade"
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => {
-            setEditModalVisible(false);
-            setEditingPlayer(null);
-          }}
-        >
-          <View
-            style={styles.modalContent}
-            onStartShouldSetResponder={() => true}
-          >
-            <Text style={styles.modalTitle}>
-              {t(language, "editPlayer") || "Edit player"}
-            </Text>
-            <TextInput
-              style={styles.addPlayerInput}
-              placeholder={t(language, "nameOrNickname") || "Name or nickname"}
-              placeholderTextColor={theme.colors.textMuted}
-              value={editPlayerName}
-              onChangeText={setEditPlayerName}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalBtnCancel}
-                onPress={() => {
-                  setEditModalVisible(false);
-                  setEditingPlayer(null);
-                }}
-              >
-                <Text style={styles.modalBtnCancelText}>
-                  {t(language, "cancel") || "Cancel"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalBtnAdd}
-                onPress={handleUpdatePlayer}
-              >
-                <Text style={styles.modalBtnAddText}>
-                  {t(language, "save") || "Save"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
+      <PlayerModal
+        visible={isPlayerModalVisible}
+        title={
+          editingPlayer
+            ? t(language, "editPlayer") || "Edit player"
+            : t(language, "addPlayer") || "Add player"
+        }
+        value={playerNameInput}
+        onChangeText={setPlayerNameInput}
+        onClose={closePlayerModal}
+        onSave={() =>
+          editingPlayer
+            ? handleSavePlayer()
+            : executeWithCheck(handleSavePlayer)
+        }
+        theme={theme}
+        language={language}
+      />
 
       <CustomAlert
         visible={isBackModalVisible}
@@ -862,87 +763,4 @@ const getStyles = (theme: any) =>
       borderTopWidth: 1,
       borderTopColor: theme.colors.cardBorder,
     },
-    startBtn: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.primary,
-      paddingVertical: 16,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      marginTop: 8,
-      shadowColor: theme.colors.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 4,
-    },
-    startBtnDisabled: {
-      backgroundColor: theme.colors.primaryDisabled || "#ccc",
-      elevation: 0,
-      shadowOpacity: 0,
-    },
-    startBtnText: {
-      color: "#fff",
-      fontSize: 18,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 1,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
-      padding: 20,
-    },
-    modalContent: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 20,
-      padding: 24,
-      elevation: 10,
-      width: "100%",
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      marginBottom: 16,
-      textAlign: "center",
-    },
-    addPlayerInput: {
-      backgroundColor: theme.colors.background,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      borderRadius: 10,
-      padding: 14,
-      fontSize: 16,
-      color: theme.colors.textMain,
-      fontWeight: "600",
-      textAlign: "center",
-    },
-    modalActions: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 12,
-      marginTop: 24,
-    },
-    modalBtnCancel: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-      justifyContent: "center",
-    },
-    modalBtnCancelText: {
-      color: theme.colors.textMuted,
-      fontWeight: "700",
-      fontSize: 16,
-    },
-    modalBtnAdd: {
-      backgroundColor: theme.colors.success || "#28a745",
-      paddingVertical: 10,
-      paddingHorizontal: 20,
-      borderRadius: 8,
-      justifyContent: "center",
-    },
-    modalBtnAddText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   });

@@ -1,6 +1,7 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { useTheme } from "../context/ThemeContext";
+import { useTheme } from "../../context/ThemeContext";
+import { AnimatedPressable } from "../common/AnimatedPressable";
 
 export type AlertButton = {
   text: string;
@@ -46,7 +47,7 @@ export default function CustomAlert({
               const isDestructive = btn.style === "destructive";
 
               return (
-                <Pressable
+                <AnimatedPressable
                   key={index}
                   style={[
                     styles.button,
@@ -67,7 +68,7 @@ export default function CustomAlert({
                   >
                     {btn.text}
                   </Text>
-                </Pressable>
+                </AnimatedPressable>
               );
             })}
           </View>
