@@ -67,6 +67,7 @@ export default function Statistics() {
   const [appliedNames, setAppliedNames] = useState<string[]>([]);
   const [tempNames, setTempNames] = useState<string[]>([]);
   const [showPlayerFilter, setShowPlayerFilter] = useState(false);
+  const [filterSearchQuery, setFilterSearchQuery] = useState("");
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedSharePlayer, setSelectedSharePlayer] = useState<string | null>(
     null,
@@ -463,6 +464,22 @@ export default function Statistics() {
     ],
   );
 
+  const allHistoryPlayers = useMemo(() => {
+    return Array.from(
+      new Set(history.flatMap((m) => m.players.map((p: any) => p.name))),
+    ) as string[];
+  }, [history]);
+
+  const filteredHistoryPlayers = useMemo(() => {
+    return allHistoryPlayers
+      .filter((p) => p.toLowerCase().includes(filterSearchQuery.toLowerCase()))
+      .sort((a, b) => a.localeCompare(b, language === "pl" ? "pl" : "en"));
+  }, [allHistoryPlayers, filterSearchQuery, language]);
+
+  const allSelected =
+    filteredHistoryPlayers.length > 0 &&
+    filteredHistoryPlayers.every((p) => tempNames.includes(p));
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <AnimatedSegmentedControl
@@ -494,9 +511,7 @@ export default function Statistics() {
       <SelectPlayersModal
         visible={showPlayerFilter}
         title={t(language, "selectPlayers") || "Select players"}
-        players={Array.from(
-          new Set(history.flatMap((m) => m.players.map((p: any) => p.name))),
-        )}
+        players={filteredHistoryPlayers}
         selectedPlayers={tempNames}
         onTogglePlayer={(item: string) =>
           setTempNames((prev) =>
@@ -505,13 +520,32 @@ export default function Statistics() {
               : [...prev, item],
           )
         }
-        onClose={() => setShowPlayerFilter(false)}
+        onClose={() => {
+          setShowPlayerFilter(false);
+          setFilterSearchQuery("");
+        }}
         onConfirm={() => {
           setAppliedNames(tempNames);
           setShowPlayerFilter(false);
+          setFilterSearchQuery("");
         }}
         confirmText={t(language, "setFilters") || "Set filters"}
         confirmColor={theme.colors.primary}
+        showSearch={true}
+        searchQuery={filterSearchQuery}
+        onSearchChange={setFilterSearchQuery}
+        showSelectAll={true}
+        allSelected={allSelected}
+        onSelectAll={() =>
+          setTempNames(
+            Array.from(new Set([...tempNames, ...filteredHistoryPlayers])),
+          )
+        }
+        onDeselectAll={() =>
+          setTempNames(
+            tempNames.filter((n) => !filteredHistoryPlayers.includes(n)),
+          )
+        }
         theme={theme}
         language={language}
       />

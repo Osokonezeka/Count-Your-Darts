@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRef, useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -30,6 +31,7 @@ export const languageNames: Record<string, string> = {
 };
 
 export default function Settings() {
+  const router = useRouter();
   const { language, changeLanguage } = useLanguage();
   const { theme, themeMode, setThemeMode } = useTheme();
   const {

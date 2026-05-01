@@ -90,7 +90,7 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="tournament"
+          name="tournaments"
           options={{
             title: t(language, "tournament") || "Turniej",
             tabBarIcon: ({ color, size }) => (

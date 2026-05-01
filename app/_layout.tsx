@@ -1,4 +1,4 @@
-import { Slot } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React from "react";
 import { View } from "react-native";
@@ -23,7 +23,10 @@ export default function Layout() {
               <PlayersProvider>
                 <GameProvider>
                   <HapticsProvider>
-                    <Slot />
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(tabs)" />
+                      <Stack.Screen name="tournament" />
+                    </Stack>
                   </HapticsProvider>
                 </GameProvider>
               </PlayersProvider>

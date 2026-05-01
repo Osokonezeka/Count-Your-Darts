@@ -35,6 +35,8 @@ export default function CustomAlert({
       transparent
       animationType="fade"
       onRequestClose={onRequestClose}
+      statusBarTranslucent
+      navigationBarTranslucent
     >
       <Pressable style={styles.overlay} onPress={onRequestClose}>
         <View style={styles.alertBox} onStartShouldSetResponder={() => true}>

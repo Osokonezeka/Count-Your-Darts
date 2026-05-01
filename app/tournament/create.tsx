@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
@@ -19,6 +19,7 @@ import { AnimatedStepper } from "../../components/common/AnimatedStepper";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useLanguage } from "../../context/LanguageContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 
@@ -31,33 +32,29 @@ type TournamentFormat =
 type TeamSize = "single" | "team";
 type BracketOrder = "top_to_bottom" | "bottom_to_top";
 
-export default function TournamentScreen() {
+export default function TournamentCreateScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { language } = useLanguage();
+  const insets = useSafeAreaInsets();
   const styles = getStyles(theme);
-  const navigation = useNavigation();
+  const { isHost } = useLocalSearchParams();
 
   const [activeTournaments, setActiveTournaments] = useState<any[]>([]);
   const [isSavedModalVisible, setSavedModalVisible] = useState(false);
-  const [deleteAlert, setDeleteAlert] = useState({
-    visible: false,
-    title: "",
-    message: "",
-    buttons: [] as any[],
-  });
-  const [mode, setMode] = useState<"none" | "local" | "multi" | "host">("none");
-  const [isJoinModalVisible, setJoinModalVisible] = useState(false);
-  const [joinCode, setJoinCode] = useState("");
-
-  const isExiting = useRef(false);
-
   const nameInputRef = useRef<TextInput>(null);
   const [nameError, setNameError] = useState(false);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
   const [tempDate, setTempDate] = useState(new Date());
+
+  const [deleteAlert, setDeleteAlert] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    buttons: [] as any[],
+  });
 
   const [config, setConfig] = useState({
     name: "",
@@ -90,18 +87,7 @@ export default function TournamentScreen() {
           if (savedArr) {
             setActiveTournaments(JSON.parse(savedArr));
           } else {
-            const oldSaved = await AsyncStorage.getItem("@active_tournament");
-            if (oldSaved) {
-              const parsed = JSON.parse(oldSaved);
-              setActiveTournaments([parsed]);
-              await AsyncStorage.setItem(
-                "@active_tournaments",
-                JSON.stringify([parsed]),
-              );
-              await AsyncStorage.removeItem("@active_tournament");
-            } else {
-              setActiveTournaments([]);
-            }
+            setActiveTournaments([]);
           }
         } catch (error) {
           console.error("Błąd podczas ładowania turniejów", error);
@@ -110,22 +96,6 @@ export default function TournamentScreen() {
       loadTournaments();
     }, []),
   );
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current) {
-        return;
-      }
-
-      if (mode === "none") {
-        return;
-      }
-
-      e.preventDefault();
-      handleBackFromSettings();
-    });
-    return unsubscribe;
-  }, [navigation, mode]);
 
   const handleDeleteTournament = (tName: string) => {
     setDeleteAlert({
@@ -172,7 +142,6 @@ export default function TournamentScreen() {
             await AsyncStorage.multiRemove(keysToRemove);
 
             if (updated.length === 0) setSavedModalVisible(false);
-            isExiting.current = true;
           },
         },
       ],
@@ -181,38 +150,6 @@ export default function TournamentScreen() {
 
   const updateConfig = (key: keyof typeof config, value: any) =>
     setConfig((prev: any) => ({ ...prev, [key]: value }));
-
-  const resetSettings = () => {
-    setConfig({
-      name: "",
-      desc: "",
-      startDate: new Date(),
-      format: "single_knockout",
-      teamSize: "single",
-      targetSets: 1,
-      targetLegs: 3,
-      startingPoints: 501,
-      customGroups: false,
-      groupSets: 1,
-      groupLegs: 2,
-      groupPoints: 501,
-      customSemis: false,
-      semiSets: 1,
-      semiLegs: 4,
-      customFinals: false,
-      finalSets: 1,
-      finalLegs: 5,
-      thirdPlaceMatch: false,
-      bracketOrder: "top_to_bottom",
-    });
-    setNameError(false);
-  };
-
-  const handleBackFromSettings = () => {
-    resetSettings();
-    if (mode === "host") setMode("multi");
-    else setMode("none");
-  };
 
   const openDatePicker = () => {
     setTempDate(config.startDate);
@@ -248,156 +185,22 @@ export default function TournamentScreen() {
 
   const isKnockoutFormat = config.format.includes("knockout");
 
-  if (mode === "none") {
-    return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <Text style={styles.sectionTitleMain}>
-          {t(language, "selectTournamentMode") || "Select tournament mode"}
-        </Text>
-        <AnimatedPressable
-          style={styles.modeCard}
-          onPress={() => {
-            resetSettings();
-            setMode("local");
-          }}
-        >
-          <View style={styles.iconWrapper}>
-            <Ionicons name="people" size={48} color={theme.colors.primary} />
-          </View>
-          <Text style={styles.modeTitle}>
-            {t(language, "localGame") || "Local game"}
-          </Text>
-          <Text style={styles.modeDesc}>
-            {t(language, "localGameDesc") ||
-              "Play on the same device. Perfect for playing at one board."}
-          </Text>
-        </AnimatedPressable>
-        <AnimatedPressable
-          style={styles.modeCard}
-          onPress={() => setMode("multi")}
-        >
-          <View style={styles.iconWrapper}>
-            <Ionicons
-              name="phone-portrait-outline"
-              size={48}
-              color={theme.colors.primary}
-            />
-            <View style={styles.wifiIconSub}>
-              <Ionicons name="wifi" size={20} color={theme.colors.card} />
-            </View>
-          </View>
-          <Text style={styles.modeTitle}>
-            {t(language, "multiGame") || "Multiplayer game"}
-          </Text>
-          <Text style={styles.modeDesc}>
-            {t(language, "multiGameDesc") ||
-              "Each player uses their own phone. Create a room and invite friends."}
-          </Text>
-        </AnimatedPressable>
-
-        <AnimatedPressable
-          style={styles.historyBtn}
-          onPress={() => router.push("/tournament/history")}
-        >
-          <Ionicons
-            name="archive-outline"
-            size={24}
-            color={theme.colors.primary}
-          />
-          <Text style={styles.historyBtnText}>
-            {t(language, "tournamentHistory") || "Tournament History"}
-          </Text>
-        </AnimatedPressable>
-
-        <AnimatedPressable
-          style={styles.historyBtn}
-          onPress={() => router.push("../tournament/statistics")}
-        >
-          <Ionicons name="stats-chart" size={24} color={theme.colors.primary} />
-          <Text style={styles.historyBtnText}>
-            {t(language, "tournamentStatistics") || "Tournament Statistics"}
-          </Text>
-        </AnimatedPressable>
-      </ScrollView>
-    );
-  }
-
-  if (mode === "multi") {
-    return (
-      <View style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <AnimatedPressable
-            onPress={() => setMode("none")}
-            style={styles.backButton}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={24}
-              color={theme.colors.textMain}
-            />
-            <Text style={styles.backButtonText}>
-              {t(language, "changeMode") || "Change mode"}
-            </Text>
-          </AnimatedPressable>
-          <Text style={styles.sectionTitleMain}>
-            {t(language, "multiplayerOptions") || "Multiplayer options"}
-          </Text>
-          <AnimatedPressable
-            style={styles.modeCard}
-            onPress={() => {
-              resetSettings();
-              setMode("host");
-            }}
-          >
-            <View style={styles.iconWrapper}>
-              <Ionicons
-                name="add-circle"
-                size={48}
-                color={theme.colors.primary}
-              />
-            </View>
-            <Text style={styles.modeTitle}>
-              {t(language, "hostGame") || "Host game"}
-            </Text>
-            <Text style={styles.modeDesc}>
-              {t(language, "hostGameDesc") ||
-                "Create a new room, set rules and share the code with friends."}
-            </Text>
-          </AnimatedPressable>
-          <AnimatedPressable
-            style={styles.modeCard}
-            onPress={() => setJoinModalVisible(true)}
-          >
-            <View style={styles.iconWrapper}>
-              <Ionicons name="log-in" size={48} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.modeTitle}>
-              {t(language, "joinGame") || "Join game"}
-            </Text>
-            <Text style={styles.modeDesc}>
-              {t(language, "joinGameDesc") ||
-                "Already have a code from a friend? Enter it here to join the lobby."}
-            </Text>
-          </AnimatedPressable>
-        </ScrollView>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      <View style={styles.customHeader}>
+      <View
+        style={[
+          styles.customHeader,
+          { paddingTop: insets.top > 0 ? insets.top + 10 : 16 },
+        ]}
+      >
         <AnimatedPressable
-          onPress={handleBackFromSettings}
+          onPress={() => router.back()}
           style={styles.headerBtn}
         >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <Text style={styles.headerTitle}>
-          {mode === "host"
+          {isHost === "true"
             ? t(language, "newRoom") || "New room"
             : t(language, "newTournament") || "New tournament"}
         </Text>
@@ -412,7 +215,7 @@ export default function TournamentScreen() {
             iconPosition="left"
             color={theme.colors.warning || "#f0ad4e"}
             theme={theme}
-            style={{ marginBottom: 20 }}
+            style={{ marginBottom: 16 }}
             onPress={() => setSavedModalVisible(true)}
           />
         )}
@@ -847,6 +650,8 @@ export default function TournamentScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => setSavedModalVisible(false)}
+        statusBarTranslucent
+        navigationBarTranslucent
       >
         <View style={styles.modalOverlayList}>
           <TouchableOpacity
@@ -855,7 +660,12 @@ export default function TournamentScreen() {
             onPress={() => setSavedModalVisible(false)}
           />
 
-          <View style={styles.modalContentList}>
+          <View
+            style={[
+              styles.modalContentList,
+              { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 40 },
+            ]}
+          >
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitleList}>
                 {t(language, "resumeTournament") || "Resume tournament"}
@@ -935,85 +745,6 @@ const getStyles = (theme: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { padding: 16, paddingBottom: 40 },
-
-    modalOverlayList: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "flex-end",
-    },
-    modalContentList: {
-      backgroundColor: theme.colors.background,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: 20,
-      paddingBottom: 40,
-      maxHeight: "80%",
-    },
-    modalHeaderRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 20,
-    },
-    modalTitleList: {
-      fontSize: 22,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-    },
-    closeModalBtn: {
-      padding: 4,
-      backgroundColor: theme.colors.card,
-      borderRadius: 20,
-    },
-
-    savedTournamentRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      backgroundColor: theme.colors.card,
-      padding: 16,
-      borderRadius: 12,
-      marginBottom: 10,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-    },
-    savedTName: {
-      fontSize: 16,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      marginBottom: 4,
-    },
-    savedTDesc: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
-      fontWeight: "600",
-    },
-
-    actionBtnPlay: {
-      backgroundColor: theme.colors.primary,
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    actionBtnDelete: {
-      backgroundColor: theme.colors.danger || "#dc3545",
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      justifyContent: "center",
-      alignItems: "center",
-    },
-
-    sectionTitleMain: {
-      fontSize: 22,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      marginBottom: 24,
-      marginTop: 8,
-      textAlign: "center",
-    },
     customHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -1044,18 +775,6 @@ const getStyles = (theme: any) =>
       color: theme.colors.textMain,
       marginBottom: 16,
     },
-    backButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 16,
-      gap: 8,
-    },
-    backButtonText: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: theme.colors.textMain,
-    },
-
     inputLabel: {
       fontSize: 13,
       fontWeight: "700",
@@ -1096,7 +815,6 @@ const getStyles = (theme: any) =>
       marginBottom: 16,
     },
     dateText: { fontSize: 16, color: theme.colors.textMain, fontWeight: "600" },
-
     horizontalDivider: {
       height: 1,
       backgroundColor: theme.colors.cardBorder,
@@ -1151,90 +869,70 @@ const getStyles = (theme: any) =>
       marginHorizontal: 4,
       marginTop: 20,
     },
-
-    startBtn: {
+    modalOverlayList: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      justifyContent: "flex-end",
+    },
+    modalContentList: {
+      backgroundColor: theme.colors.background,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 20,
+      maxHeight: "80%",
+    },
+    modalHeaderRow: {
       flexDirection: "row",
-      backgroundColor: theme.colors.primary,
-      paddingVertical: 16,
-      borderRadius: 14,
+      justifyContent: "space-between",
       alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      marginTop: 16,
-      shadowColor: theme.colors.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 4,
+      marginBottom: 20,
     },
-    startBtnText: {
-      color: "#fff",
-      fontSize: 18,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 1,
+    modalTitleList: {
+      fontSize: 22,
+      fontWeight: "900",
+      color: theme.colors.textMain,
     },
-    modeCard: {
+    closeModalBtn: {
+      padding: 4,
       backgroundColor: theme.colors.card,
       borderRadius: 20,
-      padding: 24,
-      marginBottom: 20,
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
     },
-    iconWrapper: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: theme.colors.background,
-      justifyContent: "center",
-      alignItems: "center",
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-    },
-    wifiIconSub: {
-      position: "absolute",
-      bottom: -4,
-      right: -4,
-      backgroundColor: theme.colors.primary,
-      borderRadius: 12,
-      padding: 4,
-      borderWidth: 2,
-      borderColor: theme.colors.card,
-    },
-    modeTitle: {
-      fontSize: 20,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      marginBottom: 8,
-      textAlign: "center",
-    },
-    modeDesc: {
-      fontSize: 14,
-      color: theme.colors.textMuted,
-      fontWeight: "500",
-      textAlign: "center",
-      lineHeight: 20,
-    },
-    historyBtn: {
+    savedTournamentRow: {
       flexDirection: "row",
-      backgroundColor: theme.colors.card,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      borderRadius: 14,
+      justifyContent: "space-between",
       alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-      marginTop: 10,
+      backgroundColor: theme.colors.card,
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 10,
       borderWidth: 1,
       borderColor: theme.colors.cardBorder,
     },
-    historyBtnText: {
-      color: theme.colors.textMain,
+    savedTName: {
       fontSize: 16,
       fontWeight: "800",
-      textTransform: "uppercase",
+      color: theme.colors.textMain,
+      marginBottom: 4,
+    },
+    savedTDesc: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      fontWeight: "600",
+    },
+    actionBtnPlay: {
+      backgroundColor: theme.colors.primary,
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    actionBtnDelete: {
+      backgroundColor: theme.colors.danger || "#dc3545",
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      justifyContent: "center",
+      alignItems: "center",
     },
   });
