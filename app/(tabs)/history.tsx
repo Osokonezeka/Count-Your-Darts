@@ -8,15 +8,18 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Dimensions,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../../components/CustomAlert";
+import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
+import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { t } from "../../lib/i18n";
 
 const HISTORY_KEY = "@dart_match_history";
@@ -377,6 +380,37 @@ const MatchStatCard = React.memo(
                   })}
                 </View>
               )}
+              {item.id === "heatmap" && (
+                <View style={{ paddingTop: 10 }}>
+                  {sortedStats.map((s: any) => {
+                    if (!s.coords || s.coords.length === 0) return null;
+                    const isCollapsed =
+                      collapsedPlayers && collapsedPlayers[s.name];
+                    return (
+                      <View key={s.name} style={{ marginBottom: 20 }}>
+                        <Pressable
+                          style={styles.hitPlayerHeader}
+                          onPress={() => onTogglePlayer(s.name)}
+                        >
+                          <Text style={styles.hitPlayerName}>{s.name}</Text>
+                          <Ionicons
+                            name={isCollapsed ? "chevron-down" : "chevron-up"}
+                            size={18}
+                            color={theme.colors.primary}
+                          />
+                        </Pressable>
+                        {!isCollapsed && (
+                          <HeatmapBoard
+                            coords={s.coords}
+                            theme={theme}
+                            size={Dimensions.get("window").width - 100}
+                          />
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
               {item.id === "cricket_summary" && (
                 <>
                   <View style={styles.rowHeader}>
@@ -536,6 +570,11 @@ export default function History() {
   const [filterMode, setFilterMode] = useState<
     "All" | "X01" | "Cricket" | "Around the Clock" | "Bob's 27" | "100 Darts"
   >("All");
+  const [scrollLayout, setScrollLayout] = useState({
+    width: 0,
+    contentWidth: 0,
+    offset: 0,
+  });
   const [selectedMatch, setSelectedMatch] = useState<MatchHistory | null>(null);
 
   const [alertVisible, setAlertVisible] = useState(false);
@@ -554,6 +593,7 @@ export default function History() {
     aroundtheclock_summary: true,
     bob27_summary: true,
     hundreddarts_summary: true,
+    heatmap: true,
   });
   const [collapsedPlayers, setCollapsedPlayers] = useState<
     Record<string, boolean>
@@ -632,6 +672,12 @@ export default function History() {
     if (filterMode === "All") return history;
     return history.filter((h) => h.mode === filterMode);
   }, [history, filterMode]);
+
+  const canScrollLeft = scrollLayout.offset > 0;
+  const canScrollRight =
+    scrollLayout.width > 0 &&
+    scrollLayout.contentWidth > 0 &&
+    scrollLayout.offset + scrollLayout.width < scrollLayout.contentWidth - 5;
 
   const singleMatchStats = useMemo(() => {
     if (!selectedMatch) return [];
@@ -733,6 +779,7 @@ export default function History() {
         s100: 0,
         s60: 0,
         hits: {},
+        coords: [],
       };
       [...Array(20)].forEach(
         (_, i) => (playerMap[p.name].hits[i + 1] = { S: 0, D: 0, T: 0 }),
@@ -741,22 +788,48 @@ export default function History() {
       playerMap[p.name].hits[0] = { S: 0, D: 0, T: 0 };
 
       if (p.allTurns) {
+        const sumOfLengths = p.allTurns.reduce(
+          (acc: number, t: any[]) => acc + t.length,
+          0,
+        );
+        const isBuggyCompressed =
+          p.totalMatchDarts &&
+          p.totalMatchDarts > sumOfLengths &&
+          !p.allTurns.some((t: any[]) => t.some((d: any) => d.d !== undefined));
+
         p.allTurns.forEach((turn: any[], index: number) => {
           const turnSum = turn.reduce(
             (a, b) => a + (typeof b === "number" ? b : b.v * b.m),
             0,
           );
+
+          let turnDarts = turn.reduce(
+            (a: any, b: any) =>
+              a + (typeof b === "number" ? 1 : b.d !== undefined ? b.d : 1),
+            0,
+          );
+          if (isBuggyCompressed) {
+            turnDarts =
+              index === p.allTurns.length - 1
+                ? p.totalMatchDarts - index * 3
+                : 3;
+          }
+
           playerMap[p.name].totalPoints += turnSum;
-          playerMap[p.name].totalDarts += turn.length;
+          playerMap[p.name].totalDarts += turnDarts;
           if (index < 3) {
             playerMap[p.name].first9DartsPoints += turnSum;
-            playerMap[p.name].first9DartsCount += turn.length;
+            playerMap[p.name].first9DartsCount += turnDarts;
           }
           if (turnSum >= 180) playerMap[p.name].s180++;
           else if (turnSum >= 140) playerMap[p.name].s140++;
           else if (turnSum >= 100) playerMap[p.name].s100++;
           else if (turnSum >= 60) playerMap[p.name].s60++;
           turn.forEach((dart) => {
+            const isScoreInput = dart.i === true || isBuggyCompressed;
+            if (isScoreInput) return;
+            if (dart.c) playerMap[p.name].coords.push(dart.c);
+
             if (
               typeof dart === "object" &&
               dart.v !== undefined &&
@@ -958,6 +1031,13 @@ export default function History() {
   const activeSections = useMemo(() => {
     if (!selectedMatch) return [];
 
+    const hasAnyHits = singleMatchStats.some((s: any) => {
+      if (!s.hits) return false;
+      return Object.values(s.hits).some(
+        (h: any) => h.S > 0 || h.D > 0 || h.T > 0,
+      );
+    });
+
     if (selectedMatch.mode === "Cricket") {
       return [
         {
@@ -976,16 +1056,26 @@ export default function History() {
     }
 
     if (selectedMatch.mode === "100 Darts") {
-      return [
-        { id: "hundreddarts_summary", title: "100 Darts" },
-        {
+      const sections = [{ id: "hundreddarts_summary", title: "100 Darts" }];
+      if (hasAnyHits) {
+        sections.push({
           id: "hit_chart",
           title: t(language, "sectorsHeader") || "Targets hitted",
-        },
-      ];
+        });
+      }
+      const hasAnyCoords = singleMatchStats.some(
+        (s: any) => s.coords && s.coords.length > 0,
+      );
+      if (hasAnyCoords) {
+        sections.push({
+          id: "heatmap",
+          title: t(language, "heatmap") || "Heatmap",
+        });
+      }
+      return sections;
     }
 
-    return [
+    const sections = [
       {
         id: "performance",
         title: t(language, "avgHeader") || "First 9 / Average",
@@ -999,68 +1089,89 @@ export default function History() {
         title:
           t(language, "scoringHeader") || "Scoring (60+ / 100+ / 140+ / 180)",
       },
-      {
+    ];
+
+    if (hasAnyHits)
+      sections.push({
         id: "hit_chart",
         title: t(language, "sectorsHeader") || "Targets hitted",
-      },
-    ];
-  }, [selectedMatch, language]);
+      });
+
+    const hasAnyCoords = singleMatchStats.some(
+      (s: any) => s.coords && s.coords.length > 0,
+    );
+    if (hasAnyCoords)
+      sections.push({
+        id: "heatmap",
+        title: t(language, "heatmap") || "Heatmap",
+      });
+
+    return sections;
+  }, [selectedMatch, singleMatchStats, language]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.filterContainer}>
-        {(
-          [
-            { id: "All" as const, label: t(language, "all") || "All" },
-            { id: "X01" as const, label: "X01" },
-            { id: "Cricket" as const, label: "Cricket" },
-          ] as const
-        ).map((f) => (
-          <Pressable
-            key={f.id}
-            onPress={() => setFilterMode(f.id)}
-            style={[
-              styles.filterBtn,
-              filterMode === f.id && styles.filterBtnActive,
+      <View style={{ position: "relative" }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
+          onScroll={(e) => {
+            const offset = e.nativeEvent.contentOffset.x;
+            const width = e.nativeEvent.layoutMeasurement.width;
+            setScrollLayout((prev) => ({
+              ...prev,
+              offset,
+              width,
+            }));
+          }}
+          onContentSizeChange={(w) =>
+            setScrollLayout((prev) => ({ ...prev, contentWidth: w }))
+          }
+          onLayout={(e) => {
+            const width = e.nativeEvent.layout.width;
+            setScrollLayout((prev) => ({ ...prev, width }));
+          }}
+          scrollEventThrottle={16}
+        >
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={filterMode}
+            onSelect={setFilterMode}
+            style={[styles.filterContainer, { width: 580 }]}
+            options={[
+              { id: "All", label: t(language, "all") || "All" },
+              { id: "X01", label: "X01" },
+              { id: "Cricket", label: "Cricket" },
+              { id: "Bob's 27", label: "Bob's" },
+              { id: "100 Darts", label: "100" },
+              { id: "Around the Clock", label: "Clock" },
             ]}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filterMode === f.id && styles.filterTextActive,
-              ]}
-            >
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={[styles.filterContainer, { marginTop: 0 }]}>
-        {(
-          [
-            { id: "Bob's 27" as const, label: "Bob's" },
-            { id: "100 Darts" as const, label: "100" },
-            { id: "Around the Clock" as const, label: "Clock" },
-          ] as const
-        ).map((f) => (
-          <Pressable
-            key={f.id}
-            onPress={() => setFilterMode(f.id)}
-            style={[
-              styles.filterBtn,
-              filterMode === f.id && styles.filterBtnActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filterMode === f.id && styles.filterTextActive,
-              ]}
-            >
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
+          />
+        </ScrollView>
+
+        {canScrollLeft && (
+          <View style={styles.scrollArrowLeft} pointerEvents="none">
+            <View style={styles.arrowIconBackground}>
+              <Ionicons
+                name="chevron-back"
+                size={16}
+                color={theme.colors.textMain}
+              />
+            </View>
+          </View>
+        )}
+        {canScrollRight && (
+          <View style={styles.scrollArrowRight} pointerEvents="none">
+            <View style={styles.arrowIconBackground}>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={theme.colors.textMain}
+              />
+            </View>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -1173,29 +1284,41 @@ const getStyles = (theme: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     filterContainer: {
-      flexDirection: "row",
       backgroundColor: theme.colors.cardBorder,
-      margin: 16,
-      marginBottom: 10,
       borderRadius: 12,
       padding: 4,
     },
-    filterBtn: {
-      flex: 1,
-      paddingVertical: 10,
+    scrollArrowLeft: {
+      position: "absolute",
+      left: 4,
+      top: 12,
+      bottom: 12,
+      justifyContent: "center",
       alignItems: "center",
-      borderRadius: 10,
     },
-    filterBtnActive: {
-      backgroundColor: theme.colors.primaryDark,
-      elevation: 2,
+    scrollArrowRight: {
+      position: "absolute",
+      right: 4,
+      top: 12,
+      bottom: 12,
+      justifyContent: "center",
+      alignItems: "center",
     },
-    filterText: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: theme.colors.textMuted,
+    arrowIconBackground: {
+      backgroundColor: theme.colors.card,
+      borderRadius: 12,
+      width: 24,
+      height: 24,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.3,
+      shadowRadius: 2,
+      elevation: 3,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
     },
-    filterTextActive: { color: "#fff" },
     listContainer: { paddingHorizontal: 16, paddingBottom: 20 },
     card: {
       backgroundColor: theme.colors.card,

@@ -13,14 +13,14 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import CustomAlert from "../../components/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { IMPOSSIBLE_SCORES, BOGEY_NUMBERS } from "../../lib/gameUtils";
+import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
+import { useGameModals } from "../../hooks/useGameModals";
 
 const { width } = Dimensions.get("window");
-const IMPOSSIBLE_SCORES = [163, 166, 169, 172, 173, 175, 176, 178, 179];
-const BOGEY_NUMBERS = [169, 168, 166, 165, 163, 162, 159];
 
 export default function TournamentMatchScreen() {
   const { theme } = useTheme();
@@ -31,6 +31,13 @@ export default function TournamentMatchScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const navigation = useNavigation();
   const isExiting = useRef(false);
+
+  const {
+    GameAlerts,
+    showExitConfirm,
+    showUndoConfirm,
+    showInvalidScoreAlert,
+  } = useGameModals(language);
 
   const { matchData, settingsData } = useLocalSearchParams();
   const match = matchData ? JSON.parse(matchData as string) : null;
@@ -60,13 +67,6 @@ export default function TournamentMatchScreen() {
 
   const [showDoublePrompt, setShowDoublePrompt] = useState(false);
   const [pendingTurn, setPendingTurn] = useState<any>(null);
-
-  const [alert, setAlert] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    buttons: any[];
-  }>({ visible: false, title: "", message: "", buttons: [] });
 
   const STORAGE_KEY = `match_save_${match?.id}`;
 
@@ -215,47 +215,21 @@ export default function TournamentMatchScreen() {
       : match.player1.id;
 
     if (targetName) {
-      setAlert({
-        visible: true,
-        title: t(language, "undoThrowTitle") || "Undo throw?",
-        message:
-          t(language, "undoThrowPlayerConfirm")?.replace(
-            "{{name}}",
-            targetName,
-          ) || `Do you want to undo the throw for ${targetName}?`,
-        buttons: [
-          {
-            text: t(language, "cancel") || "Cancel",
-            style: "cancel",
-            onPress: () => setAlert((v) => ({ ...v, visible: false })),
-          },
-          {
-            text: t(language, "continue") || "Continue",
-            onPress: () => {
-              if (targetId === match.player1.id) {
-                setP1Throws((v: string[]) => v.slice(0, -1));
-                setP1DoubleAttempts((v: number) =>
-                  Math.max(
-                    0,
-                    v - (p1DoubleThrows[p1DoubleThrows.length - 1] || 0),
-                  ),
-                );
-                setP1DoubleThrows((v: number[]) => v.slice(0, -1));
-              } else {
-                setP2Throws((v: string[]) => v.slice(0, -1));
-                setP2DoubleAttempts((v: number) =>
-                  Math.max(
-                    0,
-                    v - (p2DoubleThrows[p2DoubleThrows.length - 1] || 0),
-                  ),
-                );
-                setP2DoubleThrows((v: number[]) => v.slice(0, -1));
-              }
-              setActivePlayerId(targetId);
-              setAlert((v: any) => ({ ...v, visible: false }));
-            },
-          },
-        ],
+      showUndoConfirm(targetName, () => {
+        if (targetId === match.player1.id) {
+          setP1Throws((v: string[]) => v.slice(0, -1));
+          setP1DoubleAttempts((v: number) =>
+            Math.max(0, v - (p1DoubleThrows[p1DoubleThrows.length - 1] || 0)),
+          );
+          setP1DoubleThrows((v: number[]) => v.slice(0, -1));
+        } else {
+          setP2Throws((v: string[]) => v.slice(0, -1));
+          setP2DoubleAttempts((v: number) =>
+            Math.max(0, v - (p2DoubleThrows[p2DoubleThrows.length - 1] || 0)),
+          );
+          setP2DoubleThrows((v: number[]) => v.slice(0, -1));
+        }
+        setActivePlayerId(targetId);
       });
     }
   };
@@ -265,17 +239,7 @@ export default function TournamentMatchScreen() {
     const score = parseInt(currentInput);
 
     if (score > 180 || IMPOSSIBLE_SCORES.includes(score)) {
-      setAlert({
-        visible: true,
-        title: t(language, "error") || "Error",
-        message: t(language, "invalidScoreMsg") || "Invalid score for 3 darts.",
-        buttons: [
-          {
-            text: t(language, "ok") || "OK",
-            onPress: () => setAlert((v: any) => ({ ...v, visible: false })),
-          },
-        ],
-      });
+      showInvalidScoreAlert();
       setCurrentInput("");
       return;
     }
@@ -580,25 +544,13 @@ export default function TournamentMatchScreen() {
   };
 
   const handleExitRequest = () => {
-    setAlert({
-      visible: true,
-      title: t(language, "exitMatchTitle") || "Exit match?",
-      message: t(language, "exitMatchSub") || "Score will be saved.",
-      buttons: [
-        {
-          text: t(language, "cancel") || "Cancel",
-          style: "cancel",
-          onPress: () => setAlert((v: any) => ({ ...v, visible: false })),
-        },
-        {
-          text: t(language, "exitAndSave") || "Exit and save",
-          onPress: () => {
-            isExiting.current = true;
-            router.back();
-          },
-        },
-      ],
-    });
+    showExitConfirm(
+      () => {
+        isExiting.current = true;
+        router.back();
+      },
+      t(language, "exitMatchSub") || "Score will be saved.",
+    );
   };
 
   const renderTable = () => {
@@ -939,55 +891,22 @@ export default function TournamentMatchScreen() {
         </View>
       </Modal>
 
-      <View
-        style={[
-          styles.kb,
-          { paddingBottom: insets.bottom > 0 ? insets.bottom : 0 },
-        ]}
-      >
-        {[
-          ["1", "2", "3"],
-          ["4", "5", "6"],
-          ["7", "8", "9"],
-          ["DEL", "0", "ENTER"],
-        ].map((row, rI) => (
-          <View key={rI} style={styles.kbRow}>
-            {row.map((key, kI) => (
-              <TouchableOpacity
-                key={key}
-                style={[
-                  styles.kbKey,
-                  key === "ENTER" && styles.kbEnter,
-                  key === "DEL" && styles.kbDel,
-                ]}
-                onPress={() =>
-                  key === "ENTER"
-                    ? handleEnter()
-                    : key === "DEL"
-                      ? handleDelete()
-                      : handleKeyPress(key)
-                }
-              >
-                {key === "DEL" ? (
-                  <Ionicons name="backspace-outline" size={34} color="#fff" />
-                ) : key === "ENTER" ? (
-                  <Ionicons name="checkmark" size={42} color="#fff" />
-                ) : (
-                  <Text style={styles.kbTxt}>{key}</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        ))}
+      <View>
+        <ScoreKeyboard
+          onKeyPress={handleKeyPress}
+          onDelete={handleDelete}
+          onSubmit={handleEnter}
+          theme={theme}
+          hideWrapperBorder={true}
+          keyStyle={{ height: 80 }}
+          style={[
+            styles.kb,
+            { paddingBottom: insets.bottom > 0 ? insets.bottom : 0 },
+          ]}
+        />
       </View>
 
-      <CustomAlert
-        visible={alert.visible}
-        title={alert.title}
-        message={alert.message}
-        onRequestClose={() => setAlert((v: any) => ({ ...v, visible: false }))}
-        buttons={alert.buttons}
-      />
+      <GameAlerts />
     </View>
   );
 }
@@ -1124,20 +1043,6 @@ const getStyles = (theme: any) =>
       borderTopWidth: 1,
       borderColor: theme.colors.cardBorder,
     },
-    kbRow: { flexDirection: "row" },
-    kbKey: {
-      flex: 1,
-      height: 80,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRightWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: theme.colors.cardBorder,
-    },
-    kbEnter: { backgroundColor: theme.colors.success || "#28a745" },
-    kbDel: { backgroundColor: theme.colors.danger || "#ff4444" },
-    kbTxt: { fontSize: 32, fontWeight: "800", color: theme.colors.textMain },
     winOverlay: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: "rgba(0,0,0,0.9)",

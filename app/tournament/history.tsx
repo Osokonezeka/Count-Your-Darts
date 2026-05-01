@@ -11,9 +11,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import CustomAlert from "../../components/CustomAlert";
+import CustomAlert from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 
 export default function TournamentHistoryScreen() {
@@ -176,9 +177,9 @@ export default function TournamentHistoryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <AnimatedPressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text style={styles.headerTitle}>
           {t(language, "tournamentHistory") || "Tournament History"}
         </Text>

@@ -12,7 +12,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import CustomAlert from "../../components/CustomAlert";
+import CustomAlert from "../../components/modals/CustomAlert";
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
+import { AnimatedVerticalSelect } from "../../components/common/AnimatedVerticalSelect";
+import { AnimatedStepper } from "../../components/common/AnimatedStepper";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
@@ -252,9 +257,8 @@ export default function TournamentScreen() {
         <Text style={styles.sectionTitleMain}>
           {t(language, "selectTournamentMode") || "Select tournament mode"}
         </Text>
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.modeCard}
-          activeOpacity={0.7}
           onPress={() => {
             resetSettings();
             setMode("local");
@@ -270,10 +274,9 @@ export default function TournamentScreen() {
             {t(language, "localGameDesc") ||
               "Play on the same device. Perfect for playing at one board."}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </AnimatedPressable>
+        <AnimatedPressable
           style={styles.modeCard}
-          activeOpacity={0.7}
           onPress={() => setMode("multi")}
         >
           <View style={styles.iconWrapper}>
@@ -293,11 +296,10 @@ export default function TournamentScreen() {
             {t(language, "multiGameDesc") ||
               "Each player uses their own phone. Create a room and invite friends."}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.historyBtn}
-          activeOpacity={0.8}
           onPress={() => router.push("/tournament/history")}
         >
           <Ionicons
@@ -308,18 +310,17 @@ export default function TournamentScreen() {
           <Text style={styles.historyBtnText}>
             {t(language, "tournamentHistory") || "Tournament History"}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.historyBtn}
-          activeOpacity={0.8}
           onPress={() => router.push("../tournament/statistics")}
         >
           <Ionicons name="stats-chart" size={24} color={theme.colors.primary} />
           <Text style={styles.historyBtnText}>
             {t(language, "tournamentStatistics") || "Tournament Statistics"}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
     );
   }
@@ -328,7 +329,7 @@ export default function TournamentScreen() {
     return (
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <TouchableOpacity
+          <AnimatedPressable
             onPress={() => setMode("none")}
             style={styles.backButton}
           >
@@ -340,13 +341,12 @@ export default function TournamentScreen() {
             <Text style={styles.backButtonText}>
               {t(language, "changeMode") || "Change mode"}
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
           <Text style={styles.sectionTitleMain}>
             {t(language, "multiplayerOptions") || "Multiplayer options"}
           </Text>
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.modeCard}
-            activeOpacity={0.7}
             onPress={() => {
               resetSettings();
               setMode("host");
@@ -366,10 +366,9 @@ export default function TournamentScreen() {
               {t(language, "hostGameDesc") ||
                 "Create a new room, set rules and share the code with friends."}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </AnimatedPressable>
+          <AnimatedPressable
             style={styles.modeCard}
-            activeOpacity={0.7}
             onPress={() => setJoinModalVisible(true)}
           >
             <View style={styles.iconWrapper}>
@@ -382,7 +381,7 @@ export default function TournamentScreen() {
               {t(language, "joinGameDesc") ||
                 "Already have a code from a friend? Enter it here to join the lobby."}
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </ScrollView>
       </View>
     );
@@ -391,12 +390,12 @@ export default function TournamentScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.customHeader}>
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={handleBackFromSettings}
           style={styles.headerBtn}
         >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text style={styles.headerTitle}>
           {mode === "host"
             ? t(language, "newRoom") || "New room"
@@ -407,17 +406,15 @@ export default function TournamentScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {activeTournaments.length > 0 && (
-          <TouchableOpacity
-            style={styles.continueBtn}
-            activeOpacity={0.8}
+          <AnimatedPrimaryButton
+            title={`${t(language, "unfinishedTournaments") || "Unfinished tournaments"} (${activeTournaments.length})`}
+            iconName="list"
+            iconPosition="left"
+            color={theme.colors.warning || "#f0ad4e"}
+            theme={theme}
+            style={{ marginBottom: 20 }}
             onPress={() => setSavedModalVisible(true)}
-          >
-            <Ionicons name="list" size={24} color="#fff" />
-            <Text style={styles.continueBtnText}>
-              {t(language, "unfinishedTournaments") || "Unfinished tournaments"}{" "}
-              ({activeTournaments.length})
-            </Text>
-          </TouchableOpacity>
+          />
         )}
 
         <View style={styles.card}>
@@ -454,9 +451,8 @@ export default function TournamentScreen() {
           <Text style={styles.inputLabel}>
             {t(language, "startDate") || "Start date"}
           </Text>
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.dateSelector}
-            activeOpacity={0.7}
             onPress={openDatePicker}
           >
             <Ionicons
@@ -471,7 +467,7 @@ export default function TournamentScreen() {
                 minute: "2-digit",
               })}
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
           <View style={styles.descHeader}>
             <Text style={styles.inputLabel}>
@@ -498,97 +494,67 @@ export default function TournamentScreen() {
           <Text style={styles.sectionTitle}>
             {t(language, "structure") || "Structure"}
           </Text>
-          <View style={styles.segmentedControl}>
-            <TouchableOpacity
-              style={[
-                styles.segmentBtn,
-                config.teamSize === "single" && styles.segmentBtnActive,
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={config.teamSize}
+            onSelect={(val: any) => updateConfig("teamSize", val)}
+            options={[
+              {
+                id: "single",
+                label: t(language, "singleFormat") || "1 vs 1 (Single)",
+              },
+              {
+                id: "team",
+                label: t(language, "pairsFormat") || "2 vs 2 (Pairs)",
+              },
+            ]}
+          />
+          <View style={{ marginTop: 16 }}>
+            <AnimatedVerticalSelect
+              theme={theme}
+              activeOption={config.format}
+              onSelect={(val: any) => updateConfig("format", val)}
+              options={[
+                {
+                  id: "single_knockout",
+                  title: t(language, "singleKnockout") || "Single Knockout",
+                  desc:
+                    t(language, "singleKnockoutDesc") ||
+                    "Players are eliminated after one loss.",
+                },
+                {
+                  id: "double_knockout",
+                  title: t(language, "doubleKnockout") || "Double Knockout",
+                  desc:
+                    t(language, "doubleKnockoutDesc") ||
+                    "Players are eliminated after two losses.",
+                },
+                {
+                  id: "round_robin",
+                  title: t(language, "roundRobin") || "Round Robin",
+                  desc:
+                    t(language, "roundRobinDesc") ||
+                    "Every player plays against everyone else.",
+                },
+                {
+                  id: "groups_and_knockout",
+                  title:
+                    t(language, "groupsAndKnockout") || "Groups + Knockout",
+                  desc:
+                    t(language, "groupsAndKnockoutDesc") ||
+                    "Group stage followed by single elimination.",
+                },
+                {
+                  id: "groups_and_double_knockout",
+                  title:
+                    t(language, "groupsAndDoubleKnockout") ||
+                    "Groups + Double Knockout",
+                  desc:
+                    t(language, "groupsAndDoubleKnockoutDesc") ||
+                    "Group stage followed by double elimination.",
+                },
               ]}
-              onPress={() => updateConfig("teamSize", "single")}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  config.teamSize === "single" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "singleFormat") || "1 vs 1 (Single)"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.segmentBtn,
-                config.teamSize === "team" && styles.segmentBtnActive,
-              ]}
-              onPress={() => updateConfig("teamSize", "team")}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  config.teamSize === "team" && styles.segmentTextActive,
-                ]}
-              >
-                {t(language, "pairsFormat") || "2 vs 2 (Pairs)"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.formatGrid, { marginTop: 16 }]}>
-            {(
-              [
-                "single_knockout",
-                "double_knockout",
-                "round_robin",
-                "groups_and_knockout",
-              ] as TournamentFormat[]
-            ).map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[
-                  styles.formatBtn,
-                  config.format === f && styles.formatBtnActive,
-                ]}
-                onPress={() => updateConfig("format", f)}
-              >
-                <Text
-                  style={[
-                    styles.formatText,
-                    config.format === f && styles.formatTextActive,
-                  ]}
-                >
-                  {f === "single_knockout" &&
-                    (t(language, "singleKnockout") || "Single Knockout")}
-                  {f === "double_knockout" &&
-                    (t(language, "doubleKnockout") || "Double Knockout")}
-                  {f === "round_robin" &&
-                    (t(language, "roundRobin") || "Round Robin")}
-                  {f === "groups_and_knockout" &&
-                    (t(language, "groupsAndKnockout") || "Groups + Knockout")}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[
-                styles.formatBtn,
-                styles.formatBtnFull,
-                config.format === "groups_and_double_knockout" &&
-                  styles.formatBtnActive,
-              ]}
-              onPress={() =>
-                updateConfig("format", "groups_and_double_knockout")
-              }
-            >
-              <Text
-                style={[
-                  styles.formatText,
-                  config.format === "groups_and_double_knockout" &&
-                    styles.formatTextActive,
-                ]}
-              >
-                {t(language, "groupsAndDoubleKnockout") ||
-                  "Groups + Double Knockout"}
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
@@ -597,64 +563,35 @@ export default function TournamentScreen() {
             <Text style={styles.sectionTitle}>
               {t(language, "seeding") || "Seeding"}
             </Text>
-            <View style={styles.segmentedControl}>
-              <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  config.bracketOrder === "top_to_bottom" &&
-                    styles.segmentBtnActive,
-                ]}
-                onPress={() => updateConfig("bracketOrder", "top_to_bottom")}
-              >
-                <Ionicons
-                  name="arrow-down"
-                  size={16}
-                  color={
-                    config.bracketOrder === "top_to_bottom"
-                      ? "#fff"
-                      : theme.colors.textMuted
-                  }
-                />
-                <Text
-                  style={[
-                    styles.segmentText,
-                    config.bracketOrder === "top_to_bottom" &&
-                      styles.segmentTextActive,
-                  ]}
-                >
-                  {" "}
-                  {t(language, "topToBottom") || "Top to bottom"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  config.bracketOrder === "bottom_to_top" &&
-                    styles.segmentBtnActive,
-                ]}
-                onPress={() => updateConfig("bracketOrder", "bottom_to_top")}
-              >
-                <Ionicons
-                  name="arrow-up"
-                  size={16}
-                  color={
-                    config.bracketOrder === "bottom_to_top"
-                      ? "#fff"
-                      : theme.colors.textMuted
-                  }
-                />
-                <Text
-                  style={[
-                    styles.segmentText,
-                    config.bracketOrder === "bottom_to_top" &&
-                      styles.segmentTextActive,
-                  ]}
-                >
-                  {" "}
-                  {t(language, "bottomToTop") || "Bottom to top"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <AnimatedSegmentedControl
+              theme={theme}
+              activeOption={config.bracketOrder}
+              onSelect={(val: any) => updateConfig("bracketOrder", val)}
+              options={[
+                {
+                  id: "top_to_bottom",
+                  label: t(language, "topToBottom") || "Top to bottom",
+                  icon: (isActive: boolean) => (
+                    <Ionicons
+                      name="arrow-down"
+                      size={16}
+                      color={isActive ? "#fff" : theme.colors.textMuted}
+                    />
+                  ),
+                },
+                {
+                  id: "bottom_to_top",
+                  label: t(language, "bottomToTop") || "Bottom to top",
+                  icon: (isActive: boolean) => (
+                    <Ionicons
+                      name="arrow-up"
+                      size={16}
+                      color={isActive ? "#fff" : theme.colors.textMuted}
+                    />
+                  ),
+                },
+              ]}
+            />
           </View>
         )}
 
@@ -663,107 +600,30 @@ export default function TournamentScreen() {
             {t(language, "matchRules") || "Match rules"}
           </Text>
           <View style={styles.stepperRow}>
-            <View style={styles.stepperContainer}>
-              <Text style={styles.stepperLabel}>
-                {t(language, "sets") || "Sets"}
-              </Text>
-              <View style={styles.stepperControlsCompact}>
-                <TouchableOpacity
-                  style={styles.stepperBtnCompact}
-                  onPress={() =>
-                    updateConfig(
-                      "targetSets",
-                      Math.max(1, config.targetSets - 1),
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="remove"
-                    size={18}
-                    color={theme.colors.primary}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.stepperValueCompact}>
-                  {config.targetSets}
-                </Text>
-                <TouchableOpacity
-                  style={styles.stepperBtnCompact}
-                  onPress={() =>
-                    updateConfig("targetSets", config.targetSets + 1)
-                  }
-                >
-                  <Ionicons name="add" size={18} color={theme.colors.primary} />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <AnimatedStepper
+              theme={theme}
+              label={t(language, "sets") || "Sets"}
+              value={config.targetSets}
+              setValue={(val: number) => updateConfig("targetSets", val)}
+              max={30}
+            />
             <View style={styles.divider} />
-            <View style={styles.stepperContainer}>
-              <Text style={styles.stepperLabel}>
-                {t(language, "legs") || "Legs"}
-              </Text>
-              <View style={styles.stepperControlsCompact}>
-                <TouchableOpacity
-                  style={styles.stepperBtnCompact}
-                  onPress={() =>
-                    updateConfig(
-                      "targetLegs",
-                      Math.max(1, config.targetLegs - 1),
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="remove"
-                    size={18}
-                    color={theme.colors.primary}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.stepperValueCompact}>
-                  {config.targetLegs}
-                </Text>
-                <TouchableOpacity
-                  style={styles.stepperBtnCompact}
-                  onPress={() =>
-                    updateConfig("targetLegs", config.targetLegs + 1)
-                  }
-                >
-                  <Ionicons name="add" size={18} color={theme.colors.primary} />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <AnimatedStepper
+              theme={theme}
+              label={t(language, "legs") || "Legs"}
+              value={config.targetLegs}
+              setValue={(val: number) => updateConfig("targetLegs", val)}
+              max={30}
+            />
             <View style={styles.divider} />
-            <View style={styles.stepperContainer}>
-              <Text style={styles.stepperLabel}>
-                {t(language, "points") || "Points"}
-              </Text>
-              <View style={styles.stepperControlsCompact}>
-                <TouchableOpacity
-                  style={styles.stepperBtnCompact}
-                  onPress={() =>
-                    updateConfig(
-                      "startingPoints",
-                      Math.max(101, config.startingPoints - 200),
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="remove"
-                    size={18}
-                    color={theme.colors.primary}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.stepperValueCompact}>
-                  {config.startingPoints}
-                </Text>
-                <TouchableOpacity
-                  style={styles.stepperBtnCompact}
-                  onPress={() =>
-                    updateConfig("startingPoints", config.startingPoints + 200)
-                  }
-                >
-                  <Ionicons name="add" size={18} color={theme.colors.primary} />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <AnimatedStepper
+              theme={theme}
+              label={t(language, "points") || "Points"}
+              value={config.startingPoints}
+              setValue={(val: number) => updateConfig("startingPoints", val)}
+              min={101}
+              step={200}
+            />
           </View>
 
           {isKnockoutFormat && (
@@ -773,9 +633,8 @@ export default function TournamentScreen() {
                 <>
                   <View style={styles.horizontalDivider} />
 
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.toggleRow}
-                    activeOpacity={0.7}
                     onPress={() =>
                       updateConfig("customGroups", !config.customGroups)
                     }
@@ -794,85 +653,29 @@ export default function TournamentScreen() {
                       {t(language, "customGroupsToggle") ||
                         "Different for groups?"}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
 
                   {config.customGroups && (
                     <View style={styles.stepperRowSub}>
-                      <View style={styles.stepperContainer}>
-                        <Text style={styles.stepperLabel}>
-                          {t(language, "setsGroup") || "Sets (Groups)"}
-                        </Text>
-                        <View style={styles.stepperControlsCompact}>
-                          <TouchableOpacity
-                            style={styles.stepperBtnCompact}
-                            onPress={() =>
-                              updateConfig(
-                                "groupSets",
-                                Math.max(1, config.groupSets - 1),
-                              )
-                            }
-                          >
-                            <Ionicons
-                              name="remove"
-                              size={18}
-                              color={theme.colors.primary}
-                            />
-                          </TouchableOpacity>
-                          <Text style={styles.stepperValueCompact}>
-                            {config.groupSets}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.stepperBtnCompact}
-                            onPress={() =>
-                              updateConfig("groupSets", config.groupSets + 1)
-                            }
-                          >
-                            <Ionicons
-                              name="add"
-                              size={18}
-                              color={theme.colors.primary}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                      <AnimatedStepper
+                        theme={theme}
+                        label={t(language, "setsGroup") || "Sets (Groups)"}
+                        value={config.groupSets}
+                        setValue={(val: number) =>
+                          updateConfig("groupSets", val)
+                        }
+                        max={30}
+                      />
                       <View style={styles.divider} />
-                      <View style={styles.stepperContainer}>
-                        <Text style={styles.stepperLabel}>
-                          {t(language, "legsGroup") || "Legs (Groups)"}
-                        </Text>
-                        <View style={styles.stepperControlsCompact}>
-                          <TouchableOpacity
-                            style={styles.stepperBtnCompact}
-                            onPress={() =>
-                              updateConfig(
-                                "groupLegs",
-                                Math.max(1, config.groupLegs - 1),
-                              )
-                            }
-                          >
-                            <Ionicons
-                              name="remove"
-                              size={18}
-                              color={theme.colors.primary}
-                            />
-                          </TouchableOpacity>
-                          <Text style={styles.stepperValueCompact}>
-                            {config.groupLegs}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.stepperBtnCompact}
-                            onPress={() =>
-                              updateConfig("groupLegs", config.groupLegs + 1)
-                            }
-                          >
-                            <Ionicons
-                              name="add"
-                              size={18}
-                              color={theme.colors.primary}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                      <AnimatedStepper
+                        theme={theme}
+                        label={t(language, "legsGroup") || "Legs (Groups)"}
+                        value={config.groupLegs}
+                        setValue={(val: number) =>
+                          updateConfig("groupLegs", val)
+                        }
+                        max={30}
+                      />
                     </View>
                   )}
                 </>
@@ -880,9 +683,8 @@ export default function TournamentScreen() {
 
               <View style={styles.horizontalDivider} />
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.toggleRow}
-                activeOpacity={0.7}
                 onPress={() => updateConfig("customSemis", !config.customSemis)}
               >
                 <View
@@ -899,93 +701,32 @@ export default function TournamentScreen() {
                   {t(language, "customSemisToggle") ||
                     "Different for semifinals?"}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
               {config.customSemis && (
                 <View style={styles.stepperRowSub}>
-                  <View style={styles.stepperContainer}>
-                    <Text style={styles.stepperLabel}>
-                      {t(language, "setsSemi") || "Sets (1/2)"}
-                    </Text>
-                    <View style={styles.stepperControlsCompact}>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig(
-                            "semiSets",
-                            Math.max(1, config.semiSets - 1),
-                          )
-                        }
-                      >
-                        <Ionicons
-                          name="remove"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                      <Text style={styles.stepperValueCompact}>
-                        {config.semiSets}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig("semiSets", config.semiSets + 1)
-                        }
-                      >
-                        <Ionicons
-                          name="add"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                  <AnimatedStepper
+                    theme={theme}
+                    label={t(language, "setsSemi") || "Sets (1/2)"}
+                    value={config.semiSets}
+                    setValue={(val: number) => updateConfig("semiSets", val)}
+                    max={30}
+                  />
                   <View style={styles.divider} />
-                  <View style={styles.stepperContainer}>
-                    <Text style={styles.stepperLabel}>
-                      {t(language, "legsSemi") || "Legs (1/2)"}
-                    </Text>
-                    <View style={styles.stepperControlsCompact}>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig(
-                            "semiLegs",
-                            Math.max(1, config.semiLegs - 1),
-                          )
-                        }
-                      >
-                        <Ionicons
-                          name="remove"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                      <Text style={styles.stepperValueCompact}>
-                        {config.semiLegs}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig("semiLegs", config.semiLegs + 1)
-                        }
-                      >
-                        <Ionicons
-                          name="add"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                  <AnimatedStepper
+                    theme={theme}
+                    label={t(language, "legsSemi") || "Legs (1/2)"}
+                    value={config.semiLegs}
+                    setValue={(val: number) => updateConfig("semiLegs", val)}
+                    max={30}
+                  />
                 </View>
               )}
 
               <View style={styles.horizontalDivider} />
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.toggleRow}
-                activeOpacity={0.7}
                 onPress={() =>
                   updateConfig("customFinals", !config.customFinals)
                 }
@@ -1003,93 +744,32 @@ export default function TournamentScreen() {
                 <Text style={styles.toggleText}>
                   {t(language, "customFinalsToggle") || "Different for final?"}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
               {config.customFinals && (
                 <View style={styles.stepperRowSub}>
-                  <View style={styles.stepperContainer}>
-                    <Text style={styles.stepperLabel}>
-                      {t(language, "setsFinal") || "Sets (Final)"}
-                    </Text>
-                    <View style={styles.stepperControlsCompact}>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig(
-                            "finalSets",
-                            Math.max(1, config.finalSets - 1),
-                          )
-                        }
-                      >
-                        <Ionicons
-                          name="remove"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                      <Text style={styles.stepperValueCompact}>
-                        {config.finalSets}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig("finalSets", config.finalSets + 1)
-                        }
-                      >
-                        <Ionicons
-                          name="add"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                  <AnimatedStepper
+                    theme={theme}
+                    label={t(language, "setsFinal") || "Sets (Final)"}
+                    value={config.finalSets}
+                    setValue={(val: number) => updateConfig("finalSets", val)}
+                    max={30}
+                  />
                   <View style={styles.divider} />
-                  <View style={styles.stepperContainer}>
-                    <Text style={styles.stepperLabel}>
-                      {t(language, "legsFinal") || "Legs (Final)"}
-                    </Text>
-                    <View style={styles.stepperControlsCompact}>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig(
-                            "finalLegs",
-                            Math.max(1, config.finalLegs - 1),
-                          )
-                        }
-                      >
-                        <Ionicons
-                          name="remove"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                      <Text style={styles.stepperValueCompact}>
-                        {config.finalLegs}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.stepperBtnCompact}
-                        onPress={() =>
-                          updateConfig("finalLegs", config.finalLegs + 1)
-                        }
-                      >
-                        <Ionicons
-                          name="add"
-                          size={18}
-                          color={theme.colors.primary}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                  <AnimatedStepper
+                    theme={theme}
+                    label={t(language, "legsFinal") || "Legs (Final)"}
+                    value={config.finalLegs}
+                    setValue={(val: number) => updateConfig("finalLegs", val)}
+                    max={30}
+                  />
                 </View>
               )}
 
               <View style={styles.horizontalDivider} />
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.toggleRow}
-                activeOpacity={0.7}
                 onPress={() =>
                   updateConfig("thirdPlaceMatch", !config.thirdPlaceMatch)
                 }
@@ -1107,14 +787,17 @@ export default function TournamentScreen() {
                 <Text style={styles.toggleText}>
                   {t(language, "thirdPlaceMatchToggle") || "3rd place match?"}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           )}
         </View>
 
-        <TouchableOpacity
-          style={styles.startBtn}
-          activeOpacity={0.8}
+        <AnimatedPrimaryButton
+          title={t(language, "nextStep") || "Next step"}
+          iconName="arrow-forward"
+          theme={theme}
+          fontSize={18}
+          style={{ marginTop: 16 }}
           onPress={() => {
             const trimmedName = config.name.trim();
             if (!trimmedName) {
@@ -1122,12 +805,10 @@ export default function TournamentScreen() {
               nameInputRef.current?.focus();
               return;
             }
-
             const nameExists = activeTournaments.some(
               (tItem) =>
                 tItem.settings.name.toLowerCase() === trimmedName.toLowerCase(),
             );
-
             if (nameExists) {
               setDeleteAlert({
                 visible: true,
@@ -1148,7 +829,6 @@ export default function TournamentScreen() {
               });
               return;
             }
-
             router.push({
               pathname: "/tournament/players",
               params: {
@@ -1159,12 +839,7 @@ export default function TournamentScreen() {
               },
             });
           }}
-        >
-          <Text style={styles.startBtnText}>
-            {t(language, "nextStep") || "Next step"}
-          </Text>
-          <Ionicons name="arrow-forward" size={24} color="#fff" />
-        </TouchableOpacity>
+        />
       </ScrollView>
 
       <Modal
@@ -1185,7 +860,7 @@ export default function TournamentScreen() {
               <Text style={styles.modalTitleList}>
                 {t(language, "resumeTournament") || "Resume tournament"}
               </Text>
-              <TouchableOpacity
+              <AnimatedPressable
                 onPress={() => setSavedModalVisible(false)}
                 style={styles.closeModalBtn}
               >
@@ -1194,7 +869,7 @@ export default function TournamentScreen() {
                   size={24}
                   color={theme.colors.textMuted}
                 />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             <ScrollView style={{ maxHeight: 400 }}>
@@ -1212,7 +887,7 @@ export default function TournamentScreen() {
                     </Text>
                   </View>
                   <View style={{ flexDirection: "row", gap: 10 }}>
-                    <TouchableOpacity
+                    <AnimatedPressable
                       style={styles.actionBtnPlay}
                       onPress={() => {
                         setSavedModalVisible(false);
@@ -1226,15 +901,15 @@ export default function TournamentScreen() {
                       }}
                     >
                       <Ionicons name="play" size={18} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </AnimatedPressable>
+                    <AnimatedPressable
                       style={styles.actionBtnDelete}
                       onPress={() =>
                         handleDeleteTournament(tItem.settings.name)
                       }
                     >
                       <Ionicons name="trash" size={18} color="#fff" />
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   </View>
                 </View>
               ))}
@@ -1331,24 +1006,6 @@ const getStyles = (theme: any) =>
       alignItems: "center",
     },
 
-    continueBtn: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.warning || "#f0ad4e",
-      paddingVertical: 16,
-      paddingHorizontal: 16,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      marginBottom: 20,
-      shadowColor: theme.colors.warning || "#f0ad4e",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 4,
-    },
-    continueBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-
     sectionTitleMain: {
       fontSize: 22,
       fontWeight: "800",
@@ -1440,54 +1097,6 @@ const getStyles = (theme: any) =>
     },
     dateText: { fontSize: 16, color: theme.colors.textMain, fontWeight: "600" },
 
-    segmentedControl: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.background,
-      borderRadius: 10,
-      padding: 4,
-    },
-    segmentBtn: {
-      flex: 1,
-      paddingVertical: 10,
-      alignItems: "center",
-      borderRadius: 8,
-      flexDirection: "row",
-      justifyContent: "center",
-    },
-    segmentBtnActive: {
-      backgroundColor: theme.colors.primaryDark,
-      elevation: 1,
-    },
-    segmentText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: theme.colors.textMuted,
-    },
-    segmentTextActive: { color: "#fff", fontWeight: "700" },
-    formatGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-    formatBtn: {
-      width: "48%",
-      backgroundColor: theme.colors.background,
-      paddingVertical: 14,
-      paddingHorizontal: 8,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    formatBtnFull: { width: "100%" },
-    formatBtnActive: {
-      backgroundColor: theme.colors.primaryDark,
-      borderColor: theme.colors.primaryDark,
-    },
-    formatText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: theme.colors.textMuted,
-      textAlign: "center",
-    },
-    formatTextActive: { color: "#fff", fontWeight: "700" },
     horizontalDivider: {
       height: 1,
       backgroundColor: theme.colors.cardBorder,
@@ -1534,36 +1143,6 @@ const getStyles = (theme: any) =>
       justifyContent: "space-between",
       alignItems: "center",
       marginTop: 8,
-    },
-    stepperContainer: { flex: 1, alignItems: "center" },
-    stepperLabel: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-      fontWeight: "700",
-      marginBottom: 8,
-      textTransform: "uppercase",
-    },
-    stepperControlsCompact: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    stepperBtnCompact: {
-      backgroundColor: theme.colors.background,
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      justifyContent: "center",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-    },
-    stepperValueCompact: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      minWidth: 26,
-      textAlign: "center",
     },
     divider: {
       width: 1,
