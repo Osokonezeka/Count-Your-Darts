@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -70,6 +70,32 @@ export default function TournamentMatchScreen() {
 
   const STORAGE_KEY = `match_save_${match?.id}`;
 
+  const p1PrevTurns = useMemo(() => {
+    return legsHistory.reduce(
+      (acc, leg) => acc + (leg.p1Throws || []).length,
+      0,
+    );
+  }, [legsHistory]);
+
+  const p2PrevTurns = useMemo(() => {
+    return legsHistory.reduce(
+      (acc, leg) => acc + (leg.p2Throws || []).length,
+      0,
+    );
+  }, [legsHistory]);
+
+  const p1ActiveMember = useMemo(() => {
+    if (!match?.player1?.isTeam || !match?.player1?.members) return null;
+    const totalTurns = p1PrevTurns + p1Throws.length;
+    return match.player1.members[totalTurns % match.player1.members.length];
+  }, [match, p1Throws.length, p1PrevTurns]);
+
+  const p2ActiveMember = useMemo(() => {
+    if (!match?.player2?.isTeam || !match?.player2?.members) return null;
+    const totalTurns = p2PrevTurns + p2Throws.length;
+    return match.player2.members[totalTurns % match.player2.members.length];
+  }, [match, p2Throws.length, p2PrevTurns]);
+
   useEffect(() => {
     const determineMatchFormat = async () => {
       if (!match || !initialSettings) {
@@ -86,19 +112,49 @@ export default function TournamentMatchScreen() {
           let overriddenSettings = { ...initialSettings };
 
           if (
-            initialSettings.customFinals &&
-            match.round === totalR &&
-            !match.isThirdPlace
+            initialSettings.format === "double_knockout" ||
+            initialSettings.format === "groups_and_double_knockout"
           ) {
-            overriddenSettings.targetSets = initialSettings.finalSets;
-            overriddenSettings.targetLegs = initialSettings.finalLegs;
-          } else if (
-            initialSettings.customSemis &&
-            match.round === totalR - 1 &&
-            !match.isThirdPlace
-          ) {
-            overriddenSettings.targetSets = initialSettings.semiSets;
-            overriddenSettings.targetLegs = initialSettings.semiLegs;
+            if (initialSettings.customFinals && match.bracket === "gf") {
+              overriddenSettings.targetSets = initialSettings.finalSets;
+              overriddenSettings.targetLegs = initialSettings.finalLegs;
+            } else if (initialSettings.customSemis) {
+              const totalWBRounds = Math.max(
+                ...bracket
+                  .filter((m: any) => m.bracket === "wb")
+                  .map((m: any) => m.round),
+                1,
+              );
+              const totalLBRounds = Math.max(
+                ...bracket
+                  .filter((m: any) => m.bracket === "lb")
+                  .map((m: any) => m.round),
+                1,
+              );
+              if (
+                (match.bracket === "wb" && match.round === totalWBRounds) ||
+                (match.bracket === "lb" && match.round === totalLBRounds)
+              ) {
+                overriddenSettings.targetSets = initialSettings.semiSets;
+                overriddenSettings.targetLegs = initialSettings.semiLegs;
+              }
+            }
+          } else {
+            if (
+              initialSettings.customFinals &&
+              match.round === totalR &&
+              !match.isThirdPlace
+            ) {
+              overriddenSettings.targetSets = initialSettings.finalSets;
+              overriddenSettings.targetLegs = initialSettings.finalLegs;
+            } else if (
+              initialSettings.customSemis &&
+              match.round === totalR - 1 &&
+              !match.isThirdPlace
+            ) {
+              overriddenSettings.targetSets = initialSettings.semiSets;
+              overriddenSettings.targetLegs = initialSettings.semiLegs;
+            }
           }
 
           setSettings(overriddenSettings);
@@ -509,11 +565,44 @@ export default function TournamentMatchScreen() {
             if (nextId) {
               const nIdx = bracket.findIndex((m: any) => m.id === nextId);
               if (nIdx > -1) {
-                if (bracket[idx].matchIndex % 2 === 0)
+                if (bracket[idx].nextMatchSlot === "p1")
                   bracket[nIdx].player1 = mWinnerObj;
-                else bracket[nIdx].player2 = mWinnerObj;
+                else if (bracket[idx].nextMatchSlot === "p2")
+                  bracket[nIdx].player2 = mWinnerObj;
+                else {
+                  if (bracket[idx].matchIndex % 2 === 0)
+                    bracket[nIdx].player1 = mWinnerObj;
+                  else bracket[nIdx].player2 = mWinnerObj;
+                }
               }
             }
+
+            const dropId = bracket[idx].loserDropMatchId;
+            if (dropId) {
+              const dIdx = bracket.findIndex((m: any) => m.id === dropId);
+              if (dIdx > -1) {
+                const mLoserObj = isP1 ? match.player2 : match.player1;
+                if (bracket[idx].loserDropSlot === "p1")
+                  bracket[dIdx].player1 = mLoserObj;
+                else bracket[dIdx].player2 = mLoserObj;
+              }
+            }
+
+            if (bracket[idx].bracket === "gf" && bracket[idx].round === 1) {
+              const gfM1 = bracket.find(
+                (x: any) => x.bracket === "gf" && x.round === 2,
+              );
+              if (gfM1) {
+                if (mWinnerObj.id === bracket[idx].player1?.id) {
+                  gfM1.isBye = true;
+                  gfM1.winner = mWinnerObj;
+                } else {
+                  gfM1.player1 = bracket[idx].player1;
+                  gfM1.player2 = bracket[idx].player2;
+                }
+              }
+            }
+
             const totalR = Math.max(...bracket.map((m: any) => m.round));
             if (bracket[idx].round === totalR - 1) {
               const loser = isP1 ? match.player2 : match.player1;
@@ -687,9 +776,21 @@ export default function TournamentMatchScreen() {
               styles.pName,
               activePlayerId === match.player1.id && styles.pActive,
             ]}
+            numberOfLines={1}
           >
             {match.player1.name}
           </Text>
+          {p1ActiveMember && (
+            <Text
+              style={[
+                styles.pMemberName,
+                activePlayerId === match.player1.id && styles.pMemberActive,
+              ]}
+              numberOfLines={1}
+            >
+              {p1ActiveMember}
+            </Text>
+          )}
         </View>
         <View style={styles.scoreBadge}>
           {settings.targetSets > 1 && (
@@ -711,9 +812,21 @@ export default function TournamentMatchScreen() {
               styles.pName,
               activePlayerId === match.player2?.id && styles.pActive,
             ]}
+            numberOfLines={1}
           >
             {match.player2?.name || t(language, "byePlayer") || "Bye"}
           </Text>
+          {p2ActiveMember && (
+            <Text
+              style={[
+                styles.pMemberName,
+                activePlayerId === match.player2?.id && styles.pMemberActive,
+              ]}
+              numberOfLines={1}
+            >
+              {p2ActiveMember}
+            </Text>
+          )}
         </View>
       </View>
 
@@ -943,6 +1056,17 @@ const getStyles = (theme: any) =>
       textAlign: "center",
     },
     pActive: { color: theme.colors.primary, fontSize: 20 },
+    pMemberName: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: theme.colors.textLight,
+      textAlign: "center",
+      marginTop: 2,
+    },
+    pMemberActive: {
+      color: theme.colors.primary,
+      opacity: 0.8,
+    },
     scoreBadge: {
       backgroundColor: theme.colors.cardBorder,
       paddingHorizontal: 12,

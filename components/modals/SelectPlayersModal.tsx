@@ -30,6 +30,8 @@ export function SelectPlayersModal({
   onSelectAll,
   onDeselectAll,
   allSelected = false,
+  searchPlaceholder,
+  countLabel,
   theme,
   language,
 }: any) {
@@ -60,7 +62,11 @@ export function SelectPlayersModal({
               />
               <TextInput
                 style={styles.searchInput}
-                placeholder={t(language, "searchPlayer") || "Search player..."}
+                placeholder={
+                  searchPlaceholder ||
+                  t(language, "searchPlayer") ||
+                  "Search player..."
+                }
                 placeholderTextColor={theme.colors.textMuted}
                 value={searchQuery}
                 onChangeText={onSearchChange}
@@ -71,7 +77,8 @@ export function SelectPlayersModal({
           {showSelectAll && (
             <View style={styles.selectAllRow}>
               <Text style={styles.selectAllLabel}>
-                {players.length} {t(language, "playersShort") || "players"}
+                {players.length}{" "}
+                {countLabel || t(language, "playersShort") || "players"}
               </Text>
               <AnimatedPressable
                 onPress={allSelected ? onDeselectAll : onSelectAll}
@@ -88,23 +95,45 @@ export function SelectPlayersModal({
           <FlatList
             style={{ maxHeight: 350, width: "100%" }}
             data={players}
-            keyExtractor={(item) => item}
+            keyExtractor={(item) =>
+              typeof item === "object" ? item.name : item
+            }
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
-              const checked = selectedPlayers.includes(item);
+              const isObj = typeof item === "object" && item !== null;
+              const itemName = isObj ? item.name : item;
+              const itemSubtitle = isObj ? item.subtitle : null;
+              const checked = selectedPlayers.includes(itemName);
               return (
                 <AnimatedPressable
                   style={styles.playerRow}
-                  onPress={() => onTogglePlayer(item)}
+                  onPress={() => onTogglePlayer(itemName)}
                 >
-                  <Text
-                    style={[
-                      styles.playerName,
-                      checked && styles.playerNameActive,
-                    ]}
+                  <View
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingRight: 12,
+                    }}
                   >
-                    {item}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.playerName,
+                        checked && styles.playerNameActive,
+                      ]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {itemName}
+                    </Text>
+                    {itemSubtitle && (
+                      <Text style={styles.playerSubtitle} numberOfLines={1}>
+                        {" "}
+                        ({itemSubtitle})
+                      </Text>
+                    )}
+                  </View>
                   <View
                     style={[styles.checkbox, checked && styles.checkboxActive]}
                   >
@@ -221,6 +250,12 @@ const getStyles = (theme: any) =>
     playerNameActive: {
       color: theme.colors.success || "#28a745",
       fontWeight: "bold",
+    },
+    playerSubtitle: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      fontWeight: "500",
+      flexShrink: 1,
     },
     checkbox: {
       width: 24,

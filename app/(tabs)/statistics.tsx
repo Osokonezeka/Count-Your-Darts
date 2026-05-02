@@ -499,14 +499,16 @@ export default function Statistics() {
                   : t(language, "all") || "All time",
         }))}
       />
-      <DraggableFlatList
-        data={sections}
-        onDragEnd={({ data }) => saveSectionsOrder(data)}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
-        activationDistance={15}
-      />
+      <View style={{ flex: 1 }}>
+        <DraggableFlatList
+          data={sections}
+          onDragEnd={({ data }) => saveSectionsOrder(data)}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          activationDistance={15}
+        />
+      </View>
 
       <SelectPlayersModal
         visible={showPlayerFilter}

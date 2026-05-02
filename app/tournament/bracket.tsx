@@ -1,11 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  useFocusEffect,
-  useLocalSearchParams,
-  useNavigation,
-  useRouter,
-} from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Modal,
@@ -20,6 +15,7 @@ import CustomAlert from "../../components/modals/CustomAlert";
 import GroupsAndKnockout from "../../components/tournament/GroupsAndKnockout";
 import RoundRobin from "../../components/tournament/RoundRobin";
 import SingleKnockout from "../../components/tournament/SingleKnockout";
+import DoubleKnockout from "../../components/tournament/DoubleKnockout";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
@@ -30,7 +26,6 @@ export default function TournamentBracketScreen() {
   const styles = getStyles(theme);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const navigation = useNavigation();
   const { tournamentData, playersData, bracketData, isHistoryView } =
     useLocalSearchParams();
 
@@ -318,6 +313,15 @@ export default function TournamentBracketScreen() {
           viewMode={viewMode}
           phaseView={phaseView}
           setPhaseView={setPhaseView}
+        />
+      ) : settings.format === "double_knockout" ? (
+        <DoubleKnockout
+          players={players}
+          settings={settings}
+          viewMode={viewMode}
+          onMatchPress={handleMatchPress}
+          initialBracket={initialBracket}
+          isReadOnly={isHistoryView === "true" || isSaved}
         />
       ) : settings.format === "round_robin" ? (
         <RoundRobin

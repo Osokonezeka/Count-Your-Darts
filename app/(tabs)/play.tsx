@@ -2,18 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Dimensions,
-  Easing,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { Dimensions, StyleSheet, Text, View } from "react-native";
 import DraggableFlatList, {
   ScaleDecorator,
 } from "react-native-draggable-flatlist";
@@ -27,13 +17,13 @@ import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmen
 import { useTheme } from "../../context/ThemeContext";
 import { PlayerModal } from "../../components/modals/PlayerModal";
 import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
+import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
 import { AnimatedVerticalSelect } from "../../components/common/AnimatedVerticalSelect";
 import { AnimatedStepper } from "../../components/common/AnimatedStepper";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const STORAGE_KEY_PLAYERS = "@last_selected_players";
 const STORAGE_KEY_CONFIG = "@last_game_config";
 
@@ -100,7 +90,6 @@ export default function Play() {
   const [editingPlayerName, setEditingPlayerName] = useState<string | null>(
     null,
   );
-  const animManageValue = useRef(new Animated.Value(0)).current;
 
   const [isRandomizeEnabled, setIsRandomizeEnabled] = useState(false);
 
@@ -133,7 +122,7 @@ export default function Play() {
     navigation.setOptions({
       headerRight: () => (
         <AnimatedPressable
-          onPress={openManagePanel}
+          onPress={() => setManageVisible(true)}
           style={{ marginRight: 16, padding: 4 }}
         >
           <Ionicons name="person-add" size={24} color={theme.colors.primary} />
@@ -141,34 +130,6 @@ export default function Play() {
       ),
     });
   }, [navigation, theme]);
-
-  const openManagePanel = () => {
-    setManageVisible(true);
-    Animated.timing(animManageValue, {
-      toValue: 1,
-      duration: 300,
-      easing: Easing.out(Easing.back(0.5)),
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const closeManagePanel = () => {
-    Animated.timing(animManageValue, {
-      toValue: 0,
-      duration: 250,
-      easing: Easing.in(Easing.quad),
-      useNativeDriver: true,
-    }).start(() => setManageVisible(false));
-  };
-
-  const manageBackdropOpacity = animManageValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.5],
-  });
-  const manageTranslateY = animManageValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_HEIGHT, 0],
-  });
 
   const handleSavePlayer = () => {
     const name = newPlayerName.trim();
@@ -507,7 +468,7 @@ export default function Play() {
                   <AnimatedPressable
                     onPress={() => {
                       if (allPlayersSelected) return;
-                      if (players.length === 0) openManagePanel();
+                      if (players.length === 0) setManageVisible(true);
                       else {
                         setTempSelected([]);
                         setModalVisible(true);
@@ -528,7 +489,7 @@ export default function Play() {
                   <AnimatedPressable
                     onPress={
                       players.length === 0
-                        ? openManagePanel
+                        ? () => setManageVisible(true)
                         : () => setModalVisible(true)
                     }
                     style={styles.emptyPlayers}
@@ -697,102 +658,26 @@ export default function Play() {
         language={language}
       />
 
-      <Modal
+      <ManagePlayersModal
         visible={isManageVisible}
-        transparent
-        animationType="none"
-        onRequestClose={closeManagePanel}
-      >
-        <View style={styles.sheetOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={closeManagePanel} />
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.sheetBackdrop,
-              { opacity: manageBackdropOpacity },
-            ]}
-            pointerEvents="none"
-          />
-          <Animated.View
-            style={[
-              styles.sheetContent,
-              { transform: [{ translateY: manageTranslateY }] },
-            ]}
-          >
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>
-                {t(language, "managePlayers") || "Manage players"}
-              </Text>
-            </View>
-            <ScrollView
-              style={{ maxHeight: SCREEN_HEIGHT * 0.5, marginBottom: 16 }}
-              keyboardShouldPersistTaps="handled"
-            >
-              {players.length === 0 ? (
-                <View style={styles.emptyPlayers}>
-                  <Ionicons
-                    name="person-outline"
-                    size={40}
-                    color={theme.colors.textLight}
-                  />
-                  <Text style={styles.emptyPlayersText}>
-                    {t(language, "noPlayers") || "No more players"}
-                  </Text>
-                </View>
-              ) : (
-                players.map((p: string) => (
-                  <View key={p} style={styles.dbPlayerRow}>
-                    <AnimatedPressable
-                      style={{ flex: 1 }}
-                      onPress={() => {
-                        setEditingPlayerName(p);
-                        setNewPlayerName(p);
-                        setAddPopupVisible(true);
-                      }}
-                    >
-                      <View
-                        style={{ flexDirection: "row", alignItems: "center" }}
-                      >
-                        <Text style={styles.dbPlayerName}>{p}</Text>
-                        <Ionicons
-                          name="pencil"
-                          size={14}
-                          color={theme.colors.textLight}
-                          style={{ marginLeft: 8 }}
-                        />
-                      </View>
-                    </AnimatedPressable>
-                    <AnimatedPressable
-                      onPress={() => handleDeletePlayer(p)}
-                      style={styles.dbDeleteBtn}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={20}
-                        color={theme.colors.danger}
-                      />
-                    </AnimatedPressable>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-            <AnimatedPressable
-              style={styles.addNewPlayerBtn}
-              onPress={() => {
-                setEditingPlayerName(null);
-                setNewPlayerName("");
-                setAddPopupVisible(true);
-              }}
-            >
-              <Ionicons name="add-circle" size={24} color="#fff" />
-              <Text style={styles.addNewPlayerText}>
-                {t(language, "addNewPlayer") || "Add new player"}
-              </Text>
-            </AnimatedPressable>
-          </Animated.View>
-        </View>
-      </Modal>
+        onClose={() => setManageVisible(false)}
+        title={t(language, "managePlayers") || "Manage players"}
+        players={players.map((p: string) => ({ id: p, name: p }))}
+        onAddPress={() => {
+          setEditingPlayerName(null);
+          setNewPlayerName("");
+          setAddPopupVisible(true);
+        }}
+        onEditPress={(p: any) => {
+          setEditingPlayerName(p.name);
+          setNewPlayerName(p.name);
+          setAddPopupVisible(true);
+        }}
+        onDeletePress={(p: any) => handleDeletePlayer(p.name)}
+        addLabel={t(language, "addNewPlayer") || "Add new player"}
+        emptyText={t(language, "noPlayers") || "No more players"}
+        theme={theme}
+      />
 
       <PlayerModal
         visible={isAddPopupVisible}
@@ -949,56 +834,4 @@ const getStyles = (theme: any) =>
       fontWeight: "600",
       color: theme.colors.textMain,
     },
-    sheetOverlay: { flex: 1, justifyContent: "flex-end" },
-    sheetBackdrop: { backgroundColor: "#000" },
-    sheetContent: {
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: 20,
-      paddingBottom: 40,
-      maxHeight: "85%",
-    },
-    sheetHeader: { alignItems: "center", marginBottom: 20 },
-    sheetHandle: {
-      width: 40,
-      height: 5,
-      backgroundColor: theme.colors.cardBorder,
-      borderRadius: 3,
-      marginBottom: 12,
-    },
-    sheetTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
-    dbPlayerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.background,
-    },
-    dbPlayerName: {
-      fontSize: 17,
-      color: theme.colors.textMain,
-      fontWeight: "600",
-    },
-    dbDeleteBtn: {
-      padding: 6,
-      backgroundColor: theme.colors.dangerLight,
-      borderRadius: 8,
-    },
-    addNewPlayerBtn: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.success,
-      paddingVertical: 16,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      marginTop: 10,
-    },
-    addNewPlayerText: { color: "#fff", fontSize: 16, fontWeight: "800" },
   });

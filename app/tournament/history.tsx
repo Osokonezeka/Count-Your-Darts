@@ -24,6 +24,16 @@ export default function TournamentHistoryScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  const formatLabels: Record<string, string> = {
+    single_knockout: t(language, "singleKnockout") || "Single Knockout",
+    double_knockout: t(language, "doubleKnockout") || "Double Knockout",
+    round_robin: t(language, "roundRobin") || "Round Robin",
+    groups_and_knockout:
+      t(language, "groupsAndKnockout") || "Groups + Knockout",
+    groups_and_double_knockout:
+      t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
+  };
+
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteAlert, setDeleteAlert] = useState({ visible: false, id: "" });
@@ -81,6 +91,7 @@ export default function TournamentHistoryScreen() {
     );
 
     let winnerName = t(language, "unknown") || "Unknown";
+    let secondPlaceName = "";
 
     if (item.settings?.format === "round_robin") {
       const stats: Record<string, any> = {};
@@ -112,6 +123,7 @@ export default function TournamentHistoryScreen() {
         return diffB - diffA;
       });
       if (sorted.length > 0) winnerName = sorted[0];
+      if (sorted.length > 1) secondPlaceName = sorted[1];
     } else {
       const koMatches = item.bracket?.filter(
         (b: any) => b.phase === "knockout" || !b.phase,
@@ -121,9 +133,23 @@ export default function TournamentHistoryScreen() {
         const finalMatch = koMatches.find(
           (m: any) => m.round === totalR && !m.isThirdPlace,
         );
-        winnerName = finalMatch?.winner?.name || winnerName;
+        if (finalMatch && finalMatch.winner) {
+          winnerName = finalMatch.winner.name;
+          secondPlaceName =
+            finalMatch.player1?.id === finalMatch.winner.id
+              ? finalMatch.player2?.name
+              : finalMatch.player1?.name;
+        }
       }
     }
+
+    const formatName = item.settings?.format
+      ? formatLabels[item.settings.format]
+      : "";
+    const pts = item.settings?.startingPoints || item.settings?.points || 501;
+    const sets = item.settings?.targetSets || item.settings?.sets || 1;
+    const legs = item.settings?.targetLegs || item.settings?.legs || 1;
+    const isTeam = item.settings?.teamSize === "team";
 
     return (
       <TouchableOpacity
@@ -153,22 +179,57 @@ export default function TournamentHistoryScreen() {
 
         <Text style={styles.tournamentName}>{item.settings.name}</Text>
 
-        <View style={styles.cardFooter}>
-          <View style={styles.infoBadge}>
+        <View style={styles.tagsContainer}>
+          {formatName && (
+            <View style={styles.tag}>
+              <Ionicons
+                name="git-network-outline"
+                size={12}
+                color={theme.colors.textMuted}
+              />
+              <Text style={styles.tagText}>{formatName}</Text>
+            </View>
+          )}
+          <View style={styles.tag}>
             <Ionicons
-              name="people-outline"
-              size={14}
+              name="options-outline"
+              size={12}
               color={theme.colors.textMuted}
             />
-            <Text style={styles.infoText}>{item.players.length} graczy</Text>
-            <Text style={styles.infoText}>
-              {item.players.length} {t(language, "playersShort") || "players"}
+            <Text style={styles.tagText}>
+              {sets}S / {legs}L / {pts}
             </Text>
           </View>
-          <View style={styles.winnerBadge}>
-            <Ionicons name="trophy" size={14} color={theme.colors.warning} />
-            <Text style={styles.winnerName}>{winnerName}</Text>
+          <View style={styles.tag}>
+            <Ionicons
+              name={isTeam ? "people" : "person"}
+              size={12}
+              color={theme.colors.textMuted}
+            />
+            <Text style={styles.tagText}>{isTeam ? "2v2" : "1v1"}</Text>
           </View>
+          <View style={styles.tag}>
+            <Ionicons name="list" size={12} color={theme.colors.textMuted} />
+            <Text style={styles.tagText}>
+              {item.players?.length || 0}{" "}
+              {isTeam
+                ? t(language, "teamsCount") || "teams"
+                : t(language, "playersShort") || "players"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.podiumContainer}>
+          <View style={styles.podiumRow}>
+            <Ionicons name="trophy" size={16} color={theme.colors.warning} />
+            <Text style={styles.winnerText}>{winnerName}</Text>
+          </View>
+          {!!secondPlaceName && (
+            <View style={[styles.podiumRow, { marginTop: 6 }]}>
+              <Ionicons name="medal" size={14} color="#C0C0C0" />
+              <Text style={styles.secondPlaceText}>{secondPlaceName}</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -288,36 +349,49 @@ const getStyles = (theme: any) =>
       fontSize: 18,
       fontWeight: "800",
       color: theme.colors.textMain,
-      marginBottom: 12,
+      marginBottom: 16,
     },
-    cardFooter: { flexDirection: "row", gap: 12 },
-    infoBadge: {
+    tagsContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 16,
+    },
+    tag: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
       backgroundColor: theme.colors.background,
-      paddingHorizontal: 10,
+      paddingHorizontal: 8,
       paddingVertical: 4,
-      borderRadius: 8,
+      borderRadius: 6,
+      gap: 4,
     },
-    winnerBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      backgroundColor: "rgba(240, 173, 78, 0.1)",
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 8,
-    },
-    infoText: {
-      fontSize: 12,
+    tagText: {
+      fontSize: 11,
       color: theme.colors.textMuted,
       fontWeight: "700",
     },
-    winnerName: {
-      fontSize: 12,
+    podiumContainer: {
+      backgroundColor: "rgba(240, 173, 78, 0.05)",
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(240, 173, 78, 0.2)",
+    },
+    podiumRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    winnerText: {
+      fontSize: 15,
       color: theme.colors.textMain,
-      fontWeight: "800",
+      fontWeight: "900",
+    },
+    secondPlaceText: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      fontWeight: "600",
     },
     emptyState: {
       flex: 1,
