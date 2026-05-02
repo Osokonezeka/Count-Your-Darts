@@ -1,7 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation, useRouter } from "expo-router";
-import React, { useEffect, useLayoutEffect, useReducer, useState } from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useState,
+  useMemo,
+  useRef,
+} from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -21,6 +28,7 @@ import { FinishModal } from "../../components/modals/FinishModal";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useGameModals } from "../../hooks/useGameModals";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
 
 const MAX_DARTS = 100;
 
@@ -93,8 +101,7 @@ function scoringReducer(state: GameState, action: any): GameState {
           player.isFinished = true;
         }
 
-        const newSpeechText = turnSum === 0 ? "noScore" : turnSum.toString();
-        newSpeechEvent = { text: newSpeechText, id: Date.now() };
+        newSpeechEvent = { text: turnSum.toString(), id: Date.now() };
       }
 
       updatedPlayers[state.currentIndex] = player;
@@ -167,8 +174,7 @@ function scoringReducer(state: GameState, action: any): GameState {
         player.isFinished = true;
       }
 
-      const newSpeechText = score === 0 ? "noScore" : score.toString();
-      const newSpeechEvent = { text: newSpeechText, id: Date.now() };
+      const newSpeechEvent = { text: score.toString(), id: Date.now() };
 
       updatedPlayers[state.currentIndex] = player;
 
@@ -211,6 +217,17 @@ function scoringReducer(state: GameState, action: any): GameState {
       };
     }
 
+    case "RESET_CURRENT_TURN": {
+      if (state.throwsThisTurn === 0) return state;
+      const turnStartIndex = state.history.length - state.throwsThisTurn;
+      if (turnStartIndex < 0) return state;
+      return {
+        ...state.history[turnStartIndex],
+        history: state.history.slice(0, turnStartIndex),
+        speechEvent: null,
+      };
+    }
+
     default:
       return state;
   }
@@ -225,48 +242,68 @@ export default function OneHundredDarts() {
   const { bullTerm, missTerm, tripleTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
-  const styles = getStyles(theme);
 
-  const [state, dispatch] = useReducer(scoringReducer, {
-    playerStates: players.map((name) => ({
-      name,
-      score: 0,
-      dartsCount: 0,
-      turnThrows: [],
-      isFinished: false,
-      s180: 0,
-      s140: 0,
-      s100: 0,
-      s60: 0,
-    })),
-    currentIndex: 0,
-    throwsThisTurn: 0,
-    history: [],
-    speechEvent: null,
-  });
+  const { resumeData } = useLocalSearchParams();
+  const parsedResume = useMemo(
+    () => (resumeData ? JSON.parse(resumeData as string) : null),
+    [resumeData],
+  );
+  const [matchId] = useState(() =>
+    parsedResume ? parsedResume.id : Date.now().toString(),
+  );
+  const isExiting = useRef(false);
+
+  const styles = useMemo(
+    () => ({
+      ...getSharedGameStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
+
+  const [state, dispatch] = useReducer(
+    scoringReducer,
+    parsedResume
+      ? parsedResume.gameState
+      : {
+          playerStates: players.map((name) => ({
+            name,
+            score: 0,
+            dartsCount: 0,
+            turnThrows: [],
+            isFinished: false,
+            s180: 0,
+            s140: 0,
+            s100: 0,
+            s60: 0,
+          })),
+          currentIndex: 0,
+          throwsThisTurn: 0,
+          history: [],
+          speechEvent: null,
+        },
+  );
 
   const [inputMode, setInputMode] = useState<"dart" | "score" | "board">(
     "dart",
   );
   const [typedScore, setTypedScore] = useState("");
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
-  const [matchTime, setMatchTime] = useState(0);
+  const [matchTime, setMatchTime] = useState(
+    () => parsedResume?.gameState?.savedMatchTime || 0,
+  );
   const {
     GameAlerts,
-    showLeaveNoHistoryConfirm,
+    showExitConfirm,
     showUndoConfirm,
     showInvalidScoreAlert,
   } = useGameModals(language);
 
   useEffect(() => {
     if (state.speechEvent) {
-      if (state.speechEvent.text === "noScore") {
-        speak(t(language, "noScore") || "No score");
-      } else {
-        speak(state.speechEvent.text);
-      }
+      speak(state.speechEvent.text);
     }
-  }, [state.speechEvent, language]);
+  }, [state.speechEvent]);
 
   const allDone = state.playerStates.every((p) => p.isFinished);
 
@@ -277,7 +314,7 @@ export default function OneHundredDarts() {
   useEffect(() => {
     let interval: any;
     if (!allDone) {
-      interval = setInterval(() => setMatchTime((p) => p + 1), 1000);
+      interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
     }
     return () => clearInterval(interval);
   }, [allDone]);
@@ -289,31 +326,61 @@ export default function OneHundredDarts() {
     }
   }, [allDone]);
 
-  const saveScoringStats = async () => {
+  const saveScoringStats = async (navigateAway: boolean = true) => {
     try {
+      if (navigateAway) isExiting.current = true;
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
+      const isUnfinished = !allDone;
       const historyItem = {
-        id: Date.now().toString(),
+        id: matchId,
         date: formattedDate,
         duration: formatTime(matchTime),
         mode: "100 Darts",
+        isUnfinished,
+        gameState: isUnfinished
+          ? { ...state, history: [], savedMatchTime: matchTime }
+          : undefined,
         players: state.playerStates
-          .map((p) => ({
-            name: p.name,
-            score: p.score,
-            darts: p.dartsCount,
-            rank: p.rank,
-            avg: ((p.score / p.dartsCount) * 3).toFixed(1),
-            allTurns: [
-              p.turnThrows.map((t: any) => ({
-                v: t.value,
-                m: t.multiplier,
-                c: t.coords,
-              })),
-            ],
-          }))
+          .map((p, idx) => {
+            const rawTurns = state.history
+              ? state.history.map((h) => h.playerStates[idx].turnThrows)
+              : [];
+            rawTurns.push(p.turnThrows);
+            const validTurns = rawTurns
+              .filter(
+                (turn, i, arr) =>
+                  turn &&
+                  turn.length > 0 &&
+                  (!arr[i + 1] || arr[i + 1].length < turn.length),
+              )
+              .map((turn) =>
+                turn.map((t: any) => ({
+                  v: t.value,
+                  m: t.multiplier,
+                  d: t.darts,
+                  i: t.isScoreInput,
+                  c: t.coords,
+                })),
+              );
+
+            return {
+              name: p.name,
+              score: p.score,
+              darts: p.dartsCount,
+              rank: p.rank,
+              avg:
+                p.dartsCount > 0
+                  ? ((p.score / p.dartsCount) * 3).toFixed(1)
+                  : "0.0",
+              s180: p.s180,
+              s140: p.s140,
+              s100: p.s100,
+              s60: p.s60,
+              allTurns: validTurns,
+            };
+          })
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
 
@@ -323,23 +390,46 @@ export default function OneHundredDarts() {
       const existingHistory = existingHistoryStr
         ? JSON.parse(existingHistoryStr)
         : [];
+
+      const existingIndex = existingHistory.findIndex(
+        (h: any) => h.id === matchId,
+      );
+      if (existingIndex > -1) {
+        existingHistory[existingIndex] = historyItem;
+      } else {
+        existingHistory.unshift(historyItem);
+      }
+
       await AsyncStorage.setItem(
         "@dart_match_history",
-        JSON.stringify([historyItem, ...existingHistory]),
+        JSON.stringify(existingHistory),
       );
+      if (navigateAway) router.push("/play");
     } catch (e) {
       console.error("Save 100 Darts error", e);
+      if (navigateAway) router.push("/play");
     }
   };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (allDone) return;
+      if (isExiting.current || allDone) return;
       e.preventDefault();
-      showLeaveNoHistoryConfirm(() => navigation.dispatch(e.data.action));
+      const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
+      if (!hasStarted) {
+        isExiting.current = true;
+        navigation.dispatch(e.data.action);
+        return;
+      }
+      showExitConfirm(() => {
+        saveScoringStats(false).then(() => {
+          isExiting.current = true;
+          navigation.dispatch(e.data.action);
+        });
+      });
     });
     return unsubscribe;
-  }, [navigation, allDone]);
+  }, [navigation, allDone, state, matchTime]);
 
   const handleThrow = (
     value: number,
@@ -527,7 +617,7 @@ export default function OneHundredDarts() {
                           );
                         })}
                       </View>
-                      <Text style={styles.turnLabel}>
+                      <Text style={styles.targetLabel}>
                         {t(language, "thrown")?.toUpperCase() || "THROWN"}:{" "}
                         {p.dartsCount} / {MAX_DARTS}
                       </Text>
@@ -560,6 +650,11 @@ export default function OneHundredDarts() {
             setInputMode={setInputMode}
             theme={theme}
             language={language}
+            onReset={() => {
+              setTypedScore("");
+              setMultiplier(1);
+              dispatch({ type: "RESET_CURRENT_TURN" });
+            }}
           />
 
           {inputMode === "dart" && (
@@ -620,110 +715,9 @@ export default function OneHundredDarts() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    customHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBackBtn: { padding: 8, marginLeft: -8 },
-    headerCenter: { alignItems: "center" },
-    headerTitle: {
-      fontSize: 17,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-    },
-    headerSub: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: theme.colors.textMuted,
-    },
-    headerRight: { minWidth: 40, alignItems: "flex-end" },
-    timerBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.primaryLight,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-      gap: 4,
-    },
-    timerText: {
-      fontSize: 14,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      fontVariant: ["tabular-nums"],
-    },
-
-    scoreBoardScroll: { flex: 1 },
-    scoreBoardContent: { padding: 10, gap: 8, paddingBottom: 20 },
-    playerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.card,
-      paddingVertical: 12,
-      paddingHorizontal: 15,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderColor: theme.colors.card,
-      elevation: 2,
-    },
-    activePlayerRow: {
-      borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryLight,
-    },
-    finishedPlayerRow: {
-      backgroundColor: theme.colors.background,
-      opacity: 0.8,
-    },
-
-    scoreCol: { flex: 1.2, alignItems: "flex-start" },
-    playerScore: {
-      fontSize: 36,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-      lineHeight: 40,
-    },
-    rankText: {
-      fontSize: 44,
-      fontWeight: "900",
-      color: theme.colors.success,
-      lineHeight: 44,
-    },
-    activeText: { color: theme.colors.primary },
-    playerName: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
-      fontWeight: "700",
-      textTransform: "uppercase",
-    },
-
-    throwsCol: { flex: 1.5, alignItems: "center", justifyContent: "center" },
-    throwsRow: { flexDirection: "row", gap: 6, marginBottom: 4 },
-    throwBox: {
-      width: 38,
-      height: 38,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: theme.colors.background,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      borderRadius: 6,
-    },
-    throwBoxActive: { borderColor: theme.colors.primary, borderWidth: 2 },
-    throwBoxText: {
-      fontSize: 13,
-      fontWeight: "bold",
-      color: theme.colors.textMain,
-    },
-    turnLabel: {
+    targetLabel: {
       fontSize: 10,
       fontWeight: "800",
       color: theme.colors.primary,
@@ -751,86 +745,4 @@ const getStyles = (theme: any) =>
     typedScoreDisplayBoxTextActive: {
       color: theme.colors.primary,
     },
-
-    statsCol: { flex: 1.3, alignItems: "flex-end", justifyContent: "center" },
-    statRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 4,
-    },
-    statBold: { fontWeight: "700", color: theme.colors.textMain, fontSize: 13 },
-    statLabel: {
-      fontSize: 11,
-      color: theme.colors.textMuted,
-      fontWeight: "700",
-    },
-
-    keyboard: {
-      padding: 8,
-      gap: 6,
-      backgroundColor: theme.colors.cardBorder,
-      paddingBottom: 20,
-    },
-    segmentContainer: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.card,
-      marginBottom: 2,
-      borderRadius: 10,
-      padding: 4,
-    },
-    segmentBtn: {
-      flex: 1,
-      paddingVertical: 10,
-      alignItems: "center",
-      borderRadius: 8,
-    },
-    segmentBtnActive: {
-      backgroundColor: theme.colors.primaryDark,
-      elevation: 2,
-    },
-    segmentText: {
-      fontSize: 13,
-      fontWeight: "800",
-      color: theme.colors.textMuted,
-    },
-    segmentTextActive: { color: "#fff" },
-    keyRow7: { flexDirection: "row", gap: 6 },
-    keyRow4: { flexDirection: "row", gap: 6, marginTop: 4 },
-    key: {
-      flex: 1,
-      height: 52,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
-    keyText: { fontSize: 18, fontWeight: "700", color: theme.colors.textMain },
-    keyAction: {
-      flex: 1,
-      height: 58,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
-    keyTextAction: {
-      fontSize: 15,
-
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
-    activeModifier: { backgroundColor: theme.colors.primaryDark },
-    activeModifierText: { color: "#fff" },
-    disabledKey: {
-      backgroundColor: theme.colors.cardBorder,
-      opacity: 0.5,
-      elevation: 0,
-    },
-    disabledKeyText: { color: theme.colors.textLight },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
-
-    modalActionsCol: { width: "100%", gap: 12 },
   });

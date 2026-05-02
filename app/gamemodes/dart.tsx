@@ -33,6 +33,7 @@ import { FinishModal } from "../../components/modals/FinishModal";
 import { useGameModals } from "../../hooks/useGameModals";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
 
 type Throw = {
   value: number;
@@ -119,9 +120,9 @@ function gameReducer(state: GameState, action: any): GameState {
       const {
         inRule,
         outRule,
-        legs: targetLegs,
-        sets: targetSets,
-      } = state.settings;
+        legs: targetLegs = 1,
+        sets: targetSets = 1,
+      } = state.settings || {};
 
       const { history, ...stateWithoutHistory } = state;
       const snapshot = JSON.parse(JSON.stringify(stateWithoutHistory));
@@ -184,10 +185,9 @@ function gameReducer(state: GameState, action: any): GameState {
 
       let newSpeechText: string | null = null;
       if (isBust) {
-        newSpeechText = "noScore";
+        newSpeechText = "0";
       } else if (isWin || state.throwsThisTurn === 2) {
-        newSpeechText =
-          turnSumTotal === 0 ? "noScore" : turnSumTotal.toString();
+        newSpeechText = turnSumTotal.toString();
       }
       const newSpeechEvent = newSpeechText
         ? { text: newSpeechText, id: Date.now() }
@@ -274,9 +274,9 @@ function gameReducer(state: GameState, action: any): GameState {
       const {
         inRule,
         outRule,
-        legs: targetLegs,
-        sets: targetSets,
-      } = state.settings;
+        legs: targetLegs = 1,
+        sets: targetSets = 1,
+      } = state.settings || {};
 
       const { history, ...stateWithoutHistory } = state;
       const snapshot = JSON.parse(JSON.stringify(stateWithoutHistory));
@@ -335,10 +335,9 @@ function gameReducer(state: GameState, action: any): GameState {
 
       let newSpeechText: string | null = null;
       if (isBust) {
-        newSpeechText = "noScore";
+        newSpeechText = "0";
       } else {
-        newSpeechText =
-          turnSumTotal === 0 ? "noScore" : turnSumTotal.toString();
+        newSpeechText = turnSumTotal.toString();
       }
       const newSpeechEvent = newSpeechText
         ? { text: newSpeechText, id: Date.now() }
@@ -409,14 +408,14 @@ function gameReducer(state: GameState, action: any): GameState {
       const isNewSet = state.setWinner !== null;
       const nextStarter =
         (state.startingPlayerIndex + 1) % state.playerStates.length;
-      const isStraightIn = state.settings.inRule === "straight";
+      const isStraightIn = state.settings?.inRule === "straight";
 
       return {
         ...state,
         playerStates: state.playerStates.map((p) => ({
           ...p,
-          score: state.settings.startPoints,
-          roundStartScore: state.settings.startPoints,
+          score: state.settings?.startPoints || 501,
+          roundStartScore: state.settings?.startPoints || 501,
           hasOpened: isStraightIn,
           roundStartHasOpened: isStraightIn,
           darts: 0,
@@ -484,6 +483,17 @@ function gameReducer(state: GameState, action: any): GameState {
       };
     }
 
+    case "RESET_CURRENT_TURN": {
+      if (state.throwsThisTurn === 0) return state;
+      const turnStartIndex = state.history.length - state.throwsThisTurn;
+      if (turnStartIndex < 0) return state;
+      return {
+        ...state.history[turnStartIndex],
+        history: state.history.slice(0, turnStartIndex),
+        speechEvent: null,
+      };
+    }
+
     default:
       return state;
   }
@@ -523,7 +533,13 @@ export default function Game() {
   );
 
   const isExiting = useRef(false);
-  const styles = getStyles(theme);
+  const styles = useMemo(
+    () => ({
+      ...getSharedGameStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
 
   const {
     GameAlerts,
@@ -537,14 +553,24 @@ export default function Game() {
 
   const [state, dispatch] = useReducer(
     gameReducer,
-    parsedResume
-      ? parsedResume.gameState
-      : initialState(players, {
-          inRule: settings.inRule || "straight",
-          outRule: settings.outRule || "double",
-          startPoints: settings.startPoints || 501,
-          legs: settings.legs || 1,
-          sets: settings.sets || 1,
+    parsedResume && parsedResume.gameState
+      ? {
+          ...parsedResume.gameState,
+          settings: parsedResume.gameState.settings ||
+            parsedResume.settings || {
+              inRule: "straight",
+              outRule: "double",
+              startPoints: 501,
+              legs: 1,
+              sets: 1,
+            },
+        }
+      : initialState(players || [], {
+          inRule: settings?.inRule || "straight",
+          outRule: settings?.outRule || "double",
+          startPoints: settings?.startPoints || 501,
+          legs: settings?.legs || 1,
+          sets: settings?.sets || 1,
         }),
   );
 
@@ -576,7 +602,7 @@ export default function Game() {
 
       const hasStarted = state.playerStates.some(
         (p) =>
-          p.score !== state.settings.startPoints ||
+          p.score !== (state.settings?.startPoints || 501) ||
           p.darts > 0 ||
           p.legs > 0 ||
           p.sets > 0 ||
@@ -606,13 +632,9 @@ export default function Game() {
 
   useEffect(() => {
     if (state.speechEvent) {
-      if (state.speechEvent.text === "noScore") {
-        speak(t(language, "noScore") || "No score");
-      } else {
-        speak(state.speechEvent.text);
-      }
+      speak(state.speechEvent.text);
     }
-  }, [state.speechEvent, language]);
+  }, [state.speechEvent]);
 
   const currentPlayer = state.playerStates[state.currentIndex];
   const scrollViewRef = useRef<ScrollView>(null);
@@ -829,7 +851,7 @@ export default function Game() {
     const currentPlayer = state.playerStates[state.currentIndex];
     const currentLeft = currentPlayer.score;
     const newLeft = currentLeft - score;
-    const outRule = state.settings.outRule;
+    const outRule = state.settings?.outRule || "double";
 
     const isCheckoutSetup =
       currentLeft <= 170 && !BOGEY_NUMBERS.includes(currentLeft);
@@ -866,7 +888,7 @@ export default function Game() {
   };
 
   const isSingleLegMatch =
-    state.settings.legs === 1 && state.settings.sets === 1;
+    (state.settings?.legs || 1) === 1 && (state.settings?.sets || 1) === 1;
   const activePlayersCount = state.playerStates.filter(
     (p) => !p.isFinished,
   ).length;
@@ -945,16 +967,16 @@ export default function Game() {
   } else if (state.setWinner) {
     modalTitle = (t(language, "setWon") || "{{name}} won {{x}} set!")
       .replace("{{name}}", winnerName)
-      .replace("{{x}}", state.setWinner.sets.toString());
+      .replace("{{x}}", (state.setWinner.sets || 1).toString());
     timerText = t(language, "autoNextSet") || "Next set in: ";
   } else if (state.legWinner) {
     modalTitle = (t(language, "legWon") || "{{name}} won {{x}} leg!")
       .replace("{{name}}", winnerName)
-      .replace("{{x}}", state.legWinner.legs.toString());
+      .replace("{{x}}", (state.legWinner.legs || 1).toString());
     timerText = t(language, "autoNextLeg") || "Next leg in: ";
   }
 
-  const inOutText = `${state.settings.inRule === "straight" ? "Straight" : state.settings.inRule} IN • ${state.settings.outRule === "straight" ? "Straight" : state.settings.outRule} OUT`;
+  const inOutText = `${state.settings?.inRule === "straight" ? "Straight" : state.settings?.inRule || "Double"} IN • ${state.settings?.outRule === "straight" ? "Straight" : state.settings?.outRule || "Double"} OUT`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -968,11 +990,12 @@ export default function Game() {
 
         <View style={styles.headerCenter}>
           <Text style={styles.headerGameType}>
-            {state.settings.startPoints}
+            {state.settings?.startPoints || 501}
           </Text>
           <Text style={styles.headerSubInfo}>{inOutText.toUpperCase()}</Text>
           <Text style={styles.headerSubInfo}>
-            FIRST TO {state.settings.legs} L / {state.settings.sets} S
+            FIRST TO {state.settings?.legs || 1} L / {state.settings?.sets || 1}{" "}
+            S
           </Text>
         </View>
 
@@ -998,7 +1021,7 @@ export default function Game() {
           const avg =
             p.darts > 0
               ? (
-                  ((state.settings.startPoints - p.score) / p.darts) *
+                  (((state.settings?.startPoints || 501) - p.score) / p.darts) *
                   3
                 ).toFixed(1)
               : "0.0";
@@ -1131,7 +1154,7 @@ export default function Game() {
       </ScrollView>
 
       <View style={styles.checkoutWrapper}>
-        {checkoutSuggestion && state.settings.outRule !== "straight" ? (
+        {checkoutSuggestion && state.settings?.outRule !== "straight" ? (
           <View style={styles.checkoutBadge}>
             <Text style={styles.checkoutLabel}>CHECKOUT</Text>
             <Text style={styles.checkoutValue}>{checkoutSuggestion}</Text>
@@ -1147,6 +1170,11 @@ export default function Game() {
           setInputMode={setInputMode}
           theme={theme}
           language={language}
+          onReset={() => {
+            setTypedScore("");
+            setMultiplier(1);
+            dispatch({ type: "RESET_CURRENT_TURN" });
+          }}
         />
 
         {inputMode === "dart" && (
@@ -1347,28 +1375,8 @@ export default function Game() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-
-    customHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBackBtn: {
-      padding: 8,
-      marginLeft: -8,
-    },
-    headerCenter: {
-      flex: 1,
-      alignItems: "center",
-    },
     headerGameType: {
       fontSize: 18,
       fontWeight: "900",
@@ -1379,104 +1387,6 @@ const getStyles = (theme: any) =>
       fontSize: 10,
       fontWeight: "700",
       color: theme.colors.textMuted,
-    },
-    headerRight: {
-      minWidth: 40,
-      alignItems: "flex-end",
-    },
-    timerBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.primaryLight,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      gap: 4,
-    },
-    timerText: {
-      fontSize: 14,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      fontVariant: ["tabular-nums"],
-    },
-
-    scoreBoardScroll: { flex: 1 },
-    scoreBoardContent: { padding: 10, gap: 8, paddingBottom: 20 },
-    playerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.card,
-      paddingVertical: 12,
-      paddingHorizontal: 15,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderColor: theme.colors.card,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 4,
-      elevation: 2,
-    },
-    activePlayerRow: {
-      borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryLight,
-    },
-    finishedPlayerRow: {
-      backgroundColor: theme.colors.background,
-      opacity: 0.8,
-    },
-    scoreCol: { flex: 1.2, alignItems: "flex-start" },
-    playerScore: {
-      fontSize: 36,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-      lineHeight: 40,
-    },
-    rankText: {
-      fontSize: 44,
-      fontWeight: "900",
-      color: theme.colors.success,
-      lineHeight: 44,
-    },
-    activeText: { color: theme.colors.primary },
-    playerName: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
-      fontWeight: "700",
-      textTransform: "uppercase",
-    },
-
-    throwsCol: {
-      flex: 1.5,
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    throwsRow: {
-      flexDirection: "row",
-      gap: 6,
-      marginBottom: 4,
-    },
-    throwBox: {
-      width: 38,
-      height: 38,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: theme.colors.background,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      borderRadius: 6,
-    },
-    throwBoxActive: {
-      borderColor: theme.colors.primary,
-      borderWidth: 2,
-    },
-    throwBoxText: {
-      fontSize: 13,
-      fontWeight: "bold",
-      color: theme.colors.textMain,
     },
     turnSumText: {
       fontSize: 12,
@@ -1506,7 +1416,6 @@ const getStyles = (theme: any) =>
       color: theme.colors.primary,
     },
 
-    statsCol: { flex: 1.3, alignItems: "flex-end", justifyContent: "center" },
     legSetBadge: {
       backgroundColor: theme.colors.textMain,
       paddingHorizontal: 8,
@@ -1520,13 +1429,6 @@ const getStyles = (theme: any) =>
       fontWeight: "800",
       letterSpacing: 0.5,
     },
-    statRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 4,
-    },
-    statBold: { fontWeight: "700", color: theme.colors.textMain, fontSize: 13 },
     avgIcon: { fontSize: 14, color: theme.colors.textMuted, fontWeight: "700" },
 
     checkoutWrapper: {
@@ -1557,107 +1459,6 @@ const getStyles = (theme: any) =>
       fontSize: 16,
       fontWeight: "900",
     },
-
-    keyboard: {
-      padding: 8,
-      gap: 6,
-      backgroundColor: theme.colors.cardBorder,
-      paddingBottom: 20,
-    },
-    segmentContainer: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.card,
-      marginBottom: 2,
-      borderRadius: 10,
-      padding: 4,
-    },
-    segmentBtn: {
-      flex: 1,
-      paddingVertical: 10,
-      alignItems: "center",
-      borderRadius: 8,
-    },
-    segmentBtnActive: {
-      backgroundColor: theme.colors.primaryDark,
-      elevation: 2,
-    },
-    segmentText: {
-      fontSize: 13,
-      fontWeight: "800",
-      color: theme.colors.textMuted,
-    },
-    segmentTextActive: { color: "#fff" },
-    keyRow7: { flexDirection: "row", gap: 6 },
-    keyRow4: { flexDirection: "row", gap: 6, marginTop: 4 },
-    key: {
-      flex: 1,
-      height: 52,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
-    keyText: { fontSize: 18, fontWeight: "700", color: theme.colors.textMain },
-    keyAction: {
-      flex: 1,
-      height: 58,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
-    keyTextAction: {
-      fontSize: 15,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
-
-    activeModifier: { backgroundColor: theme.colors.primaryDark },
-    activeModifierText: { color: "#fff" },
-
-    disabledKey: {
-      backgroundColor: theme.colors.cardBorder,
-      elevation: 0,
-      opacity: 0.5,
-    },
-    disabledKeyText: { color: theme.colors.textLight },
-
-    undoKey: { backgroundColor: theme.colors.dangerLight },
-
-    scoreKeyboardWrapper: {
-      marginTop: 4,
-      borderRadius: 12,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-    },
-    scoreDisplay: {
-      backgroundColor: theme.colors.background,
-      padding: 14,
-      alignItems: "center",
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    scoreDisplayText: {
-      fontSize: 32,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-    },
-    kbKey: {
-      flex: 1,
-      height: 65,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRightWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: theme.colors.cardBorder,
-    },
-    kbEnter: { backgroundColor: theme.colors.success },
-    kbDel: { backgroundColor: theme.colors.danger },
-    kbTxt: { fontSize: 28, fontWeight: "800", color: theme.colors.textMain },
 
     modalOverlay: {
       flex: 1,
@@ -1709,8 +1510,6 @@ const getStyles = (theme: any) =>
       color: theme.colors.textMain,
       fontSize: 15,
     },
-
-    modalActionsCol: { width: "100%", gap: 12 },
 
     modalDesc: {
       fontSize: 14,

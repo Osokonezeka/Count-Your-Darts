@@ -30,6 +30,10 @@ import {
 import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import {
+  getOverallStatisticsAsync,
+  calculateTrendData,
+} from "../../lib/statsUtils";
 
 const HISTORY_KEY = "@dart_match_history";
 const SECTIONS_KEY = "@dart_stats_sections_order";
@@ -39,23 +43,6 @@ const COLLAPSED_PLAYERS_KEY = "@dart_stats_collapsed_players";
 type Section = { id: string };
 type TimeFilter = "today" | "7d" | "30d" | "all";
 
-const parseDateString = (dateStr: string) => {
-  try {
-    const [datePart, timePart] = dateStr.split(", ");
-    const [day, month, year] = datePart.split(".");
-    const [hour, minute] = timePart.split(":");
-    return new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-    );
-  } catch (e) {
-    return new Date(0);
-  }
-};
-
 export default function Statistics() {
   const { tripleTerm, missTerm, bullTerm } = useTerminology();
   const { language } = useLanguage();
@@ -64,6 +51,7 @@ export default function Statistics() {
   const styles = getStatisticsStyles(theme);
 
   const [history, setHistory] = useState<any[]>([]);
+  const [stats, setStats] = useState<any[]>([]);
   const [appliedNames, setAppliedNames] = useState<string[]>([]);
   const [tempNames, setTempNames] = useState<string[]>([]);
   const [showPlayerFilter, setShowPlayerFilter] = useState(false);
@@ -132,9 +120,9 @@ export default function Statistics() {
     await AsyncStorage.setItem(SECTIONS_KEY, JSON.stringify(newOrder));
   };
 
-  const togglePlayerCollapse = useCallback((playerName: string) => {
+  const togglePlayerCollapse = useCallback((key: string) => {
     setCollapsedPlayers((prev) => {
-      const newState = { ...prev, [playerName]: !prev[playerName] };
+      const newState = { ...prev, [key]: !prev[key] };
       AsyncStorage.setItem(COLLAPSED_PLAYERS_KEY, JSON.stringify(newState));
       return newState;
     });
@@ -195,201 +183,25 @@ export default function Statistics() {
   );
 
   const trendData = useMemo(() => {
-    const chronologicalHistory = [...history]
-      .filter((m) => m.mode === "X01")
-      .sort(
-        (a, b) =>
-          parseDateString(a.date).getTime() - parseDateString(b.date).getTime(),
-      );
-
-    const dataByPlayer: Record<string, any> = {};
-
-    appliedNames.forEach((playerName) => {
-      const dataPoints: number[] = [];
-      const labels: string[] = [];
-
-      chronologicalHistory.forEach((match) => {
-        const p = match.players.find(
-          (player: any) => player.name === playerName,
-        );
-        if (p && p.allTurns) {
-          let pts = 0;
-          let darts = 0;
-          const sumOfLengths = p.allTurns.reduce(
-            (acc: number, t: any[]) => acc + t.length,
-            0,
-          );
-          const isBuggyCompressed =
-            p.totalMatchDarts &&
-            p.totalMatchDarts > sumOfLengths &&
-            !p.allTurns.some((t: any[]) =>
-              t.some((d: any) => d.d !== undefined),
-            );
-
-          p.allTurns.forEach((turn: any) => {
-            pts += turn.reduce(
-              (a: any, b: any) => a + (typeof b === "number" ? b : b.v * b.m),
-              0,
-            );
-            let turnDarts = turn.reduce(
-              (a: any, b: any) =>
-                a + (typeof b === "number" ? 1 : b.d !== undefined ? b.d : 1),
-              0,
-            );
-            if (isBuggyCompressed) {
-              turnDarts = 3;
-            }
-            darts += turnDarts;
-          });
-          if (darts > 0) {
-            dataPoints.push(Number(((pts / darts) * 3).toFixed(1)));
-            labels.push(
-              match.date.split(".")[0] + "." + match.date.split(".")[1],
-            );
-          }
-        }
-      });
-
-      if (dataPoints.length >= 2) {
-        dataByPlayer[playerName] = {
-          labels: labels.slice(-10),
-          datasets: [{ data: dataPoints.slice(-10) }],
-        };
-      }
-    });
-
-    return dataByPlayer;
+    return calculateTrendData(history, appliedNames);
   }, [history, appliedNames]);
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const filteredHistory = history.filter((match) => {
-      if (match.mode !== "X01") return false;
-
-      if (timeFilter === "all" || !match.date) return true;
-      const matchDate = parseDateString(match.date);
-      if (timeFilter === "today") return matchDate >= startOfToday;
-      if (timeFilter === "7d") return matchDate >= sevenDaysAgo;
-      if (timeFilter === "30d") return matchDate >= thirtyDaysAgo;
-      return true;
-    });
-
-    const playerMap: Record<string, any> = {};
-    filteredHistory.forEach((match) => {
-      const winner = [...match.players].sort(
-        (a, b) =>
-          (b.sets || 0) - (a.sets || 0) ||
-          (b.legs || 0) - (a.legs || 0) ||
-          (a.score || 0) - (b.score || 0),
-      )[0];
-      match.players.forEach((p: any) => {
-        if (!appliedNames.includes(p.name)) return;
-        if (!playerMap[p.name]) {
-          playerMap[p.name] = {
-            name: p.name,
-            mPlayed: 0,
-            mWon: 0,
-            totalPoints: 0,
-            totalDarts: 0,
-            first9Points: 0,
-            first9Count: 0,
-            checkoutDarts: 0,
-            checkoutHits: 0,
-            s180: 0,
-            s140: 0,
-            s100: 0,
-            s60: 0,
-            hits: {},
-            coords: [],
-          };
-          [...Array(20)].forEach(
-            (_, i) => (playerMap[p.name].hits[i + 1] = { S: 0, D: 0, T: 0 }),
-          );
-          playerMap[p.name].hits[25] = { S: 0, D: 0, T: 0 };
-          playerMap[p.name].hits[0] = { S: 0, D: 0, T: 0 };
-        }
-        const s = playerMap[p.name];
-        s.mPlayed += 1;
-        if (winner && p.name === winner.name) s.mWon += 1;
-        s.checkoutDarts += p.checkoutDarts || 0;
-        s.checkoutHits += p.checkoutHits || 0;
-        if (p.allTurns) {
-          const sumOfLengths = p.allTurns.reduce(
-            (acc: number, t: any[]) => acc + t.length,
-            0,
-          );
-          const isBuggyCompressed =
-            p.totalMatchDarts &&
-            p.totalMatchDarts > sumOfLengths &&
-            !p.allTurns.some((t: any[]) =>
-              t.some((d: any) => d.d !== undefined),
-            );
-
-          p.allTurns.forEach((turn: any[], index: number) => {
-            const turnSum = turn.reduce(
-              (a, b) => a + (typeof b === "number" ? b : b.v * b.m),
-              0,
-            );
-
-            let turnDarts = turn.reduce(
-              (a: any, b: any) =>
-                a + (typeof b === "number" ? 1 : b.d !== undefined ? b.d : 1),
-              0,
-            );
-            if (isBuggyCompressed) {
-              turnDarts =
-                index === p.allTurns.length - 1
-                  ? p.totalMatchDarts - index * 3
-                  : 3;
-            }
-
-            s.totalPoints += turnSum;
-            s.totalDarts += turnDarts;
-            if (index < 3) {
-              s.first9Points += turnSum;
-              s.first9Count += turnDarts;
-            }
-            if (turnSum >= 180) s.s180++;
-            else if (turnSum >= 140) s.s140++;
-            else if (turnSum >= 100) s.s100++;
-            else if (turnSum >= 60) s.s60++;
-            turn.forEach((dart) => {
-              const isScoreInput = dart.i === true || isBuggyCompressed;
-              if (isScoreInput) return;
-              if (dart.c) s.coords.push(dart.c);
-
-              if (typeof dart === "object" && dart.v !== undefined) {
-                const target = dart.v;
-                const mult = dart.m;
-                if (s.hits[target]) {
-                  if (mult === 1) s.hits[target].S++;
-                  if (mult === 2) s.hits[target].D++;
-                  if (mult === 3) s.hits[target].T++;
-                }
-              }
-            });
-          });
-        }
-      });
-    });
-
-    return Object.values(playerMap).map((s: any) => ({
-      ...s,
-      winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
-      calculatedAvg: s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * 3 : 0,
-      calculatedFirst9:
-        s.first9Count > 0 ? (s.first9Points / s.first9Count) * 3 : 0,
-      calculatedCheckoutPct:
-        s.checkoutDarts > 0 ? (s.checkoutHits / s.checkoutDarts) * 100 : 0,
-    }));
+  useEffect(() => {
+    let isMounted = true;
+    const loadStats = async () => {
+      const result = await getOverallStatisticsAsync(
+        history,
+        appliedNames,
+        timeFilter,
+      );
+      if (isMounted) {
+        setStats(result);
+      }
+    };
+    loadStats();
+    return () => {
+      isMounted = false;
+    };
   }, [history, appliedNames, timeFilter]);
 
   const toggleSection = useCallback((key: string) => {

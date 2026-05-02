@@ -35,6 +35,8 @@ import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
+import { useMatchStore } from "../../store/useMatchStore";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 
 type Player = {
   id: string;
@@ -89,7 +91,13 @@ export default function TournamentPlayersScreen() {
   const { language } = useLanguage();
   const router = useRouter();
   const { players, addPlayer, removePlayer, updatePlayer } = usePlayers();
-  const styles = useMemo(() => getStyles(theme), [theme]);
+  const styles = useMemo(
+    () => ({
+      ...getSharedTournamentStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
 
@@ -233,6 +241,7 @@ export default function TournamentPlayersScreen() {
       if (!bracketStorageKey) return;
       const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
       const keysToRemove = [bracketStorageKey];
+      const matchIdsToRemove: string[] = [];
 
       if (savedBracketStr) {
         const savedBracket = JSON.parse(savedBracketStr);
@@ -240,11 +249,12 @@ export default function TournamentPlayersScreen() {
           if (selectedPlayersKey) keysToRemove.push(selectedPlayersKey);
 
           savedBracket.forEach((match: any) => {
-            keysToRemove.push(`match_save_${match.id}`);
+            matchIdsToRemove.push(match.id);
           });
         }
       }
       await AsyncStorage.multiRemove(keysToRemove);
+      useMatchStore.getState().clearMultipleMatches(matchIdsToRemove);
       setHasExistingBracket(false);
       setSelectedPlayerIds([]);
     } catch (e) {
@@ -545,7 +555,7 @@ export default function TournamentPlayersScreen() {
     <View style={styles.container}>
       <View
         style={[
-          styles.customHeader,
+          styles.header,
           { paddingTop: insets.top > 0 ? insets.top + 10 : 16 },
         ]}
       >
@@ -1085,26 +1095,8 @@ export default function TournamentPlayersScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { padding: 16, paddingBottom: 20 },
-    customHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 16,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBtn: { padding: 4 },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
     summaryCard: {
       backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.1)",
       borderRadius: 16,

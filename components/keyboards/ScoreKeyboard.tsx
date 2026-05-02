@@ -2,6 +2,8 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AnimatedPressable } from "../common/AnimatedPressable";
+import { useHaptics } from "../../context/HapticsContext";
+import * as Haptics from "expo-haptics";
 
 export function ScoreKeyboard({
   onKeyPress,
@@ -13,6 +15,18 @@ export function ScoreKeyboard({
   hideWrapperBorder,
 }: any) {
   const styles = getStyles(theme);
+  const { isHapticsEnabled, intensity } = useHaptics();
+
+  const triggerHaptic = () => {
+    if (isHapticsEnabled) {
+      let hapticStyle = Haptics.ImpactFeedbackStyle.Medium;
+      if (intensity === "light")
+        hapticStyle = Haptics.ImpactFeedbackStyle.Light;
+      if (intensity === "heavy")
+        hapticStyle = Haptics.ImpactFeedbackStyle.Heavy;
+      Haptics.impactAsync(hapticStyle);
+    }
+  };
 
   return (
     <View style={[!hideWrapperBorder && styles.wrapper, style]}>
@@ -32,13 +46,12 @@ export function ScoreKeyboard({
                 key === "ENTER" && styles.kbEnter,
                 key === "DEL" && styles.kbDel,
               ]}
-              onPress={() =>
-                key === "ENTER"
-                  ? onSubmit()
-                  : key === "DEL"
-                    ? onDelete()
-                    : onKeyPress(key)
-              }
+              onPress={() => {
+                triggerHaptic();
+                if (key === "ENTER") onSubmit();
+                else if (key === "DEL") onDelete();
+                else onKeyPress(key);
+              }}
             >
               {key === "DEL" ? (
                 <Ionicons name="backspace-outline" size={32} color="#fff" />

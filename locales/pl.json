@@ -295,9 +295,9 @@
   "highScore": "Najwyższy wynik",
   "thrown": "Rzucono",
   "avgShort": "ŚRED",
-  "double": "Podwójna",
+  "double": "Double",
   "accuracyShort": "CEL",
-  "hitLower": "traf",
+  "hitLower": "trafione",
   "hit": "Traf",
   "ok": "OK",
   "showPlayedLegs": "Pokaż rozegrane legi",
@@ -309,5 +309,5 @@
   "inputModeScore": "Wynik",
   "inputModeBoard": "Tarcza",
   "boardZoomHint": "Uszczypnij / Przytrzymaj, aby przybliżyć i precyzyjnie celować 🔍",
-  "heatmap": "Heatmapa"
+  "heatmap": "Mapa trafień"
 }

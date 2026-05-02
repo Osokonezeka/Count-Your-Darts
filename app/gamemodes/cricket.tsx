@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -17,7 +18,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -25,9 +25,11 @@ import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { FinishModal } from "../../components/modals/FinishModal";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { useGameModals } from "../../hooks/useGameModals";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
 
 const TARGETS = [20, 19, 18, 17, 16, 15, 25];
 const COLUMN_WIDTH = 105;
@@ -205,35 +207,54 @@ export default function Cricket() {
   const router = useRouter();
   const navigation = useNavigation();
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const { resumeData } = useLocalSearchParams();
+  const parsedResume = useMemo(
+    () => (resumeData ? JSON.parse(resumeData as string) : null),
+    [resumeData],
+  );
+  const currentMode =
+    parsedResume?.settings?.cricketMode || settings?.cricketMode || "standard";
+  const [matchId] = useState(() =>
+    parsedResume ? parsedResume.id : Date.now().toString(),
+  );
   const isExiting = useRef(false);
 
-  const styles = getStyles(theme);
+  const styles = useMemo(
+    () => ({
+      ...getSharedGameStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
 
-  const [state, dispatch] = useReducer(cricketReducer, {
-    playerStates: players.map((name) => ({
-      name,
-      marks: {},
-      score: 0,
-      darts: 0,
-    })),
-    currentIndex: 0,
-    throwsThisTurn: 0,
-    currentTurnThrows: [],
-    history: [],
-    matchWinner: null,
-    speechEvent: null,
-    turnPointsAdded: 0,
-  });
+  const [state, dispatch] = useReducer(
+    cricketReducer,
+    parsedResume
+      ? parsedResume.gameState
+      : {
+          playerStates: (players || []).map((name) => ({
+            name,
+            marks: {},
+            score: 0,
+            darts: 0,
+          })),
+          currentIndex: 0,
+          throwsThisTurn: 0,
+          currentTurnThrows: [],
+          history: [],
+          matchWinner: null,
+          speechEvent: null,
+          turnPointsAdded: 0,
+        },
+  );
 
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
-  const [matchTime, setMatchTime] = useState(0);
+  const [matchTime, setMatchTime] = useState(
+    () => parsedResume?.gameState?.savedMatchTime || 0,
+  );
 
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    title: "",
-    message: "",
-    buttons: [] as AlertButton[],
-  });
+  const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   useEffect(() => {
     if (state.speechEvent) {
@@ -254,7 +275,7 @@ export default function Cricket() {
     let interval: ReturnType<typeof setInterval>;
     if (!state.matchWinner) {
       interval = setInterval(() => {
-        setMatchTime((prev) => prev + 1);
+        setMatchTime((prev: number) => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -271,47 +292,45 @@ export default function Cricket() {
       if (isExiting.current || state.matchWinner) return;
 
       e.preventDefault();
-      setAlertConfig({
-        title: t(language, "leaveGame") || "Leave game?",
-        message: t(language, "leaveGameNoHistory") || "Progress will be lost.",
-        buttons: [
-          {
-            text: t(language, "cancel") || "Cancel",
-            style: "cancel",
-            onPress: () => {},
-          },
-          {
-            text: t(language, "leave") || "Leave",
-            style: "destructive",
-            onPress: () => {
-              isExiting.current = true;
-              navigation.dispatch(e.data.action);
-            },
-          },
-        ],
+      const hasStarted = state.playerStates.some((p) => p.darts > 0);
+      if (!hasStarted) {
+        isExiting.current = true;
+        navigation.dispatch(e.data.action);
+        return;
+      }
+
+      showExitConfirm(() => {
+        saveCricketHistory(false).then(() => {
+          isExiting.current = true;
+          navigation.dispatch(e.data.action);
+        });
       });
-      setAlertVisible(true);
     });
 
     return unsubscribe;
-  }, [navigation, language, state.matchWinner]);
+  }, [navigation, language, state, matchTime]);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  const saveCricketHistory = async () => {
+  const saveCricketHistory = async (navigateAway: boolean = true) => {
     try {
-      isExiting.current = true;
+      if (navigateAway) isExiting.current = true;
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
+      const isUnfinished = !state.matchWinner;
       const historyItem = {
-        id: Date.now().toString(),
+        id: matchId,
         date: formattedDate,
         duration: formatTime(matchTime),
         mode: "Cricket",
-        settings: { cricketMode: settings.cricketMode },
+        settings: { cricketMode: currentMode },
+        isUnfinished,
+        gameState: isUnfinished
+          ? { ...state, history: [], savedMatchTime: matchTime }
+          : undefined,
         players: state.playerStates
           .map((p) => {
             const isWinner = state.matchWinner?.name === p.name;
@@ -332,14 +351,24 @@ export default function Cricket() {
 
       const existingStr = await AsyncStorage.getItem("@dart_match_history");
       const existingHistory = existingStr ? JSON.parse(existingStr) : [];
+
+      const existingIndex = existingHistory.findIndex(
+        (h: any) => h.id === matchId,
+      );
+      if (existingIndex > -1) {
+        existingHistory[existingIndex] = historyItem;
+      } else {
+        existingHistory.unshift(historyItem);
+      }
+
       await AsyncStorage.setItem(
         "@dart_match_history",
-        JSON.stringify([historyItem, ...existingHistory]),
+        JSON.stringify(existingHistory),
       );
-      router.push("/play");
+      if (navigateAway) router.push("/play");
     } catch (error) {
       console.error("Error saving cricket history", error);
-      router.push("/play");
+      if (navigateAway) router.push("/play");
     }
   };
 
@@ -360,7 +389,7 @@ export default function Cricket() {
       payload: {
         value,
         multiplier,
-        cricketMode: settings.cricketMode,
+        cricketMode: currentMode,
         throwLabel,
       },
     });
@@ -398,7 +427,7 @@ export default function Cricket() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>CRICKET</Text>
           <Text style={styles.headerSub}>
-            {settings.cricketMode === "standard" ? "WITH SCORE" : "NO SCORE"}
+            {currentMode === "standard" ? "WITH SCORE" : "NO SCORE"}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -427,7 +456,7 @@ export default function Cricket() {
               </Text>
             </View>
           ))}
-          {settings.cricketMode === "standard" && (
+          {currentMode === "standard" && (
             <View style={styles.targetCell}>
               <Text style={styles.targetText}>Σ</Text>
             </View>
@@ -478,7 +507,7 @@ export default function Cricket() {
                   );
                 })}
 
-                {settings.cricketMode === "standard" && (
+                {currentMode === "standard" && (
                   <View style={styles.scoreCell}>
                     <Text style={styles.scoreText}>{p.score}</Text>
                   </View>
@@ -499,7 +528,7 @@ export default function Cricket() {
               <Text style={styles.infoActivePlayer}>{activePlayer.name}</Text>
             </View>
 
-            <View style={styles.infoThrowsRow}>
+            <View style={styles.throwsRow}>
               {[0, 1, 2].map((idx) => {
                 const throwVal = state.currentTurnThrows[idx];
                 return (
@@ -623,67 +652,18 @@ export default function Cricket() {
           <AnimatedPrimaryButton
             title={t(language, "endMatch") || "End"}
             theme={theme}
-            onPress={saveCricketHistory}
+            onPress={() => saveCricketHistory(true)}
           />
         </View>
       </FinishModal>
 
-      <CustomAlert
-        visible={alertVisible}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onRequestClose={() => setAlertVisible(false)}
-      />
+      <GameAlerts />
     </SafeAreaView>
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-
-    customHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBackBtn: { padding: 8, marginLeft: -8 },
-    headerCenter: { flex: 1, alignItems: "center" },
-    headerTitle: {
-      fontSize: 17,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-    },
-    headerSub: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: theme.colors.textMuted,
-    },
-    headerRight: { minWidth: 40, alignItems: "flex-end" },
-    timerBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.primaryLight,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      gap: 4,
-    },
-    timerText: {
-      fontSize: 14,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      fontVariant: ["tabular-nums"],
-    },
-
     boardWrapper: {
       flex: 1,
       flexDirection: "row",
@@ -801,33 +781,6 @@ const getStyles = (theme: any) =>
       color: theme.colors.primary,
       textTransform: "uppercase",
     },
-    infoThrowsRow: { flexDirection: "row", gap: 8 },
-    throwBox: {
-      width: 44,
-      height: 44,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: theme.colors.card,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      borderRadius: 10,
-    },
-    throwBoxActive: {
-      borderColor: theme.colors.primary,
-      borderWidth: 2,
-    },
-    throwBoxText: {
-      fontSize: 16,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-    },
-
-    keyboard: {
-      padding: 8,
-      gap: 6,
-      backgroundColor: theme.colors.cardBorder,
-      paddingBottom: 20,
-    },
     keyRow: { flexDirection: "row", gap: 6 },
     keyRowModifiers: { flexDirection: "row", gap: 6, marginTop: 4 },
     keyNum: {
@@ -868,6 +821,4 @@ const getStyles = (theme: any) =>
     },
     disabledKeyText: { color: theme.colors.textLight },
     undoKey: { backgroundColor: theme.colors.dangerLight },
-
-    modalActionsCol: { width: "100%", gap: 12 },
   });

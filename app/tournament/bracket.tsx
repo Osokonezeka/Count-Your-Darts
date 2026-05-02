@@ -19,11 +19,19 @@ import DoubleKnockout from "../../components/tournament/DoubleKnockout";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { useMatchStore } from "../../store/useMatchStore";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 
 export default function TournamentBracketScreen() {
   const { theme } = useTheme();
   const { language } = useLanguage();
-  const styles = getStyles(theme);
+  const styles = useMemo(
+    () => ({
+      ...getSharedTournamentStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { tournamentData, playersData, bracketData, isHistoryView } =
@@ -141,12 +149,14 @@ export default function TournamentBracketScreen() {
 
       const selectedPlayersKey = `@dart_selected_players_${String(settings.name || "").replace(/\s/g, "_")}`;
       const keysToRemove = [bracketStorageKey, selectedPlayersKey];
+      const matchIdsToRemove: string[] = [];
       if (Array.isArray(bracket)) {
         bracket.forEach((match: any) => {
-          keysToRemove.push(`match_save_${match.id}`);
+          matchIdsToRemove.push(match.id);
         });
       }
       await AsyncStorage.multiRemove(keysToRemove);
+      useMatchStore.getState().clearMultipleMatches(matchIdsToRemove);
 
       const savedArrStr = await AsyncStorage.getItem("@active_tournaments");
       if (savedArrStr) {
@@ -170,17 +180,19 @@ export default function TournamentBracketScreen() {
       const bracketStorageKey = `bracket_structure_${String(settings.name || "").replace(/\s/g, "_")}`;
       const selectedPlayersKey = `@dart_selected_players_${String(settings.name || "").replace(/\s/g, "_")}`;
       const keysToRemove = [bracketStorageKey, selectedPlayersKey];
+      const matchIdsToRemove: string[] = [];
 
       const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
       if (savedBracketStr) {
         const savedBracket = JSON.parse(savedBracketStr);
         if (Array.isArray(savedBracket)) {
           savedBracket.forEach((match: any) => {
-            keysToRemove.push(`match_save_${match.id}`);
+            matchIdsToRemove.push(match.id);
           });
         }
       }
       await AsyncStorage.multiRemove(keysToRemove);
+      useMatchStore.getState().clearMultipleMatches(matchIdsToRemove);
 
       const savedArrStr = await AsyncStorage.getItem("@active_tournaments");
       if (savedArrStr) {
@@ -511,21 +523,8 @@ export default function TournamentBracketScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    header: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-    headerBtn: { padding: 4 },
     headerTitle: {
       flex: 1,
       fontSize: 18,
@@ -533,19 +532,6 @@ const getStyles = (theme: any) =>
       color: theme.colors.textMain,
       textAlign: "center",
       marginHorizontal: 10,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "center",
-      padding: 16,
-    },
-    modalContent: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 20,
-      padding: 20,
-      maxHeight: "90%",
-      elevation: 10,
     },
     modalHeader: {
       flexDirection: "row",
@@ -557,11 +543,6 @@ const getStyles = (theme: any) =>
       fontSize: 20,
       fontWeight: "900",
       color: theme.colors.textMain,
-    },
-    closeModalBtn: {
-      padding: 4,
-      backgroundColor: theme.colors.background,
-      borderRadius: 20,
     },
     playersTitleRow: {
       flexDirection: "row",

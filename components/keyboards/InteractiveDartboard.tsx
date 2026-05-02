@@ -10,6 +10,8 @@ import Svg, { Path, Circle, G, Text as SvgText } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
 import { t } from "../../lib/i18n";
+import { useHaptics } from "../../context/HapticsContext";
+import * as Haptics from "expo-haptics";
 
 const SECTORS = [
   20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
@@ -150,9 +152,22 @@ export function InteractiveDartboard({
   const [pinpoint, setPinpoint] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const { isHapticsEnabled, intensity } = useHaptics();
+
+  const triggerHaptic = () => {
+    if (isHapticsEnabled) {
+      let hapticStyle = Haptics.ImpactFeedbackStyle.Medium;
+      if (intensity === "light")
+        hapticStyle = Haptics.ImpactFeedbackStyle.Light;
+      if (intensity === "heavy")
+        hapticStyle = Haptics.ImpactFeedbackStyle.Heavy;
+      Haptics.impactAsync(hapticStyle);
+    }
+  };
 
   const handlePress = useCallback(
     (e: any, value: number, multiplier: number) => {
+      triggerHaptic();
       let coords = undefined;
       if (e && e.nativeEvent && e.nativeEvent.locationX !== undefined) {
         const locX = e.nativeEvent.locationX;
@@ -162,10 +177,11 @@ export function InteractiveDartboard({
       }
       onThrow(value, multiplier, coords);
     },
-    [cx, cy, onThrow],
+    [cx, cy, onThrow, isHapticsEnabled, intensity],
   );
 
   const handleUndoPress = () => {
+    triggerHaptic();
     setPinpoint(null);
     onUndo();
   };

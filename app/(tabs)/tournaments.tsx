@@ -1,17 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 
 export default function TournamentScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { language } = useLanguage();
-  const styles = getStyles(theme);
+  const styles = useMemo(() => ({
+    ...getSharedTournamentStyles(theme),
+    ...getSpecificStyles(theme)
+  }), [theme]);
 
   return (
     <ScrollView
@@ -87,11 +91,8 @@ export default function TournamentScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { padding: 16, paddingBottom: 40 },
-
     sectionTitleMain: {
       fontSize: 22,
       fontWeight: "800",

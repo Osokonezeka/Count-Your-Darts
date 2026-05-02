@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,11 +16,18 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 
 export default function TournamentHistoryScreen() {
   const { theme } = useTheme();
   const { language } = useLanguage();
-  const styles = getStyles(theme);
+  const styles = useMemo(
+    () => ({
+      ...getSharedTournamentStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -238,7 +245,10 @@ export default function TournamentHistoryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <AnimatedPressable onPress={() => router.back()} style={styles.backBtn}>
+        <AnimatedPressable
+          onPress={() => router.back()}
+          style={styles.headerBtn}
+        >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <Text style={styles.headerTitle}>
@@ -273,7 +283,7 @@ export default function TournamentHistoryScreen() {
           data={history}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={styles.scrollContent}
         />
       )}
 
@@ -302,26 +312,8 @@ export default function TournamentHistoryScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    header: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    backBtn: { padding: 4 },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
-    listContent: { padding: 16, paddingBottom: 40 },
     historyCard: {
       backgroundColor: theme.colors.card,
       borderRadius: 16,
