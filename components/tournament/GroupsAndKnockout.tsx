@@ -16,218 +16,13 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import CustomAlert from "../modals/CustomAlert";
+import {
+  MatchCard,
+  SharedMatch as Match,
+  SharedPlayer as Player,
+} from "./MatchCard";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-
-type Player = { id: string; name: string };
-type Match = {
-  id: string;
-  phase: "group" | "knockout";
-  groupId?: string;
-  round: number;
-  matchIndex: number;
-  player1: Player | null;
-  player2: Player | null;
-  winner: Player | null;
-  nextMatchId: string | null;
-  isBye: boolean;
-  isThirdPlace?: boolean;
-  stats?: any[];
-  score?: { p1Sets: number; p1Legs: number; p2Sets: number; p2Legs: number };
-};
-
-const MatchCard = React.memo(
-  ({
-    match,
-    isMatchInProgress,
-    theme,
-    onPlay,
-    onMatchPress,
-    isReadOnly,
-    onResetMatch,
-    settings,
-  }: {
-    match: Match;
-    isMatchInProgress: boolean;
-    theme: any;
-    onPlay: (match: Match) => void;
-    onMatchPress?: (match: Match) => void;
-    isReadOnly: boolean;
-    onResetMatch?: (matchId: string) => void;
-    settings: any;
-  }) => {
-    const { language } = useLanguage();
-    const styles = useMemo(() => getStyles(theme), [theme]);
-    const isWaiting = !match.player1 || !match.player2;
-    const hasWinner = match.winner !== null;
-    const p1IsWinner = hasWinner && match.winner?.id === match.player1?.id;
-    const p2IsWinner = hasWinner && match.winner?.id === match.player2?.id;
-    const p1IsLoser = hasWinner && !p1IsWinner && match.player1 !== null;
-    const p2IsLoser =
-      hasWinner && !p2IsWinner && match.player2 !== null && !match.isBye;
-    const isClickable = hasWinner && !match.isBye && onMatchPress;
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.matchCard,
-          match.isBye && styles.byeCard,
-          match.isThirdPlace && styles.thirdPlaceCard,
-        ]}
-        activeOpacity={isClickable ? 0.8 : 1}
-        onPress={isClickable ? () => onMatchPress(match) : undefined}
-      >
-        {isMatchInProgress && !hasWinner && !isReadOnly && onResetMatch && (
-          <TouchableOpacity
-            style={styles.resetMatchBtn}
-            onPress={() => onResetMatch(match.id)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={20}
-              color={theme.colors.danger || "#dc3545"}
-            />
-          </TouchableOpacity>
-        )}
-
-        {match.isThirdPlace && (
-          <Text style={styles.thirdPlaceLabel}>
-            {t(language, "thirdPlaceMatchLabel") || "3rd Place Match 🥉"}
-          </Text>
-        )}
-        {match.phase === "group" && (
-          <Text style={styles.groupBadgeLabel}>Group {match.groupId}</Text>
-        )}
-
-        <View>
-          <View
-            style={[
-              styles.playerRow,
-              p1IsWinner && styles.winnerRow,
-              p1IsLoser && styles.loserRow,
-            ]}
-          >
-            <Text
-              style={[
-                styles.playerName,
-                !match.player1 && styles.pendingText,
-                p1IsWinner && styles.winnerText,
-                p1IsLoser && styles.loserText,
-              ]}
-              numberOfLines={1}
-            >
-              {match.player1
-                ? match.player1.name
-                : t(language, "awaiting") || "Awaiting..."}
-            </Text>
-            {match.score && match.player1 && (
-              <Text
-                style={[
-                  styles.scoreText,
-                  p1IsWinner && styles.winnerText,
-                  p1IsLoser && styles.loserText,
-                ]}
-              >
-                {match.score.p1Sets > 0 ? `${match.score.p1Sets}S ` : ""}
-                {match.score.p1Legs}L
-              </Text>
-            )}
-            {p1IsWinner && match.phase === "knockout" && (
-              <Ionicons
-                name="checkmark-circle"
-                size={18}
-                color={theme.colors.success || "#28a745"}
-              />
-            )}
-          </View>
-          <View style={styles.divider} />
-          <View
-            style={[
-              styles.playerRow,
-              p2IsWinner && styles.winnerRow,
-              p2IsLoser && styles.loserRow,
-            ]}
-          >
-            <Text
-              style={[
-                styles.playerName,
-                !match.player2 && styles.pendingText,
-                p2IsWinner && styles.winnerText,
-                p2IsLoser && styles.loserText,
-              ]}
-              numberOfLines={1}
-            >
-              {match.player2
-                ? match.player2.name
-                : match.isBye
-                  ? t(language, "byePlayer") || "Bye"
-                  : t(language, "awaiting") || "Awaiting..."}
-            </Text>
-            {match.score && match.player2 && !match.isBye && (
-              <Text
-                style={[
-                  styles.scoreText,
-                  p2IsWinner && styles.winnerText,
-                  p2IsLoser && styles.loserText,
-                ]}
-              >
-                {match.score.p2Sets > 0 ? `${match.score.p2Sets}S ` : ""}
-                {match.score.p2Legs}L
-              </Text>
-            )}
-            {p2IsWinner && match.phase === "knockout" && (
-              <Ionicons
-                name="checkmark-circle"
-                size={18}
-                color={theme.colors.success || "#28a745"}
-              />
-            )}
-          </View>
-        </View>
-
-        <View style={styles.actionContainer}>
-          {!match.isBye && hasWinner ? (
-            <TouchableOpacity
-              style={styles.statsButton}
-              activeOpacity={0.8}
-              onPress={() => onMatchPress?.(match)}
-            >
-              <Ionicons name="stats-chart" size={16} color="#fff" />
-              <Text style={styles.playButtonText}>
-                {t(language, "stats") || "Statistics"}
-              </Text>
-            </TouchableOpacity>
-          ) : !isReadOnly && !match.isBye && !isWaiting ? (
-            <TouchableOpacity
-              style={[
-                styles.playButton,
-                isMatchInProgress && styles.resumeButton,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => onPlay(match)}
-            >
-              <Ionicons
-                name={isMatchInProgress ? "play-forward" : "play"}
-                size={16}
-                color="#fff"
-              />
-              <Text style={styles.playButtonText}>
-                {isMatchInProgress
-                  ? t(language, "resume") || "Resume"
-                  : t(language, "start") || "Play"}
-              </Text>
-            </TouchableOpacity>
-          ) : match.isBye ? (
-            <Text style={styles.infoText}>
-              {t(language, "byePlayer") || "Bye"}
-            </Text>
-          ) : null}
-        </View>
-      </TouchableOpacity>
-    );
-  },
-);
 
 export default function GroupsAndKnockout({
   players,
@@ -248,6 +43,7 @@ export default function GroupsAndKnockout({
   const [inProgressMatches, setInProgressMatches] = useState<
     Record<string, boolean>
   >({});
+  const [dkView, setDkView] = useState<"wb" | "lb" | "gf">("wb");
   const [resetAlert, setResetAlert] = useState({ visible: false, matchId: "" });
   const [selectedPlayerMatches, setSelectedPlayerMatches] = useState<{
     player: Player;
@@ -376,69 +172,204 @@ export default function GroupsAndKnockout({
     const koMatches: Match[] = [];
     const prefix = Date.now().toString(36);
 
-    for (let r = 1; r <= totalRounds; r++) {
-      const matchesInRound = S / Math.pow(2, r);
-      for (let m = 0; m < matchesInRound; m++) {
-        const matchId = `match_${prefix}_ko_r${r}_m${m}`;
-        const nextId =
-          r < totalRounds
-            ? `match_${prefix}_ko_r${r + 1}_m${Math.floor(m / 2)}`
-            : null;
-
-        if (r === 1) {
-          const slot = round1Slots[m];
-          const isBye = !slot.p2;
+    if (settings.format === "groups_and_double_knockout") {
+      const W = totalRounds;
+      for (let r = 1; r <= W; r++) {
+        const matchesInRound = S / Math.pow(2, r);
+        for (let m = 0; m < matchesInRound; m++) {
+          const isGF = r === W;
+          const matchId = `match_${prefix}_wb_r${r}_m${m}`;
+          const nextMatchId = isGF
+            ? `match_${prefix}_gf_m0`
+            : `match_${prefix}_wb_r${r + 1}_m${Math.floor(m / 2)}`;
+          const nextMatchSlot = isGF ? "p1" : m % 2 === 0 ? "p1" : "p2";
+          let loserDropMatchId = null;
+          let loserDropSlot: "p1" | "p2" | null = null;
+          if (r === 1) {
+            loserDropMatchId = `match_${prefix}_lb_r1_m${Math.floor(m / 2)}`;
+            loserDropSlot = m % 2 === 0 ? "p1" : "p2";
+          } else {
+            const dropRound = 2 * r - 2;
+            const dropMatches = S / Math.pow(2, r);
+            const targetM = dropMatches - 1 - m;
+            loserDropMatchId = `match_${prefix}_lb_r${dropRound}_m${targetM}`;
+            loserDropSlot = "p2";
+          }
           koMatches.push({
             id: matchId,
             phase: "knockout",
+            bracket: "wb",
             round: r,
             matchIndex: m,
-            player1: slot.p1,
-            player2: slot.p2,
-            winner: isBye ? slot.p1 : null,
-            nextMatchId: nextId,
-            isBye,
+            player1: r === 1 ? round1Slots[m].p1 : null,
+            player2: r === 1 ? round1Slots[m].p2 : null,
+            winner: r === 1 && !round1Slots[m].p2 ? round1Slots[m].p1 : null,
+            nextMatchId,
+            nextMatchSlot,
+            loserDropMatchId,
+            loserDropSlot,
+            isBye: r === 1 && !round1Slots[m].p2,
           });
-        } else {
+        }
+      }
+
+      let lbSizes: number[] = [];
+      let currentSize = S / 4;
+      for (let r = 1; r <= 2 * W - 2; r++) {
+        lbSizes.push(currentSize);
+        if (r % 2 === 0) currentSize /= 2;
+      }
+
+      for (let r = 1; r <= 2 * W - 2; r++) {
+        const matchesInRound = lbSizes[r - 1];
+        for (let m = 0; m < matchesInRound; m++) {
+          let nextMatchId = `match_${prefix}_gf_m0`;
+          let nextMatchSlot: "p1" | "p2" = "p2";
+          if (r < 2 * W - 2) {
+            if (r % 2 === 1) {
+              nextMatchId = `match_${prefix}_lb_r${r + 1}_m${m}`;
+              nextMatchSlot = "p1";
+            } else {
+              nextMatchId = `match_${prefix}_lb_r${r + 1}_m${Math.floor(m / 2)}`;
+              nextMatchSlot = m % 2 === 0 ? "p1" : "p2";
+            }
+          }
           koMatches.push({
-            id: matchId,
+            id: `match_${prefix}_lb_r${r}_m${m}`,
             phase: "knockout",
+            bracket: "lb",
             round: r,
             matchIndex: m,
             player1: null,
             player2: null,
             winner: null,
-            nextMatchId: nextId,
+            nextMatchId,
+            nextMatchSlot,
             isBye: false,
           });
         }
       }
-    }
 
-    koMatches
-      .filter((m) => m.round === 1 && m.isBye)
-      .forEach((byeMatch) => {
-        const nextMatch = koMatches.find((m) => m.id === byeMatch.nextMatchId);
-        if (nextMatch) {
-          if (byeMatch.matchIndex % 2 === 0)
-            nextMatch.player1 = byeMatch.winner;
-          else nextMatch.player2 = byeMatch.winner;
-        }
-      });
-
-    if (settings.thirdPlaceMatch && totalRounds > 1) {
       koMatches.push({
-        id: `match_${prefix}_ko_third_place`,
+        id: `match_${prefix}_gf_m0`,
         phase: "knockout",
-        round: totalRounds,
+        bracket: "gf",
+        round: 1,
+        matchIndex: 0,
+        player1: null,
+        player2: null,
+        winner: null,
+        nextMatchId: `match_${prefix}_gf_m1`,
+        nextMatchSlot: "p1",
+        isBye: false,
+      });
+      koMatches.push({
+        id: `match_${prefix}_gf_m1`,
+        phase: "knockout",
+        bracket: "gf",
+        round: 2,
         matchIndex: 1,
         player1: null,
         player2: null,
         winner: null,
         nextMatchId: null,
+        nextMatchSlot: null,
         isBye: false,
-        isThirdPlace: true,
       });
+
+      let loop = true;
+      while (loop) {
+        let updated = false;
+        koMatches.forEach((m) => {
+          if (m.winner) {
+            if (m.nextMatchId) {
+              const nextM = koMatches.find((x) => x.id === m.nextMatchId);
+              if (nextM) {
+                if (
+                  m.nextMatchSlot === "p1" &&
+                  nextM.player1?.id !== m.winner.id
+                ) {
+                  nextM.player1 = m.winner;
+                  updated = true;
+                } else if (
+                  m.nextMatchSlot === "p2" &&
+                  nextM.player2?.id !== m.winner.id
+                ) {
+                  nextM.player2 = m.winner;
+                  updated = true;
+                }
+              }
+            }
+          }
+        });
+        loop = updated;
+      }
+    } else {
+      for (let r = 1; r <= totalRounds; r++) {
+        const matchesInRound = S / Math.pow(2, r);
+        for (let m = 0; m < matchesInRound; m++) {
+          const matchId = `match_${prefix}_ko_r${r}_m${m}`;
+          const nextId =
+            r < totalRounds
+              ? `match_${prefix}_ko_r${r + 1}_m${Math.floor(m / 2)}`
+              : null;
+          if (r === 1) {
+            const slot = round1Slots[m];
+            const isBye = !slot.p2;
+            koMatches.push({
+              id: matchId,
+              phase: "knockout",
+              round: r,
+              matchIndex: m,
+              player1: slot.p1,
+              player2: slot.p2,
+              winner: isBye ? slot.p1 : null,
+              nextMatchId: nextId,
+              isBye,
+            });
+          } else {
+            koMatches.push({
+              id: matchId,
+              phase: "knockout",
+              round: r,
+              matchIndex: m,
+              player1: null,
+              player2: null,
+              winner: null,
+              nextMatchId: nextId,
+              isBye: false,
+            });
+          }
+        }
+      }
+
+      koMatches
+        .filter((m) => m.round === 1 && m.isBye)
+        .forEach((byeMatch) => {
+          const nextMatch = koMatches.find(
+            (m) => m.id === byeMatch.nextMatchId,
+          );
+          if (nextMatch) {
+            if (byeMatch.matchIndex % 2 === 0)
+              nextMatch.player1 = byeMatch.winner;
+            else nextMatch.player2 = byeMatch.winner;
+          }
+        });
+
+      if (settings.thirdPlaceMatch && totalRounds > 1) {
+        koMatches.push({
+          id: `match_${prefix}_ko_third_place`,
+          phase: "knockout",
+          round: totalRounds,
+          matchIndex: 1,
+          player1: null,
+          player2: null,
+          winner: null,
+          nextMatchId: null,
+          isBye: false,
+          isThirdPlace: true,
+        });
+      }
     }
 
     const updatedMatches = [...currentMatches, ...koMatches];
@@ -646,20 +577,47 @@ export default function GroupsAndKnockout({
         matchSettings.targetLegs = settings.groupLegs;
         matchSettings.startingPoints = settings.groupPoints;
       } else if (match.phase === "knockout") {
-        if (
-          settings.customFinals &&
-          match.round === totalKORounds &&
-          !match.isThirdPlace
-        ) {
-          matchSettings.targetSets = settings.finalSets;
-          matchSettings.targetLegs = settings.finalLegs;
-        } else if (
-          settings.customSemis &&
-          match.round === totalKORounds - 1 &&
-          !match.isThirdPlace
-        ) {
-          matchSettings.targetSets = settings.semiSets;
-          matchSettings.targetLegs = settings.semiLegs;
+        if (settings.format === "groups_and_double_knockout") {
+          if (settings.customFinals && match.bracket === "gf") {
+            matchSettings.targetSets = settings.finalSets;
+            matchSettings.targetLegs = settings.finalLegs;
+          } else if (settings.customSemis) {
+            const totalWBRounds = Math.max(
+              ...koMatches
+                .filter((m) => m.bracket === "wb")
+                .map((m) => m.round),
+              1,
+            );
+            const totalLBRounds = Math.max(
+              ...koMatches
+                .filter((m) => m.bracket === "lb")
+                .map((m) => m.round),
+              1,
+            );
+            if (
+              (match.bracket === "wb" && match.round === totalWBRounds) ||
+              (match.bracket === "lb" && match.round === totalLBRounds)
+            ) {
+              matchSettings.targetSets = settings.semiSets;
+              matchSettings.targetLegs = settings.semiLegs;
+            }
+          }
+        } else {
+          if (
+            settings.customFinals &&
+            match.round === totalKORounds &&
+            !match.isThirdPlace
+          ) {
+            matchSettings.targetSets = settings.finalSets;
+            matchSettings.targetLegs = settings.finalLegs;
+          } else if (
+            settings.customSemis &&
+            match.round === totalKORounds - 1 &&
+            !match.isThirdPlace
+          ) {
+            matchSettings.targetSets = settings.semiSets;
+            matchSettings.targetLegs = settings.semiLegs;
+          }
         }
       }
       router.push({
@@ -704,6 +662,31 @@ export default function GroupsAndKnockout({
       handlePlayMatch,
       handlePressMatch,
     ],
+  );
+
+  const wbRounds = Math.max(
+    ...koMatches.filter((m) => m.bracket === "wb").map((m) => m.round),
+    0,
+  );
+  const lbRounds = Math.max(
+    ...koMatches.filter((m) => m.bracket === "lb").map((m) => m.round),
+    0,
+  );
+  const totalColumns =
+    settings.format === "groups_and_double_knockout"
+      ? wbRounds + lbRounds + 1
+      : Object.keys(koMatchesByRound).length;
+  const calculatedWidth = Math.max(screenWidth, totalColumns * 290 + 150);
+  const maxMatchesInColumn =
+    settings.format === "groups_and_double_knockout"
+      ? Math.max(
+          koMatches.filter((m) => m.bracket === "wb" && m.round === 1).length,
+          1,
+        )
+      : Math.max(koMatchesByRound[1]?.length || 1, 1);
+  const calculatedHeight = Math.max(
+    screenHeight,
+    maxMatchesInColumn * 170 + 100,
   );
 
   return (
@@ -908,75 +891,216 @@ export default function GroupsAndKnockout({
             zoomStep={0.5}
             initialZoom={1}
             bindToBorders={true}
-            contentWidth={Math.max(
-              screenWidth,
-              Object.keys(koMatchesByRound).length * 290 + 100,
-            )}
-            contentHeight={Math.max(
-              screenHeight,
-              (koMatchesByRound[1]?.length || 1) * 170 + 100,
-            )}
+            contentWidth={calculatedWidth}
+            contentHeight={calculatedHeight}
             panBoundaryPadding={50}
             style={{ flex: 1 }}
           >
-            <View
-              style={{
-                width: Math.max(
-                  screenWidth,
-                  Object.keys(koMatchesByRound).length * 290 + 100,
-                ),
-                height: Math.max(
-                  screenHeight,
-                  (koMatchesByRound[1]?.length || 1) * 170 + 100,
-                ),
-                flexDirection: "row",
-                gap: 30,
-                padding: 24,
-              }}
-            >
-              {Object.keys(koMatchesByRound).map((roundKey) => {
-                const roundNum = parseInt(roundKey);
-                return (
-                  <View key={`ko-col-${roundKey}`} style={styles.treeColumn}>
-                    <Text style={styles.treeRoundTitle}>
-                      {getRoundName(roundNum)}
-                    </Text>
-                    <View style={styles.treeMatchesWrapper}>
-                      {koMatchesByRound[roundNum].map((match, idx) => (
-                        <React.Fragment key={match.id}>
-                          <View style={styles.treeMatchContainer}>
-                            {renderCard(match)}
-                          </View>
-                          {idx % 2 === 1 &&
-                          idx !== koMatchesByRound[roundNum].length - 1 &&
-                          !match.isThirdPlace ? (
-                            <View style={styles.treeSeparator} />
-                          ) : null}
-                        </React.Fragment>
-                      ))}
+            {settings.format === "groups_and_double_knockout" ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 30,
+                  padding: 24,
+                  width: calculatedWidth,
+                  height: calculatedHeight,
+                }}
+              >
+                {Object.keys(koMatchesByRound).map((roundKey) => {
+                  const ms = koMatchesByRound[parseInt(roundKey)].filter(
+                    (m) => m.bracket === "wb",
+                  );
+                  if (ms.length === 0) return null;
+                  return (
+                    <View key={`wb-col-${roundKey}`} style={styles.treeColumn}>
+                      <Text style={styles.treeRoundTitle}>
+                        WB Round {roundKey}
+                      </Text>
+                      <View style={styles.treeMatchesWrapper}>
+                        {ms.map((match, idx) => (
+                          <React.Fragment key={match.id}>
+                            <View style={styles.treeMatchContainer}>
+                              {renderCard(match)}
+                            </View>
+                            {idx % 2 === 1 && idx !== ms.length - 1 ? (
+                              <View style={styles.treeSeparator} />
+                            ) : null}
+                          </React.Fragment>
+                        ))}
+                      </View>
                     </View>
+                  );
+                })}
+                <View
+                  style={{
+                    width: 2,
+                    backgroundColor: theme.colors.cardBorder,
+                    marginHorizontal: 20,
+                  }}
+                />
+                {Object.keys(koMatchesByRound).map((roundKey) => {
+                  const ms = koMatchesByRound[parseInt(roundKey)].filter(
+                    (m) => m.bracket === "lb",
+                  );
+                  if (ms.length === 0) return null;
+                  return (
+                    <View key={`lb-col-${roundKey}`} style={styles.treeColumn}>
+                      <Text style={styles.treeRoundTitle}>
+                        LB Round {roundKey}
+                      </Text>
+                      <View style={styles.treeMatchesWrapper}>
+                        {ms.map((match, idx) => (
+                          <React.Fragment key={match.id}>
+                            <View style={styles.treeMatchContainer}>
+                              {renderCard(match)}
+                            </View>
+                            {idx % 2 === 1 && idx !== ms.length - 1 ? (
+                              <View style={styles.treeSeparator} />
+                            ) : null}
+                          </React.Fragment>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+                <View
+                  style={{
+                    width: 2,
+                    backgroundColor: theme.colors.cardBorder,
+                    marginHorizontal: 20,
+                  }}
+                />
+                <View style={styles.treeColumn}>
+                  <Text style={styles.treeRoundTitle}>Grand Finals</Text>
+                  <View style={styles.treeMatchesWrapper}>
+                    {koMatches
+                      .filter((m) => m.bracket === "gf")
+                      .map((match) => (
+                        <View key={match.id} style={styles.treeMatchContainer}>
+                          {renderCard(match)}
+                        </View>
+                      ))}
                   </View>
-                );
-              })}
-            </View>
+                </View>
+              </View>
+            ) : (
+              <View
+                style={{
+                  width: calculatedWidth,
+                  height: calculatedHeight,
+                  flexDirection: "row",
+                  gap: 30,
+                  padding: 24,
+                }}
+              >
+                {Object.keys(koMatchesByRound).map((roundKey) => {
+                  const roundNum = parseInt(roundKey);
+                  return (
+                    <View key={`ko-col-${roundKey}`} style={styles.treeColumn}>
+                      <Text style={styles.treeRoundTitle}>
+                        {getRoundName(roundNum)}
+                      </Text>
+                      <View style={styles.treeMatchesWrapper}>
+                        {koMatchesByRound[roundNum].map((match, idx) => (
+                          <React.Fragment key={match.id}>
+                            <View style={styles.treeMatchContainer}>
+                              {renderCard(match)}
+                            </View>
+                            {idx % 2 === 1 &&
+                            idx !== koMatchesByRound[roundNum].length - 1 &&
+                            !match.isThirdPlace ? (
+                              <View style={styles.treeSeparator} />
+                            ) : null}
+                          </React.Fragment>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </ReactNativeZoomableView>
         </View>
       ) : (
-        <ScrollView
-          style={styles.listContainer}
-          contentContainerStyle={{ paddingBottom: 40 }}
-        >
-          {Object.keys(koMatchesByRound).map((roundKey) => (
-            <View key={`ko-list-${roundKey}`} style={styles.roundSection}>
-              <View style={styles.roundHeader}>
-                <Text style={styles.roundTitle}>
-                  {getRoundName(parseInt(roundKey))}
+        <View style={{ flex: 1 }}>
+          {settings.format === "groups_and_double_knockout" && (
+            <View style={styles.phaseTabsContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.phaseTab,
+                  dkView === "wb" && styles.phaseTabActive,
+                ]}
+                onPress={() => setDkView("wb")}
+              >
+                <Text
+                  style={[
+                    styles.phaseTabText,
+                    dkView === "wb" && styles.phaseTabTextActive,
+                  ]}
+                >
+                  WINNERS
                 </Text>
-              </View>
-              {koMatchesByRound[parseInt(roundKey)].map(renderCard)}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.phaseTab,
+                  dkView === "lb" && styles.phaseTabActive,
+                ]}
+                onPress={() => setDkView("lb")}
+              >
+                <Text
+                  style={[
+                    styles.phaseTabText,
+                    dkView === "lb" && styles.phaseTabTextActive,
+                  ]}
+                >
+                  LOSERS
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.phaseTab,
+                  dkView === "gf" && styles.phaseTabActive,
+                ]}
+                onPress={() => setDkView("gf")}
+              >
+                <Text
+                  style={[
+                    styles.phaseTabText,
+                    dkView === "gf" && styles.phaseTabTextActive,
+                  ]}
+                >
+                  FINALS
+                </Text>
+              </TouchableOpacity>
             </View>
-          ))}
-        </ScrollView>
+          )}
+          <ScrollView
+            style={styles.listContainer}
+            contentContainerStyle={{ paddingBottom: 40 }}
+          >
+            {Object.keys(koMatchesByRound).map((roundKey) => {
+              const rNum = parseInt(roundKey);
+              let ms = koMatchesByRound[rNum];
+              if (settings.format === "groups_and_double_knockout") {
+                ms = ms.filter((m) => m.bracket === dkView);
+              }
+              if (ms.length === 0) return null;
+              return (
+                <View key={`ko-list-${roundKey}`} style={styles.roundSection}>
+                  <View style={styles.roundHeader}>
+                    <Text style={styles.roundTitle}>
+                      {settings.format === "groups_and_double_knockout"
+                        ? `${dkView.toUpperCase()} Round ${roundKey}`
+                        : getRoundName(rNum)}
+                    </Text>
+                  </View>
+                  {ms.map(renderCard)}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       <CustomAlert
@@ -1103,132 +1227,6 @@ const getStyles = (theme: any) =>
       opacity: 0.5,
       borderStyle: "dashed",
       borderWidth: 0.5,
-    },
-    resetMatchBtn: {
-      position: "absolute",
-      top: 8,
-      right: 8,
-      zIndex: 10,
-      padding: 2,
-    },
-    matchCard: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      padding: 12,
-      marginBottom: 10,
-      elevation: 2,
-      height: 148,
-      justifyContent: "space-between",
-      position: "relative",
-    },
-    byeCard: { opacity: 0.6, backgroundColor: theme.colors.background },
-    thirdPlaceCard: {
-      borderColor: "#cd7f32",
-      borderWidth: 2,
-      borderStyle: "dashed",
-    },
-    thirdPlaceLabel: {
-      fontSize: 12,
-      color: "#cd7f32",
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 4,
-    },
-    groupBadgeLabel: {
-      position: "absolute",
-      top: -8,
-      left: 10,
-      backgroundColor: theme.colors.cardBorder,
-      color: theme.colors.textMain,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      fontSize: 10,
-      fontWeight: "900",
-      borderRadius: 8,
-      overflow: "hidden",
-    },
-    playerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingVertical: 6,
-      overflow: "hidden",
-    },
-    winnerRow: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.05)",
-      borderRadius: 6,
-      paddingHorizontal: 6,
-      marginHorizontal: -6,
-    },
-    winnerText: { color: theme.colors.success || "#28a745", fontWeight: "900" },
-    loserRow: {
-      backgroundColor: "rgba(220, 53, 69, 0.08)",
-      borderRadius: 6,
-      paddingHorizontal: 6,
-      marginHorizontal: -6,
-    },
-    loserText: {
-      color: theme.colors.textMuted,
-      textDecorationLine: "line-through",
-    },
-    playerName: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: theme.colors.textMain,
-      flexShrink: 1,
-      marginRight: 8,
-    },
-    scoreText: {
-      fontSize: 16,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      marginRight: 8,
-    },
-    pendingText: {
-      color: theme.colors.textLight,
-      fontStyle: "italic",
-      fontWeight: "500",
-    },
-    divider: {
-      height: 1,
-      backgroundColor: theme.colors.background,
-      marginVertical: 4,
-    },
-    actionContainer: { height: 40, justifyContent: "flex-end", marginTop: 8 },
-    playButton: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.primary,
-      paddingVertical: 10,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    resumeButton: { backgroundColor: theme.colors.warning || "#f0ad4e" },
-    statsButton: {
-      flexDirection: "row",
-      backgroundColor: "#4b5563",
-      paddingVertical: 10,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    playButtonText: {
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: "800",
-      textTransform: "uppercase",
-    },
-    infoText: {
-      textAlign: "center",
-      fontSize: 12,
-      fontWeight: "700",
-      color: theme.colors.textLight,
-      textTransform: "uppercase",
-      paddingBottom: 6,
     },
     tableCard: {
       backgroundColor: theme.colors.card,

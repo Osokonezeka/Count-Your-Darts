@@ -34,6 +34,7 @@ const SECTIONS_KEY = "@dart_tourney_stats_sections_order";
 const OPEN_SECTIONS_KEY = "@dart_tourney_stats_sections_open";
 
 type Section = { id: string };
+type EntityType = "single" | "team";
 type TimeFilter = "today" | "7d" | "30d" | "all";
 
 export default function TournamentStatistics() {
@@ -53,6 +54,7 @@ export default function TournamentStatistics() {
   const [selectedSharePlayer, setSelectedSharePlayer] = useState<string | null>(
     null,
   );
+  const [entityType, setEntityType] = useState<EntityType>("single");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
 
   const viewShotRef = useRef<any>(null);
@@ -111,18 +113,38 @@ export default function TournamentStatistics() {
         if (saved) {
           const parsed = JSON.parse(saved);
           setHistory(parsed);
-          const allNames = Array.from(
-            new Set(
-              parsed.flatMap(
-                (t: any) => t.players?.map((p: any) => p.name) || [],
-              ),
-            ),
-          ) as string[];
-          setAppliedNames((prev) => (prev.length === 0 ? allNames : prev));
         }
       });
     }, []),
   );
+
+  const allHistoryPlayers = useMemo(() => {
+    const filtered = history.filter((t: any) =>
+      entityType === "team"
+        ? t.settings?.teamSize === "team"
+        : t.settings?.teamSize !== "team",
+    );
+    const map = new Map();
+    filtered.forEach((t: any) => {
+      t.players?.forEach((p: any) => {
+        if (!map.has(p.name)) {
+          map.set(p.name, {
+            name: p.name,
+            subtitle: p.isTeam && p.members ? p.members.join(" & ") : undefined,
+            searchStr:
+              p.isTeam && p.members ? p.members.join(" ").toLowerCase() : "",
+          });
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [history, entityType]);
+
+  useEffect(() => {
+    const names = allHistoryPlayers.map((p) => p.name);
+    setAppliedNames(names);
+    setTempNames(names);
+  }, [entityType, allHistoryPlayers]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -135,6 +157,10 @@ export default function TournamentStatistics() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const filteredHistory = history.filter((tourney) => {
+      if (entityType === "team" && tourney.settings?.teamSize !== "team")
+        return false;
+      if (entityType === "single" && tourney.settings?.teamSize === "team")
+        return false;
       if (timeFilter === "all" || !tourney.finishedAt) return true;
       const matchDate = new Date(tourney.finishedAt);
       if (timeFilter === "today") return matchDate >= startOfToday;
@@ -337,10 +363,16 @@ export default function TournamentStatistics() {
   }, [history, appliedNames, timeFilter]);
 
   const trendData = useMemo(() => {
-    const chronologicalHistory = [...history].sort(
-      (a, b) =>
-        new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
-    );
+    const chronologicalHistory = [...history]
+      .filter((t: any) =>
+        entityType === "team"
+          ? t.settings?.teamSize === "team"
+          : t.settings?.teamSize !== "team",
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
+      );
     const dataByPlayer: Record<string, any> = {};
 
     appliedNames.forEach((playerName) => {
@@ -443,23 +475,22 @@ export default function TournamentStatistics() {
     [stats, openSections, appliedNames, trendData, theme, language],
   );
 
-  const allHistoryPlayers = useMemo(() => {
-    return Array.from(
-      new Set(
-        history.flatMap((t: any) => t.players?.map((p: any) => p.name) || []),
-      ),
-    ) as string[];
-  }, [history]);
-
   const filteredHistoryPlayers = useMemo(() => {
+    const q = filterSearchQuery.toLowerCase();
     return allHistoryPlayers
-      .filter((p) => p.toLowerCase().includes(filterSearchQuery.toLowerCase()))
-      .sort((a, b) => a.localeCompare(b, language === "pl" ? "pl" : "en"));
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.searchStr && p.searchStr.includes(q)),
+      )
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, language === "pl" ? "pl" : "en"),
+      );
   }, [allHistoryPlayers, filterSearchQuery, language]);
 
   const allSelected =
     filteredHistoryPlayers.length > 0 &&
-    filteredHistoryPlayers.every((p) => tempNames.includes(p));
+    filteredHistoryPlayers.every((p) => tempNames.includes(p.name));
 
   return (
     <GestureHandlerRootView
@@ -498,39 +529,57 @@ export default function TournamentStatistics() {
         </View>
       </View>
 
-      <AnimatedSegmentedControl
-        theme={theme}
-        activeOption={timeFilter}
-        onSelect={setTimeFilter}
-        style={styles.segmentContainer}
-        options={(["today", "7d", "30d", "all"] as TimeFilter[]).map((f) => ({
-          id: f,
-          label:
-            f === "today"
-              ? t(language, "today") || "Today"
-              : f === "7d"
-                ? t(language, "week") || "7 days"
-                : f === "30d"
-                  ? t(language, "month") || "30 days"
-                  : t(language, "all") || "All time",
-        }))}
-      />
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+        <AnimatedSegmentedControl
+          theme={theme}
+          activeOption={entityType}
+          onSelect={setEntityType}
+          style={styles.segmentContainer}
+          options={[
+            { id: "single", label: t(language, "players") || "Players" },
+            { id: "team", label: t(language, "teams") || "Teams" },
+          ]}
+        />
+        <AnimatedSegmentedControl
+          theme={theme}
+          activeOption={timeFilter}
+          onSelect={setTimeFilter}
+          style={[styles.segmentContainer, { marginTop: 12 }]}
+          options={(["today", "7d", "30d", "all"] as TimeFilter[]).map((f) => ({
+            id: f,
+            label:
+              f === "today"
+                ? t(language, "today") || "Today"
+                : f === "7d"
+                  ? t(language, "week") || "7 days"
+                  : f === "30d"
+                    ? t(language, "month") || "30 days"
+                    : t(language, "all") || "All time",
+          }))}
+        />
+      </View>
 
-      <DraggableFlatList
-        data={sections}
-        onDragEnd={({ data }) => saveSectionsOrder(data)}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={{
-          padding: 16,
-          paddingBottom: 160 + insets.bottom,
-        }}
-        activationDistance={15}
-      />
+      <View style={{ flex: 1 }}>
+        <DraggableFlatList
+          data={sections}
+          onDragEnd={({ data }) => saveSectionsOrder(data)}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={{
+            padding: 16,
+            paddingBottom: 40 + insets.bottom,
+          }}
+          activationDistance={15}
+        />
+      </View>
 
       <SelectPlayersModal
         visible={showPlayerFilter}
-        title={t(language, "selectPlayers") || "Select players"}
+        title={
+          entityType === "team"
+            ? t(language, "selectTeamsTitle") || "Select teams"
+            : t(language, "selectPlayers") || "Select players"
+        }
         players={filteredHistoryPlayers}
         selectedPlayers={tempNames}
         onTogglePlayer={(item: string) =>
@@ -556,14 +605,31 @@ export default function TournamentStatistics() {
         onSearchChange={setFilterSearchQuery}
         showSelectAll={true}
         allSelected={allSelected}
+        searchPlaceholder={
+          entityType === "team"
+            ? t(language, "searchTeamOrPlayer") || "Search team / player..."
+            : t(language, "searchPlayer") || "Search player..."
+        }
+        countLabel={
+          entityType === "team"
+            ? t(language, "teamsCount") || "teams"
+            : t(language, "playersShort") || "players"
+        }
         onSelectAll={() =>
           setTempNames(
-            Array.from(new Set([...tempNames, ...filteredHistoryPlayers])),
+            Array.from(
+              new Set([
+                ...tempNames,
+                ...filteredHistoryPlayers.map((p) => p.name),
+              ]),
+            ),
           )
         }
         onDeselectAll={() =>
           setTempNames(
-            tempNames.filter((n) => !filteredHistoryPlayers.includes(n)),
+            tempNames.filter(
+              (n) => !filteredHistoryPlayers.find((p) => p.name === n),
+            ),
           )
         }
         theme={theme}

@@ -48,7 +48,7 @@ export function PlayerModal({
               value={value}
               onChangeText={onChangeText}
               autoFocus
-              maxLength={15}
+              maxLength={30}
               onSubmitEditing={onSave}
               returnKeyType="done"
             />

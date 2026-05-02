@@ -15,6 +15,10 @@ import React, {
 } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -25,19 +29,26 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CustomAlert from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { usePlayers } from "../../context/PlayersContext";
 import { PlayerModal } from "../../components/modals/PlayerModal";
+import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 
-type Player = { id: string; name: string };
+type Player = {
+  id: string;
+  name: string;
+  isTeam?: boolean;
+  members?: string[];
+};
 
 const TOURNAMENT_PLAYERS_KEY = "@dart_tournament_players";
 
 const PlayerRow = React.memo(
-  ({ player, isSelected, onToggle, onEdit, theme, styles }: any) => (
-    <TouchableOpacity
+  ({ player, isSelected, onToggle, theme, styles }: any) => (
+    <AnimatedPressable
       style={styles.playerSelectRow}
-      activeOpacity={0.7}
       onPress={() => onToggle(player.id)}
     >
       <View
@@ -45,32 +56,31 @@ const PlayerRow = React.memo(
           flex: 1,
           flexDirection: "row",
           alignItems: "center",
+          paddingRight: 12,
         }}
       >
-        <TouchableOpacity
-          style={styles.nameClickArea}
-          onPress={() => onEdit(player)}
+        <Text
+          style={[
+            styles.playerSelectName,
+            isSelected && styles.playerSelectNameActive,
+          ]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
         >
-          <Text
-            style={styles.playerSelectName}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {player.name}
+          {player.name}
+        </Text>
+        {player.isTeam && player.members && player.members.length > 0 && (
+          <Text style={styles.playerSelectSubtitle} numberOfLines={1}>
+            {" "}
+            ({player.members.join(" & ")})
           </Text>
-          <Ionicons
-            name="pencil-sharp"
-            size={14}
-            color={theme.colors.textLight}
-            style={{ marginLeft: 8 }}
-          />
-        </TouchableOpacity>
+        )}
       </View>
 
       <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
         {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
       </View>
-    </TouchableOpacity>
+    </AnimatedPressable>
   ),
 );
 
@@ -78,6 +88,7 @@ export default function TournamentPlayersScreen() {
   const { theme } = useTheme();
   const { language } = useLanguage();
   const router = useRouter();
+  const { players, addPlayer, removePlayer, updatePlayer } = usePlayers();
   const styles = useMemo(() => getStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -92,7 +103,7 @@ export default function TournamentPlayersScreen() {
     ? `bracket_structure_${String(settings.name || "").replace(/\s/g, "_")}`
     : "";
 
-  const minPlayers = settings?.teamSize === "team" ? 4 : 2;
+  const minPlayers = 2;
 
   const formatLabels: Record<string, string> = {
     single_knockout: t(language, "singleKnockout") || "Single Knockout",
@@ -104,17 +115,26 @@ export default function TournamentPlayersScreen() {
       t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
   };
 
+  const [isDbLoaded, setIsDbLoaded] = useState(false);
   const [tournamentPlayersDb, setTournamentPlayersDb] = useState<Player[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [playerSearchQuery, setPlayerSearchQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(25);
 
+  const [isManageVisible, setManageVisible] = useState(false);
   const [isPlayerModalVisible, setPlayerModalVisible] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [playerNameInput, setPlayerNameInput] = useState("");
 
+  const [isTeamModalVisible, setTeamModalVisible] = useState(false);
+  const [teamNameInput, setTeamNameInput] = useState("");
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
+  const [teamSearchQuery, setTeamSearchQuery] = useState("");
+
   const [isBackModalVisible, setBackModalVisible] = useState(false);
   const [duplicateErrorVisible, setDuplicateErrorVisible] = useState(false);
+  const [overlapAlertVisible, setOverlapAlertVisible] = useState(false);
+  const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
 
   const [hasExistingBracket, setHasExistingBracket] = useState(false);
   const [resetAlertVisible, setResetAlertVisible] = useState(false);
@@ -130,12 +150,35 @@ export default function TournamentPlayersScreen() {
         if (savedPlayers) {
           setTournamentPlayersDb(JSON.parse(savedPlayers));
         }
+        setIsDbLoaded(true);
       } catch (error) {
         console.error("Error loading DB", error);
       }
     };
     loadDb();
   }, []);
+
+  useEffect(() => {
+    if (!isDbLoaded) return;
+    setTournamentPlayersDb((prev) => {
+      let updated = [...prev];
+      let changed = false;
+      players.forEach((pName) => {
+        if (!updated.some((p) => !p.isTeam && p.name === pName)) {
+          updated.push({
+            id: Date.now().toString() + Math.random().toString(),
+            name: pName,
+            isTeam: false,
+          });
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveToDb(updated);
+      }
+      return updated;
+    });
+  }, [players, isDbLoaded]);
 
   useEffect(() => {
     setVisibleCount(25);
@@ -228,7 +271,8 @@ export default function TournamentPlayersScreen() {
     const exists = tournamentPlayersDb.some(
       (p) =>
         (editingPlayer ? p.id !== editingPlayer.id : true) &&
-        p.name.toLowerCase() === trimmed.toLowerCase(),
+        p.name.toLowerCase() === trimmed.toLowerCase() &&
+        !p.isTeam,
     );
     if (exists) {
       setDuplicateErrorVisible(true);
@@ -240,6 +284,7 @@ export default function TournamentPlayersScreen() {
       updatedDb = tournamentPlayersDb.map((p) =>
         p.id === editingPlayer.id ? { ...p, name: trimmed } : p,
       );
+      updatePlayer(editingPlayer.name, trimmed);
     } else {
       const newPlayer: Player = { id: Date.now().toString(), name: trimmed };
       updatedDb = [...tournamentPlayersDb, newPlayer];
@@ -252,6 +297,7 @@ export default function TournamentPlayersScreen() {
         );
       }
       setPlayerSearchQuery("");
+      addPlayer(trimmed);
     }
 
     setTournamentPlayersDb(updatedDb);
@@ -265,18 +311,140 @@ export default function TournamentPlayersScreen() {
     setPlayerNameInput("");
   };
 
-  const startEdit = useCallback((player: Player) => {
-    setEditingPlayer(player);
-    setPlayerNameInput(player.name);
-    setPlayerModalVisible(true);
-  }, []);
+  const handleSaveTeam = async () => {
+    if (teamMembers.length !== 2) return;
+    const p1 = teamMembers[0];
+    const p2 = teamMembers[1];
+
+    const tName = teamNameInput.trim() || `${p1} & ${p2}`;
+
+    const exists = tournamentPlayersDb.some(
+      (p) =>
+        (editingPlayer ? p.id !== editingPlayer.id : true) &&
+        p.name.toLowerCase() === tName.toLowerCase() &&
+        p.isTeam,
+    );
+    if (exists) {
+      setDuplicateErrorVisible(true);
+      return;
+    }
+
+    const selectedTeams = tournamentPlayersDb.filter(
+      (p) => selectedPlayerIds.includes(p.id) && p.id !== editingPlayer?.id,
+    );
+    const hasOverlapWithSelected = selectedTeams.some((t) =>
+      t.members?.some((m) => [p1, p2].includes(m)),
+    );
+
+    let updatedDb;
+    if (editingPlayer) {
+      updatedDb = tournamentPlayersDb.map((p) =>
+        p.id === editingPlayer.id
+          ? { ...p, name: tName, members: [p1, p2] }
+          : p,
+      );
+      if (
+        hasOverlapWithSelected &&
+        selectedPlayerIds.includes(editingPlayer.id)
+      ) {
+        const newSelection = selectedPlayerIds.filter(
+          (id) => id !== editingPlayer.id,
+        );
+        setSelectedPlayerIds(newSelection);
+        if (selectedPlayersKey)
+          AsyncStorage.setItem(
+            selectedPlayersKey,
+            JSON.stringify(newSelection),
+          );
+        setTimeout(() => setOverlapAlertVisible(true), 0);
+      }
+    } else {
+      const newTeam: Player = {
+        id: Date.now().toString(),
+        name: tName,
+        isTeam: true,
+        members: [p1, p2],
+      };
+      updatedDb = [...tournamentPlayersDb, newTeam];
+      if (!hasOverlapWithSelected) {
+        const newSelection = [...selectedPlayerIds, newTeam.id];
+        setSelectedPlayerIds(newSelection);
+        if (selectedPlayersKey) {
+          await AsyncStorage.setItem(
+            selectedPlayersKey,
+            JSON.stringify(newSelection),
+          );
+        }
+      } else {
+        setTimeout(() => setOverlapAlertVisible(true), 0);
+      }
+      setPlayerSearchQuery("");
+
+      addPlayer(p1);
+      addPlayer(p2);
+    }
+
+    setTournamentPlayersDb(updatedDb);
+    saveToDb(updatedDb);
+    closeTeamModal();
+  };
+
+  const closeTeamModal = () => {
+    setTeamModalVisible(false);
+    setEditingPlayer(null);
+    setTeamNameInput("");
+    setTeamMembers([]);
+    setTeamSearchQuery("");
+  };
+
+  const startEdit = useCallback(
+    (player: Player) => {
+      if (settings?.teamSize === "team") {
+        setEditingPlayer(player);
+        setTeamNameInput(
+          player.members &&
+            player.name === `${player.members[0]} & ${player.members[1]}`
+            ? ""
+            : player.name,
+        );
+        setTeamMembers(player.members || []);
+        setTeamSearchQuery("");
+        setTeamModalVisible(true);
+      } else {
+        setEditingPlayer(player);
+        setPlayerNameInput(player.name);
+        setPlayerModalVisible(true);
+      }
+    },
+    [settings?.teamSize],
+  );
 
   const togglePlayerSelection = useCallback(
     (id: string) => {
       setSelectedPlayerIds((prev: string[]) => {
-        const newSelection = prev.includes(id)
-          ? prev.filter((pId) => pId !== id)
-          : [...prev, id];
+        const isSelecting = !prev.includes(id);
+
+        if (isSelecting && settings?.teamSize === "team") {
+          const teamToSelect = tournamentPlayersDb.find((p) => p.id === id);
+          if (teamToSelect && teamToSelect.members) {
+            const selectedTeams = tournamentPlayersDb.filter((p) =>
+              prev.includes(p.id),
+            );
+            const hasOverlap = selectedTeams.some(
+              (t) =>
+                t.members &&
+                t.members.some((m) => teamToSelect.members?.includes(m)),
+            );
+            if (hasOverlap) {
+              setTimeout(() => setOverlapAlertVisible(true), 0);
+              return prev;
+            }
+          }
+        }
+
+        const newSelection = isSelecting
+          ? [...prev, id]
+          : prev.filter((pId) => pId !== id);
 
         if (selectedPlayersKey) {
           AsyncStorage.setItem(
@@ -287,7 +455,7 @@ export default function TournamentPlayersScreen() {
         return newSelection;
       });
     },
-    [selectedPlayersKey],
+    [selectedPlayersKey, tournamentPlayersDb, settings?.teamSize],
   );
 
   const handleToggle = useCallback(
@@ -297,15 +465,55 @@ export default function TournamentPlayersScreen() {
     [executeWithCheck, togglePlayerSelection],
   );
 
+  const confirmDelete = useCallback((player: Player) => {
+    setPlayerToDelete(player);
+  }, []);
+
+  const handleDeletePlayer = async () => {
+    if (!playerToDelete) return;
+    const updatedDb = tournamentPlayersDb.filter(
+      (p) => p.id !== playerToDelete.id,
+    );
+    setTournamentPlayersDb(updatedDb);
+    saveToDb(updatedDb);
+
+    const newSelection = selectedPlayerIds.filter(
+      (id) => id !== playerToDelete.id,
+    );
+    setSelectedPlayerIds(newSelection);
+    if (selectedPlayersKey) {
+      await AsyncStorage.setItem(
+        selectedPlayersKey,
+        JSON.stringify(newSelection),
+      );
+    }
+
+    if (!playerToDelete.isTeam) {
+      removePlayer(playerToDelete.name);
+    }
+    setPlayerToDelete(null);
+  };
+
   const sortedFilteredPlayers = useMemo(() => {
+    const isTeamMode = settings?.teamSize === "team";
+    const query = playerSearchQuery.toLowerCase();
     return tournamentPlayersDb
-      .filter((p) =>
-        p.name.toLowerCase().includes(playerSearchQuery.toLowerCase()),
-      )
+      .filter((p) => (isTeamMode ? p.isTeam : !p.isTeam))
+      .filter((p) => {
+        if (p.name.toLowerCase().includes(query)) return true;
+        if (p.isTeam && p.members) {
+          return p.members.some((m) => m.toLowerCase().includes(query));
+        }
+        return false;
+      })
       .sort((a, b) =>
         a.name.localeCompare(b.name, language === "pl" ? "pl" : "en"),
       );
-  }, [tournamentPlayersDb, playerSearchQuery, language]);
+  }, [tournamentPlayersDb, playerSearchQuery, language, settings?.teamSize]);
+
+  const availableSingles = useMemo(() => {
+    return tournamentPlayersDb.filter((p) => !p.isTeam).map((p) => p.name);
+  }, [tournamentPlayersDb]);
 
   if (!settings) {
     return (
@@ -348,17 +556,19 @@ export default function TournamentPlayersScreen() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {t(language, "selectPlayersTitle") || "Select players"}
+          {settings?.teamSize === "team"
+            ? t(language, "selectTeamsTitle") || "Select teams"
+            : t(language, "selectPlayersTitle") || "Select players"}
         </Text>
         <TouchableOpacity
-          onPress={() => {
-            setEditingPlayer(null);
-            setPlayerNameInput("");
-            setPlayerModalVisible(true);
-          }}
+          onPress={() => setManageVisible(true)}
           style={styles.headerBtn}
         >
-          <Ionicons name="person-add" size={24} color={theme.colors.primary} />
+          <Ionicons
+            name="settings-outline"
+            size={24}
+            color={theme.colors.primary}
+          />
         </TouchableOpacity>
       </View>
 
@@ -424,7 +634,9 @@ export default function TournamentPlayersScreen() {
               <Text style={styles.sectionTitle}>
                 {t(language, "selected") || "Selected:"}{" "}
                 {selectedPlayerIds.length}{" "}
-                {t(language, "playersCount") || "players"}
+                {settings?.teamSize === "team"
+                  ? t(language, "teamsCount") || "teams"
+                  : t(language, "playersCount") || "players"}
               </Text>
               <View style={styles.searchContainer}>
                 <Ionicons
@@ -435,7 +647,10 @@ export default function TournamentPlayersScreen() {
                 <TextInput
                   style={styles.searchInput}
                   placeholder={
-                    t(language, "searchPlayer") || "Search player..."
+                    settings?.teamSize === "team"
+                      ? t(language, "searchTeamOrPlayer") ||
+                        "Search team / player..."
+                      : t(language, "searchPlayer") || "Search player..."
                   }
                   placeholderTextColor={theme.colors.textMuted}
                   value={playerSearchQuery}
@@ -457,7 +672,6 @@ export default function TournamentPlayersScreen() {
               player={item}
               isSelected={selectedPlayerIds.includes(item.id)}
               onToggle={handleToggle}
-              onEdit={startEdit}
               theme={theme}
               styles={styles}
             />
@@ -537,6 +751,57 @@ export default function TournamentPlayersScreen() {
         ]}
       />
 
+      <ManagePlayersModal
+        visible={isManageVisible}
+        onClose={() => setManageVisible(false)}
+        title={t(language, "managePlayers") || "Manage players"}
+        players={tournamentPlayersDb
+          .filter((p) => (settings?.teamSize === "team" ? p.isTeam : !p.isTeam))
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            subtitle: p.isTeam && p.members ? p.members.join(" & ") : undefined,
+            originalData: p,
+          }))}
+        onAddPress={() => {
+          if (settings?.teamSize === "team") {
+            setEditingPlayer(null);
+            setTeamNameInput("");
+            setTeamMembers([]);
+            setTeamSearchQuery("");
+            setTeamModalVisible(true);
+          } else {
+            setEditingPlayer(null);
+            setPlayerNameInput("");
+            setPlayerModalVisible(true);
+          }
+        }}
+        onEditPress={(p: any) => startEdit(p.originalData)}
+        onDeletePress={(p: any) => confirmDelete(p.originalData)}
+        addLabel={
+          settings?.teamSize === "team"
+            ? t(language, "addTeam") || "Add team"
+            : t(language, "addNewPlayer") || "Add new player"
+        }
+        emptyText={t(language, "noPlayers") || "No more players"}
+        theme={theme}
+      />
+
+      <CustomAlert
+        visible={!!playerToDelete}
+        title={t(language, "delete") || "Delete"}
+        message={`${t(language, "delete")} ${playerToDelete?.name}?`}
+        onRequestClose={() => setPlayerToDelete(null)}
+        buttons={[
+          { text: t(language, "cancel") || "Cancel", style: "cancel" },
+          {
+            text: t(language, "delete") || "Delete",
+            style: "destructive",
+            onPress: handleDeletePlayer,
+          },
+        ]}
+      />
+
       <PlayerModal
         visible={isPlayerModalVisible}
         title={
@@ -555,6 +820,202 @@ export default function TournamentPlayersScreen() {
         theme={theme}
         language={language}
       />
+
+      <Modal
+        visible={isTeamModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeTeamModal}
+        statusBarTranslucent
+        navigationBarTranslucent
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <Pressable style={styles.modalOverlayInline} onPress={closeTeamModal}>
+            <View
+              style={styles.modalContentInline}
+              onStartShouldSetResponder={() => true}
+            >
+              <Text style={styles.modalTitleInline}>
+                {editingPlayer
+                  ? t(language, "editTeam") || "Edit team"
+                  : t(language, "addTeam") || "Add team"}
+              </Text>
+              <TextInput
+                style={styles.addPlayerInputInline}
+                placeholder={
+                  t(language, "teamNameOptional") || "Team name (optional)"
+                }
+                placeholderTextColor={theme.colors.textMuted}
+                value={teamNameInput}
+                onChangeText={setTeamNameInput}
+                maxLength={40}
+              />
+
+              <View style={styles.selectedMembersContainer}>
+                {[0, 1].map((index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.memberSlot,
+                      teamMembers[index] ? styles.memberSlotFilled : null,
+                    ]}
+                  >
+                    {teamMembers[index] ? (
+                      <>
+                        <Text style={styles.memberSlotText} numberOfLines={1}>
+                          {teamMembers[index]}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setTeamMembers((prev) =>
+                              prev.filter((_, i) => i !== index),
+                            )
+                          }
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={22}
+                            color={theme.colors.danger}
+                          />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <Text style={styles.memberSlotPlaceholder}>
+                        {index === 0
+                          ? t(language, "player1") || "Player 1"
+                          : t(language, "player2") || "Player 2"}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+
+              {teamMembers.length < 2 && (
+                <View style={{ marginTop: 16 }}>
+                  <View style={styles.searchContainerInline}>
+                    <Ionicons
+                      name="search"
+                      size={20}
+                      color={theme.colors.textMuted}
+                    />
+                    <TextInput
+                      style={styles.searchInputInline}
+                      placeholder={
+                        t(language, "searchOrAddPlayer") ||
+                        "Search or add player..."
+                      }
+                      placeholderTextColor={theme.colors.textMuted}
+                      value={teamSearchQuery}
+                      onChangeText={setTeamSearchQuery}
+                      maxLength={30}
+                    />
+                  </View>
+
+                  <View style={{ maxHeight: 160 }}>
+                    <FlatList
+                      keyboardShouldPersistTaps="handled"
+                      data={(() => {
+                        const filtered = availableSingles.filter(
+                          (n) =>
+                            n
+                              .toLowerCase()
+                              .includes(teamSearchQuery.toLowerCase()) &&
+                            !teamMembers.includes(n),
+                        );
+                        const showAdd =
+                          teamSearchQuery.trim().length > 0 &&
+                          !availableSingles.includes(teamSearchQuery.trim()) &&
+                          !teamMembers.includes(teamSearchQuery.trim());
+                        if (showAdd) {
+                          return [
+                            ...filtered,
+                            `__ADD__${teamSearchQuery.trim()}`,
+                          ];
+                        }
+                        return filtered;
+                      })()}
+                      keyExtractor={(item) => item}
+                      renderItem={({ item }) => {
+                        if (item.startsWith("__ADD__")) {
+                          const newName = item.replace("__ADD__", "");
+                          return (
+                            <TouchableOpacity
+                              style={styles.availablePlayerRow}
+                              onPress={() => {
+                                setTeamMembers((prev) => [...prev, newName]);
+                                setTeamSearchQuery("");
+                              }}
+                            >
+                              <Text style={styles.availablePlayerTextHighlight}>
+                                {t(language, "addNew") || "Add new:"} "{newName}
+                                "
+                              </Text>
+                              <Ionicons
+                                name="add-circle"
+                                size={22}
+                                color={theme.colors.primary}
+                              />
+                            </TouchableOpacity>
+                          );
+                        }
+                        return (
+                          <TouchableOpacity
+                            style={styles.availablePlayerRow}
+                            onPress={() => {
+                              setTeamMembers((prev) => [...prev, item]);
+                              setTeamSearchQuery("");
+                            }}
+                          >
+                            <Text style={styles.availablePlayerText}>
+                              {item}
+                            </Text>
+                            <Ionicons
+                              name="add"
+                              size={22}
+                              color={theme.colors.textMuted}
+                            />
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.modalActionsInline}>
+                <TouchableOpacity
+                  style={styles.modalBtnCancelInline}
+                  onPress={closeTeamModal}
+                >
+                  <Text style={styles.modalBtnCancelTextInline}>
+                    {t(language, "cancel") || "Cancel"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtnAddInline,
+                    teamMembers.length !== 2 && { opacity: 0.5 },
+                  ]}
+                  disabled={teamMembers.length !== 2}
+                  onPress={() =>
+                    editingPlayer
+                      ? handleSaveTeam()
+                      : executeWithCheck(handleSaveTeam)
+                  }
+                >
+                  <Text style={styles.modalBtnAddTextInline}>
+                    {t(language, "save") || "Save"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <CustomAlert
         visible={isBackModalVisible}
@@ -600,6 +1061,23 @@ export default function TournamentPlayersScreen() {
             text: t(language, "ok") || "OK",
             style: "default",
             onPress: () => setDuplicateErrorVisible(false),
+          },
+        ]}
+      />
+
+      <CustomAlert
+        visible={overlapAlertVisible}
+        title={t(language, "teamOverlapTitle") || "Player Conflict"}
+        message={
+          t(language, "teamOverlapMsg") ||
+          "One of the players is already in another selected team."
+        }
+        onRequestClose={() => setOverlapAlertVisible(false)}
+        buttons={[
+          {
+            text: t(language, "ok") || "OK",
+            style: "default",
+            onPress: () => setOverlapAlertVisible(false),
           },
         ]}
       />
@@ -723,17 +1201,20 @@ const getStyles = (theme: any) =>
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.background,
     },
-    nameClickArea: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 8,
-      paddingRight: 16,
-      flexShrink: 1,
-    },
     playerSelectName: {
       fontSize: 16,
       fontWeight: "600",
       color: theme.colors.textMain,
+    },
+    playerSelectNameActive: {
+      color: theme.colors.primary,
+      fontWeight: "bold",
+    },
+    playerSelectSubtitle: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      fontWeight: "500",
+      flexShrink: 1,
     },
     checkbox: {
       width: 24,
@@ -763,4 +1244,129 @@ const getStyles = (theme: any) =>
       borderTopWidth: 1,
       borderTopColor: theme.colors.cardBorder,
     },
+    modalOverlayInline: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      padding: 20,
+    },
+    modalContentInline: {
+      backgroundColor: theme.colors.card,
+      borderRadius: 20,
+      padding: 24,
+      elevation: 10,
+      width: "100%",
+    },
+    modalTitleInline: {
+      fontSize: 20,
+      fontWeight: "800",
+      color: theme.colors.textMain,
+      marginBottom: 16,
+      textAlign: "center",
+    },
+    addPlayerInputInline: {
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+      borderRadius: 10,
+      padding: 14,
+      fontSize: 16,
+      color: theme.colors.textMain,
+      fontWeight: "600",
+      textAlign: "center",
+    },
+    selectedMembersContainer: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 16,
+    },
+    memberSlot: {
+      flex: 1,
+      borderWidth: 2,
+      borderColor: theme.colors.cardBorder,
+      borderRadius: 12,
+      padding: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.background,
+      borderStyle: "dashed",
+    },
+    memberSlotFilled: {
+      borderStyle: "solid",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 14,
+    },
+    memberSlotText: {
+      fontWeight: "600",
+      color: theme.colors.textMain,
+      fontSize: 15,
+      flex: 1,
+    },
+    memberSlotPlaceholder: {
+      color: theme.colors.textMuted,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    searchContainerInline: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+      marginBottom: 8,
+    },
+    searchInputInline: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingLeft: 8,
+      color: theme.colors.textMain,
+      fontSize: 15,
+    },
+    availablePlayerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.background,
+    },
+    availablePlayerText: {
+      color: theme.colors.textMain,
+      fontSize: 16,
+      fontWeight: "500",
+    },
+    availablePlayerTextHighlight: {
+      color: theme.colors.primary,
+      fontWeight: "800",
+      fontSize: 15,
+    },
+    modalActionsInline: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 12,
+      marginTop: 24,
+    },
+    modalBtnCancelInline: {
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      justifyContent: "center",
+    },
+    modalBtnCancelTextInline: {
+      color: theme.colors.textMuted,
+      fontWeight: "700",
+      fontSize: 16,
+    },
+    modalBtnAddInline: {
+      backgroundColor: theme.colors.success || "#28a745",
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+      justifyContent: "center",
+    },
+    modalBtnAddTextInline: { color: "#fff", fontWeight: "700", fontSize: 16 },
   });

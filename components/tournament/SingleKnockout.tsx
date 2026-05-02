@@ -1,269 +1,19 @@
-import { Ionicons } from "@expo/vector-icons";
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
-import {
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import CustomAlert from "../modals/CustomAlert";
+import {
+  MatchCard,
+  SharedMatch as Match,
+  SharedPlayer as Player,
+} from "./MatchCard";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-
-type Player = { id: string; name: string };
-type Match = {
-  id: string;
-  round: number;
-  matchIndex: number;
-  player1: Player | null;
-  player2: Player | null;
-  winner: Player | null;
-  nextMatchId: string | null;
-  isBye: boolean;
-  isThirdPlace?: boolean;
-  stats?: any[];
-  score?: { p1Sets: number; p1Legs: number; p2Sets: number; p2Legs: number };
-};
-
-const MatchCard = React.memo(
-  ({
-    match,
-    isMatchInProgress,
-    theme,
-    onPlay,
-    onMatchPress,
-    isReadOnly,
-    onResetMatch,
-    settings,
-  }: {
-    match: Match;
-    isMatchInProgress: boolean;
-    theme: any;
-    onPlay: (match: Match) => void;
-    onMatchPress?: (match: Match) => void;
-    isReadOnly: boolean;
-    onResetMatch?: (matchId: string) => void;
-    settings: any;
-  }) => {
-    const { language } = useLanguage();
-    const styles = useMemo(() => getStyles(theme), [theme]);
-    const isWaiting = !match.player1 || !match.player2;
-    const hasWinner = match.winner !== null;
-    const p1IsWinner = hasWinner && match.winner?.id === match.player1?.id;
-    const p2IsWinner = hasWinner && match.winner?.id === match.player2?.id;
-    const p1IsLoser = hasWinner && !p1IsWinner && match.player1 !== null;
-    const p2IsLoser =
-      hasWinner && !p2IsWinner && match.player2 !== null && !match.isBye;
-
-    const isClickable = hasWinner && !match.isBye && onMatchPress;
-
-    let p1ScoreDisplay: string | null = null;
-    let p2ScoreDisplay: string | null = null;
-
-    if (match.score) {
-      if (
-        settings?.targetSets > 1 ||
-        match.score.p1Sets > 0 ||
-        match.score.p2Sets > 0
-      ) {
-        p1ScoreDisplay = `${match.score.p1Sets}S ${match.score.p1Legs}L`;
-        p2ScoreDisplay = `${match.score.p2Sets}S ${match.score.p2Legs}L`;
-      } else {
-        p1ScoreDisplay = `${match.score.p1Legs}`;
-        p2ScoreDisplay = `${match.score.p2Legs}`;
-      }
-    } else if (match.stats) {
-      const legsStat = match.stats.find((s: any) => s.label === "Legs");
-      if (legsStat) {
-        p1ScoreDisplay = `${legsStat.p1}`;
-        p2ScoreDisplay = `${legsStat.p2}`;
-      }
-    }
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.matchCard,
-          match.isBye && styles.byeCard,
-          match.isThirdPlace && styles.thirdPlaceCard,
-        ]}
-        activeOpacity={isClickable ? 0.8 : 1}
-        onPress={isClickable ? () => onMatchPress(match) : undefined}
-      >
-        {isMatchInProgress && !hasWinner && !isReadOnly && onResetMatch && (
-          <TouchableOpacity
-            style={styles.resetMatchBtn}
-            onPress={() => onResetMatch(match.id)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={20}
-              color={theme.colors.danger || "#dc3545"}
-            />
-          </TouchableOpacity>
-        )}
-
-        {match.isThirdPlace && (
-          <Text style={styles.thirdPlaceLabel}>
-            {t(language, "thirdPlaceMatchLabel") || "3rd Place Match 🥉"}
-          </Text>
-        )}
-
-        <View>
-          <View
-            style={[
-              styles.playerRow,
-              p1IsWinner && styles.winnerRow,
-              p1IsLoser && styles.loserRow,
-            ]}
-          >
-            <Text
-              style={[
-                styles.playerName,
-                !match.player1 && styles.pendingText,
-                p1IsWinner && styles.winnerText,
-                p1IsLoser && styles.loserText,
-              ]}
-              numberOfLines={1}
-            >
-              {match.player1
-                ? match.player1.name
-                : t(language, "awaiting") || "Awaiting..."}
-            </Text>
-
-            {match.score && match.player1 && (
-              <Text
-                style={[
-                  styles.scoreText,
-                  p1IsWinner && styles.winnerText,
-                  p1IsLoser && styles.loserText,
-                ]}
-              >
-                {match.score.p1Sets > 0 ? `${match.score.p1Sets}S ` : ""}
-                {match.score.p1Legs}L
-              </Text>
-            )}
-
-            {p1IsWinner && (
-              <Ionicons
-                name="checkmark-circle"
-                size={18}
-                color={theme.colors.success || "#28a745"}
-              />
-            )}
-            {p1IsLoser && (
-              <Ionicons
-                name="close-circle"
-                size={18}
-                color={theme.colors.danger || "#dc3545"}
-              />
-            )}
-          </View>
-          <View style={styles.divider} />
-          <View
-            style={[
-              styles.playerRow,
-              p2IsWinner && styles.winnerRow,
-              p2IsLoser && styles.loserRow,
-            ]}
-          >
-            <Text
-              style={[
-                styles.playerName,
-                !match.player2 && styles.pendingText,
-                p2IsWinner && styles.winnerText,
-                p2IsLoser && styles.loserText,
-              ]}
-              numberOfLines={1}
-            >
-              {match.player2
-                ? match.player2.name
-                : match.isBye
-                  ? t(language, "byePlayer") || "Bye"
-                  : t(language, "awaiting") || "Awaiting..."}
-            </Text>
-
-            {match.score && match.player2 && !match.isBye && (
-              <Text
-                style={[
-                  styles.scoreText,
-                  p2IsWinner && styles.winnerText,
-                  p2IsLoser && styles.loserText,
-                ]}
-              >
-                {match.score.p2Sets > 0 ? `${match.score.p2Sets}S ` : ""}
-                {match.score.p2Legs}L
-              </Text>
-            )}
-
-            {p2IsWinner && (
-              <Ionicons
-                name="checkmark-circle"
-                size={18}
-                color={theme.colors.success || "#28a745"}
-              />
-            )}
-            {p2IsLoser && (
-              <Ionicons
-                name="close-circle"
-                size={18}
-                color={theme.colors.danger || "#dc3545"}
-              />
-            )}
-          </View>
-        </View>
-
-        <View style={styles.actionContainer}>
-          {!match.isBye && hasWinner ? (
-            <TouchableOpacity
-              style={styles.statsButton}
-              activeOpacity={0.8}
-              onPress={() => onMatchPress?.(match)}
-            >
-              <Ionicons name="stats-chart" size={16} color="#fff" />
-              <Text style={styles.playButtonText}>
-                {t(language, "stats") || "Statistics"}
-              </Text>
-            </TouchableOpacity>
-          ) : !isReadOnly && !match.isBye && !isWaiting ? (
-            <TouchableOpacity
-              style={[
-                styles.playButton,
-                isMatchInProgress && styles.resumeButton,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => onPlay(match)}
-            >
-              <Ionicons
-                name={isMatchInProgress ? "play-forward" : "play"}
-                size={16}
-                color="#fff"
-              />
-              <Text style={styles.playButtonText}>
-                {isMatchInProgress
-                  ? t(language, "resume") || "Resume"
-                  : t(language, "start") || "Play"}
-              </Text>
-            </TouchableOpacity>
-          ) : match.isBye ? (
-            <Text style={styles.infoText}>
-              {t(language, "byePlayer") || "Bye"}
-            </Text>
-          ) : null}
-        </View>
-      </TouchableOpacity>
-    );
-  },
-);
 
 export default function SingleKnockout({
   players,
@@ -538,6 +288,15 @@ export default function SingleKnockout({
     ],
   );
 
+  const calculatedWidth = Math.max(
+    screenWidth,
+    Object.keys(matchesByRound).length * 290 + 100,
+  );
+  const calculatedHeight = Math.max(
+    screenHeight,
+    (matchesByRound[1]?.length || 1) * 170 + 100,
+  );
+
   return (
     <>
       {viewMode === "tree" ? (
@@ -548,27 +307,15 @@ export default function SingleKnockout({
             zoomStep={0.5}
             initialZoom={1}
             bindToBorders={true}
-            contentWidth={Math.max(
-              screenWidth,
-              Object.keys(matchesByRound).length * 290 + 100,
-            )}
-            contentHeight={Math.max(
-              screenHeight,
-              (matchesByRound[1]?.length || 1) * 170 + 100,
-            )}
+            contentWidth={calculatedWidth}
+            contentHeight={calculatedHeight}
             panBoundaryPadding={50}
             style={{ flex: 1 }}
           >
             <View
               style={{
-                width: Math.max(
-                  screenWidth,
-                  Object.keys(matchesByRound).length * 290 + 100,
-                ),
-                height: Math.max(
-                  screenHeight,
-                  (matchesByRound[1]?.length || 1) * 170 + 100,
-                ),
+                width: calculatedWidth,
+                height: calculatedHeight,
                 flexDirection: "row",
                 gap: 30,
                 padding: 24,
@@ -683,122 +430,5 @@ const getStyles = (theme: any) =>
       opacity: 0.5,
       borderStyle: "dashed",
       borderWidth: 0.5,
-    },
-
-    resetMatchBtn: {
-      position: "absolute",
-      top: 8,
-      right: 8,
-      zIndex: 10,
-      padding: 2,
-    },
-
-    matchCard: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      padding: 12,
-      marginBottom: 10,
-      elevation: 2,
-      height: 148,
-      justifyContent: "space-between",
-      position: "relative",
-    },
-    byeCard: { opacity: 0.6, backgroundColor: theme.colors.background },
-    thirdPlaceCard: {
-      borderColor: "#cd7f32",
-      borderWidth: 2,
-      borderStyle: "dashed",
-    },
-    thirdPlaceLabel: {
-      fontSize: 12,
-      color: "#cd7f32",
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 4,
-    },
-    playerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingVertical: 6,
-      overflow: "hidden",
-    },
-    winnerRow: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.05)",
-      borderRadius: 6,
-      paddingHorizontal: 6,
-      marginHorizontal: -6,
-    },
-    winnerText: { color: theme.colors.success || "#28a745", fontWeight: "900" },
-    loserRow: {
-      backgroundColor: "rgba(220, 53, 69, 0.08)",
-      borderRadius: 6,
-      paddingHorizontal: 6,
-      marginHorizontal: -6,
-    },
-    loserText: {
-      color: theme.colors.textMuted,
-      textDecorationLine: "line-through",
-    },
-    playerName: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: theme.colors.textMain,
-      flexShrink: 1,
-      marginRight: 8,
-    },
-
-    scoreText: {
-      fontSize: 16,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      marginRight: 8,
-    },
-
-    pendingText: {
-      color: theme.colors.textLight,
-      fontStyle: "italic",
-      fontWeight: "500",
-    },
-    divider: {
-      height: 1,
-      backgroundColor: theme.colors.background,
-      marginVertical: 4,
-    },
-    actionContainer: { height: 40, justifyContent: "flex-end", marginTop: 8 },
-    playButton: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.primary,
-      paddingVertical: 10,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    resumeButton: { backgroundColor: theme.colors.warning || "#f0ad4e" },
-    statsButton: {
-      flexDirection: "row",
-      backgroundColor: "#4b5563",
-      paddingVertical: 10,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    playButtonText: {
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: "800",
-      textTransform: "uppercase",
-    },
-    infoText: {
-      textAlign: "center",
-      fontSize: 12,
-      fontWeight: "700",
-      color: theme.colors.textLight,
-      textTransform: "uppercase",
-      paddingBottom: 6,
     },
   });
