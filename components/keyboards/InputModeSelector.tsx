@@ -6,15 +6,23 @@ import { t } from "../../lib/i18n";
 export function InputModeSelector({
   inputMode,
   setInputMode,
+  onReset,
   theme,
   language,
 }: any) {
+  const handleSelect = (mode: string) => {
+    if (mode !== inputMode) {
+      setInputMode(mode);
+      if (onReset) onReset();
+    }
+  };
+
   return (
     <View style={{ marginBottom: 2 }}>
       <AnimatedSegmentedControl
         theme={theme}
         activeOption={inputMode}
-        onSelect={setInputMode}
+        onSelect={handleSelect}
         options={[
           { id: "dart", label: t(language, "inputModeDart") || "Dart" },
           { id: "score", label: t(language, "inputModeScore") || "Score" },

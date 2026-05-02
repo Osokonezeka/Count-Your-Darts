@@ -1,17 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 
 export default function MatchLogsScreen() {
   const { theme } = useTheme();
@@ -22,7 +23,13 @@ export default function MatchLogsScreen() {
 
   const match = matchData ? JSON.parse(matchData as string) : null;
   const settings = settingsData ? JSON.parse(settingsData as string) : null;
-  const styles = getStyles(theme);
+  const styles = useMemo(
+    () => ({
+      ...getSharedTournamentStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
 
   if (!match || !match.logs) {
     return (
@@ -194,25 +201,8 @@ export default function MatchLogsScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    header: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBtn: { padding: 4 },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
     scroll: { flex: 1 },
     scrollContent: { padding: 16, paddingBottom: 40, gap: 24 },
     legContainer: {

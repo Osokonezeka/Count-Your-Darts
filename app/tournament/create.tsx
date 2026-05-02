@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -22,6 +22,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 
 type TournamentFormat =
   | "single_knockout"
@@ -37,7 +38,13 @@ export default function TournamentCreateScreen() {
   const { theme } = useTheme();
   const { language } = useLanguage();
   const insets = useSafeAreaInsets();
-  const styles = getStyles(theme);
+  const styles = useMemo(
+    () => ({
+      ...getSharedTournamentStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
   const { isHost } = useLocalSearchParams();
 
   const [activeTournaments, setActiveTournaments] = useState<any[]>([]);
@@ -189,7 +196,7 @@ export default function TournamentCreateScreen() {
     <View style={styles.container}>
       <View
         style={[
-          styles.customHeader,
+          styles.header,
           { paddingTop: insets.top > 0 ? insets.top + 10 : 16 },
         ]}
       >
@@ -741,26 +748,8 @@ export default function TournamentCreateScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { padding: 16, paddingBottom: 40 },
-    customHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 16,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBtn: { padding: 4 },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-    },
     card: {
       backgroundColor: theme.colors.card,
       borderRadius: 16,

@@ -1,11 +1,25 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, Pressable, Dimensions } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  Dimensions,
+  useColorScheme,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LineChart } from "react-native-chart-kit";
 import { ScaleDecorator } from "react-native-draggable-flatlist";
-import Svg, { Circle, Line } from "react-native-svg";
+import Svg, {
+  Circle,
+  Line,
+  Defs,
+  RadialGradient,
+  Stop,
+  G,
+} from "react-native-svg";
 import { getStatisticsStyles } from "./StatisticsStyles";
 import { t } from "../../lib/i18n";
+import { useTheme } from "../../context/ThemeContext";
 
 export const ShareStatBox = ({ label, value, theme, fullWidth }: any) => (
   <View
@@ -348,6 +362,11 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
   const rOuterBull = 0.1 * cx;
   const rInnerBull = 0.05 * cx;
 
+  const { themeMode } = useTheme();
+  const systemColorScheme = useColorScheme();
+  const isLightTheme =
+    (themeMode === "auto" ? systemColorScheme : themeMode) !== "dark";
+
   const lines = Array.from({ length: 20 }, (_, i) => {
     const angle = (i * 18 - 9) * (Math.PI / 180);
     return {
@@ -378,19 +397,22 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
 
   const heatmapDots = Array.from(grid.entries()).map(([key, count]) => {
     const [gx, gy] = key.split(",").map(Number);
-    const opacity = maxCount > 0 ? 0.15 + 0.85 * (count / maxCount) : 0;
+    const opacity = maxCount > 0 ? 0.1 + 0.7 * (count / maxCount) : 0;
 
     return (
       <Circle
         key={key}
         cx={gx * cellSize + cellSize / 2}
         cy={gy * cellSize + cellSize / 2}
-        r={cellSize * 0.8}
-        fill={theme.colors.primary}
+        r={cellSize * 0.7}
+        fill="url(#heatGrad)"
         opacity={opacity}
       />
     );
   });
+
+  const bgColor = isLightTheme ? "#f0ebd870" : "#1a1a1a";
+  const strokeColor = isLightTheme ? "#d0c9b4" : "#444";
 
   return (
     <View
@@ -398,18 +420,32 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: "#1a1a1a",
+        backgroundColor: bgColor,
         overflow: "hidden",
         alignSelf: "center",
         marginVertical: 10,
       }}
     >
       <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id="heatGrad" cx="50%" cy="50%" rx="50%" ry="50%">
+            <Stop
+              offset="0%"
+              stopColor={theme.colors.primary}
+              stopOpacity="0.8"
+            />
+            <Stop
+              offset="100%"
+              stopColor={theme.colors.primary}
+              stopOpacity="0"
+            />
+          </RadialGradient>
+        </Defs>
         <Circle
           cx={cx}
           cy={cy}
           r={rDoubleOut}
-          stroke="#444"
+          stroke={strokeColor}
           strokeWidth="1"
           fill="none"
         />
@@ -417,7 +453,7 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
           cx={cx}
           cy={cy}
           r={rDoubleIn}
-          stroke="#444"
+          stroke={strokeColor}
           strokeWidth="1"
           fill="none"
         />
@@ -425,7 +461,7 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
           cx={cx}
           cy={cy}
           r={rTripleOut}
-          stroke="#444"
+          stroke={strokeColor}
           strokeWidth="1"
           fill="none"
         />
@@ -433,7 +469,7 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
           cx={cx}
           cy={cy}
           r={rTripleIn}
-          stroke="#444"
+          stroke={strokeColor}
           strokeWidth="1"
           fill="none"
         />
@@ -441,7 +477,7 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
           cx={cx}
           cy={cy}
           r={rOuterBull}
-          stroke="#444"
+          stroke={strokeColor}
           strokeWidth="1"
           fill="none"
         />
@@ -449,7 +485,7 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
           cx={cx}
           cy={cy}
           r={rInnerBull}
-          stroke="#444"
+          stroke={strokeColor}
           strokeWidth="1"
           fill="none"
         />
@@ -460,11 +496,11 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
             y1={cy}
             x2={l.x}
             y2={l.y}
-            stroke="#444"
+            stroke={strokeColor}
             strokeWidth="1"
           />
         ))}
-        {heatmapDots}
+        <G pointerEvents="none">{heatmapDots}</G>
       </Svg>
     </View>
   );
@@ -824,7 +860,8 @@ export const StatCard = React.memo(
                       );
                       if (!hasHits) return null;
                       const isCollapsed =
-                        collapsedPlayers && collapsedPlayers[s.name];
+                        collapsedPlayers &&
+                        collapsedPlayers[`${item.id}_${s.name}`];
                       let targets = [...defaultTargets];
                       if (sortConfig && !isCollapsed) {
                         targets.sort((a, b) => {
@@ -842,7 +879,9 @@ export const StatCard = React.memo(
                         <View key={s.name} style={{ marginBottom: 20 }}>
                           <Pressable
                             style={styles.hitPlayerHeader}
-                            onPress={() => onTogglePlayer(s.name)}
+                            onPress={() =>
+                              onTogglePlayer(`${item.id}_${s.name}`)
+                            }
                           >
                             <Text style={styles.hitPlayerName}>{s.name}</Text>
                             <Ionicons
@@ -903,12 +942,15 @@ export const StatCard = React.memo(
                     {stats.map((s: any) => {
                       if (!s.coords || s.coords.length === 0) return null;
                       const isCollapsed =
-                        collapsedPlayers && collapsedPlayers[s.name];
+                        collapsedPlayers &&
+                        collapsedPlayers[`${item.id}_${s.name}`];
                       return (
                         <View key={s.name} style={{ marginBottom: 20 }}>
                           <Pressable
                             style={styles.hitPlayerHeader}
-                            onPress={() => onTogglePlayer(s.name)}
+                            onPress={() =>
+                              onTogglePlayer(`${item.id}_${s.name}`)
+                            }
                           >
                             <Text style={styles.hitPlayerName}>{s.name}</Text>
                             <Ionicons

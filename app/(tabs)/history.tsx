@@ -309,7 +309,8 @@ const MatchStatCard = React.memo(
                           s.hits[t]?.T > 0),
                     );
                     if (!hasHits) return null;
-                    const isCollapsed = collapsedPlayers[s.name];
+                    const isCollapsed =
+                      collapsedPlayers[`${item.id}_${s.name}`];
                     let targets = [...defaultTargets];
                     if (sortConfig && !isCollapsed) {
                       targets.sort((a, b) => {
@@ -327,7 +328,7 @@ const MatchStatCard = React.memo(
                       <View key={s.name} style={{ marginBottom: 20 }}>
                         <Pressable
                           style={styles.hitPlayerHeader}
-                          onPress={() => onTogglePlayer(s.name)}
+                          onPress={() => onTogglePlayer(`${item.id}_${s.name}`)}
                         >
                           <Text style={styles.hitPlayerName}>{s.name}</Text>
                           <Ionicons
@@ -385,12 +386,13 @@ const MatchStatCard = React.memo(
                   {sortedStats.map((s: any) => {
                     if (!s.coords || s.coords.length === 0) return null;
                     const isCollapsed =
-                      collapsedPlayers && collapsedPlayers[s.name];
+                      collapsedPlayers &&
+                      collapsedPlayers[`${item.id}_${s.name}`];
                     return (
                       <View key={s.name} style={{ marginBottom: 20 }}>
                         <Pressable
                           style={styles.hitPlayerHeader}
-                          onPress={() => onTogglePlayer(s.name)}
+                          onPress={() => onTogglePlayer(`${item.id}_${s.name}`)}
                         >
                           <Text style={styles.hitPlayerName}>{s.name}</Text>
                           <Ionicons
@@ -660,10 +662,10 @@ export default function History() {
     [],
   );
   const togglePlayerCollapse = useCallback(
-    (playerName: string) =>
+    (key: string) =>
       setCollapsedPlayers((prev) => ({
         ...prev,
-        [playerName]: !prev[playerName],
+        [key]: !prev[key],
       })),
     [],
   );
@@ -865,12 +867,20 @@ export default function History() {
     const isUnfinished = item.isUnfinished;
 
     const sortedPlayers = [...item.players].sort((a, b) => {
-      if (isCricket)
-        return (
-          (b.sets || 0) - (a.sets || 0) ||
-          (b.legs || 0) - (a.legs || 0) ||
-          (b.score || 0) - (a.score || 0)
-        );
+      if (a.rank && b.rank) return a.rank - b.rank;
+      if (a.rank) return -1;
+      if (b.rank) return 1;
+
+      if (
+        item.mode === "100 Darts" ||
+        item.mode === "Bob's 27" ||
+        item.mode === "Cricket"
+      ) {
+        return (b.score || 0) - (a.score || 0);
+      }
+      if (item.mode === "Around the Clock") {
+        return (a.darts || 0) - (b.darts || 0);
+      }
       return (
         (b.sets || 0) - (a.sets || 0) ||
         (b.legs || 0) - (a.legs || 0) ||
@@ -1220,8 +1230,19 @@ export default function History() {
                 <Pressable
                   onPress={() => {
                     setSelectedMatch(null);
+
+                    let targetPath = "/gamemodes/dart";
+                    if (selectedMatch.mode === "Cricket")
+                      targetPath = "/gamemodes/cricket";
+                    else if (selectedMatch.mode === "100 Darts")
+                      targetPath = "/gamemodes/hundreddarts";
+                    else if (selectedMatch.mode === "Bob's 27")
+                      targetPath = "/gamemodes/bobstwentyseven";
+                    else if (selectedMatch.mode === "Around the Clock")
+                      targetPath = "/gamemodes/aroundtheclock";
+
                     router.push({
-                      pathname: "/gamemodes/dart",
+                      pathname: targetPath as any,
                       params: { resumeData: JSON.stringify(selectedMatch) },
                     });
                   }}

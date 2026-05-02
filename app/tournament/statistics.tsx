@@ -28,6 +28,10 @@ import {
 import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import {
+  getTournamentStatisticsAsync,
+  calculateTournamentTrendData,
+} from "../../lib/statsUtils";
 
 const TOURNAMENT_HISTORY_KEY = "@tournament_history";
 const SECTIONS_KEY = "@dart_tourney_stats_sections_order";
@@ -45,6 +49,7 @@ export default function TournamentStatistics() {
   const styles = getStatisticsStyles(theme);
 
   const [history, setHistory] = useState<any[]>([]);
+  const [stats, setStats] = useState<any[]>([]);
   const [appliedNames, setAppliedNames] = useState<string[]>([]);
   const [tempNames, setTempNames] = useState<string[]>([]);
 
@@ -146,276 +151,27 @@ export default function TournamentStatistics() {
     setTempNames(names);
   }, [entityType, allHistoryPlayers]);
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const filteredHistory = history.filter((tourney) => {
-      if (entityType === "team" && tourney.settings?.teamSize !== "team")
-        return false;
-      if (entityType === "single" && tourney.settings?.teamSize === "team")
-        return false;
-      if (timeFilter === "all" || !tourney.finishedAt) return true;
-      const matchDate = new Date(tourney.finishedAt);
-      if (timeFilter === "today") return matchDate >= startOfToday;
-      if (timeFilter === "7d") return matchDate >= sevenDaysAgo;
-      if (timeFilter === "30d") return matchDate >= thirtyDaysAgo;
-      return true;
-    });
-
-    const playerMap: Record<string, any> = {};
-
-    filteredHistory.forEach((tourney) => {
-      let firstPlace: string | null = null;
-      let secondPlace: string | null = null;
-
-      if (tourney.settings?.format === "round_robin") {
-        const rrStats: Record<string, any> = {};
-        tourney.players?.forEach((p: any) => {
-          rrStats[p.name] = { won: 0, legsFor: 0, legsAgainst: 0 };
-        });
-        tourney.bracket?.forEach((m: any) => {
-          if (m.isBye || !m.winner || !m.player1 || !m.player2) return;
-          if (m.winner.id === m.player1.id) {
-            if (rrStats[m.player1.name]) rrStats[m.player1.name].won++;
-          } else {
-            if (rrStats[m.player2.name]) rrStats[m.player2.name].won++;
-          }
-          if (m.score) {
-            if (tourney.settings?.targetSets > 1) {
-              if (rrStats[m.player1.name]) {
-                rrStats[m.player1.name].legsFor += m.score.p1Sets || 0;
-                rrStats[m.player1.name].legsAgainst += m.score.p2Sets || 0;
-              }
-              if (rrStats[m.player2.name]) {
-                rrStats[m.player2.name].legsFor += m.score.p2Sets || 0;
-                rrStats[m.player2.name].legsAgainst += m.score.p1Sets || 0;
-              }
-            } else {
-              if (rrStats[m.player1.name]) {
-                rrStats[m.player1.name].legsFor += m.score.p1Legs || 0;
-                rrStats[m.player1.name].legsAgainst += m.score.p2Legs || 0;
-              }
-              if (rrStats[m.player2.name]) {
-                rrStats[m.player2.name].legsFor += m.score.p2Legs || 0;
-                rrStats[m.player2.name].legsAgainst += m.score.p1Legs || 0;
-              }
-            }
-          }
-        });
-        const sorted = Object.keys(rrStats).sort((a, b) => {
-          if (rrStats[b].won !== rrStats[a].won)
-            return rrStats[b].won - rrStats[a].won;
-          const diffA = rrStats[a].legsFor - rrStats[a].legsAgainst;
-          const diffB = rrStats[b].legsFor - rrStats[b].legsAgainst;
-          return diffB - diffA;
-        });
-        if (sorted.length > 0) firstPlace = sorted[0];
-        if (sorted.length > 1) secondPlace = sorted[1];
-      } else {
-        const koMatches = tourney.bracket?.filter(
-          (b: any) => b.phase === "knockout" || !b.phase,
-        );
-        if (koMatches && koMatches.length > 0) {
-          const totalR = Math.max(...koMatches.map((b: any) => b.round));
-          const finalMatch = koMatches.find(
-            (m: any) => m.round === totalR && !m.isThirdPlace,
-          );
-          if (finalMatch && finalMatch.winner) {
-            firstPlace = finalMatch.winner.name;
-            secondPlace =
-              finalMatch.winner.id === finalMatch.player1?.id
-                ? finalMatch.player2?.name
-                : finalMatch.player1?.name;
-          }
-        }
+  useEffect(() => {
+    let isMounted = true;
+    const loadStats = async () => {
+      const result = await getTournamentStatisticsAsync(
+        history,
+        appliedNames,
+        timeFilter,
+        entityType,
+      );
+      if (isMounted) {
+        setStats(result);
       }
-
-      const initPlayer = (name: string) => {
-        if (!playerMap[name]) {
-          playerMap[name] = {
-            name,
-            mPlayed: 0,
-            mWon: 0,
-            lWon: 0,
-            totalPoints: 0,
-            totalDarts: 0,
-            first9Points: 0,
-            first9Count: 0,
-            s60: 0,
-            s100: 0,
-            s140: 0,
-            s180: 0,
-            checkoutHits: 0,
-            checkoutDarts: 0,
-            tPlayed: 0,
-            t1st: 0,
-            t2nd: 0,
-          };
-        }
-      };
-
-      const participants = tourney.players?.map((p: any) => p.name) || [];
-      participants.forEach((pName: string) => {
-        if (appliedNames.includes(pName)) {
-          initPlayer(pName);
-          playerMap[pName].tPlayed++;
-        }
-      });
-
-      if (firstPlace && appliedNames.includes(firstPlace)) {
-        initPlayer(firstPlace);
-        playerMap[firstPlace].t1st++;
-      }
-      if (secondPlace && appliedNames.includes(secondPlace)) {
-        initPlayer(secondPlace);
-        playerMap[secondPlace].t2nd++;
-      }
-
-      tourney.bracket?.forEach((match: any) => {
-        if (match.isBye || !match.player1 || !match.winner) return;
-
-        const p1Name = match.player1.name;
-        const p2Name = match.player2?.name;
-
-        if (appliedNames.includes(p1Name)) {
-          initPlayer(p1Name);
-          playerMap[p1Name].mPlayed++;
-          if (match.winner?.id === match.player1.id) playerMap[p1Name].mWon++;
-        }
-
-        if (p2Name && appliedNames.includes(p2Name)) {
-          initPlayer(p2Name);
-          playerMap[p2Name].mPlayed++;
-          if (match.winner?.id === match.player2.id) playerMap[p2Name].mWon++;
-        }
-
-        const coStat = match.stats?.find((s: any) => s.label === "Checkout %");
-        if (coStat) {
-          if (appliedNames.includes(p1Name)) {
-            const p1Match = String(coStat.p1).match(/\((\d+)\/(\d+)\)/);
-            if (p1Match) {
-              playerMap[p1Name].checkoutHits += parseInt(p1Match[1], 10);
-              playerMap[p1Name].checkoutDarts += parseInt(p1Match[2], 10);
-            }
-          }
-          if (p2Name && appliedNames.includes(p2Name) && coStat.p2) {
-            const p2Match = String(coStat.p2).match(/\((\d+)\/(\d+)\)/);
-            if (p2Match) {
-              playerMap[p2Name].checkoutHits += parseInt(p2Match[1], 10);
-              playerMap[p2Name].checkoutDarts += parseInt(p2Match[2], 10);
-            }
-          }
-        }
-
-        if (match.logs) {
-          match.logs.forEach((leg: any) => {
-            if (
-              leg.winnerId === match.player1.id &&
-              appliedNames.includes(p1Name)
-            )
-              playerMap[p1Name].lWon++;
-            else if (
-              p2Name &&
-              leg.winnerId === match.player2.id &&
-              appliedNames.includes(p2Name)
-            )
-              playerMap[p2Name].lWon++;
-
-            const processThrows = (throws: string[], name: string) => {
-              if (!appliedNames.includes(name)) return;
-              throws.forEach((tStr, idx) => {
-                const val = tStr === "BUST" ? 0 : parseInt(tStr);
-                playerMap[name].totalPoints += val;
-                playerMap[name].totalDarts++;
-                if (idx < 3) {
-                  playerMap[name].first9Points += val;
-                  playerMap[name].first9Count++;
-                }
-                if (val >= 180) playerMap[name].s180++;
-                else if (val >= 140) playerMap[name].s140++;
-                else if (val >= 100) playerMap[name].s100++;
-                else if (val >= 60) playerMap[name].s60++;
-              });
-            };
-
-            processThrows(leg.p1Throws || [], p1Name);
-            if (p2Name) processThrows(leg.p2Throws || [], p2Name);
-          });
-        }
-      });
-    });
-
-    return Object.values(playerMap).map((s: any) => ({
-      ...s,
-      winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
-      calculatedAvg: s.totalDarts > 0 ? s.totalPoints / s.totalDarts : 0,
-      calculatedFirst9: s.first9Count > 0 ? s.first9Points / s.first9Count : 0,
-      calculatedCheckoutPct:
-        s.checkoutDarts > 0 ? (s.checkoutHits / s.checkoutDarts) * 100 : 0,
-    }));
-  }, [history, appliedNames, timeFilter]);
+    };
+    loadStats();
+    return () => {
+      isMounted = false;
+    };
+  }, [history, appliedNames, timeFilter, entityType]);
 
   const trendData = useMemo(() => {
-    const chronologicalHistory = [...history]
-      .filter((t: any) =>
-        entityType === "team"
-          ? t.settings?.teamSize === "team"
-          : t.settings?.teamSize !== "team",
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
-      );
-    const dataByPlayer: Record<string, any> = {};
-
-    appliedNames.forEach((playerName) => {
-      const dataPoints: number[] = [];
-      const labels: string[] = [];
-
-      chronologicalHistory.forEach((tourney) => {
-        let tPoints = 0;
-        let tTurns = 0;
-
-        tourney.bracket?.forEach((match: any) => {
-          if (match.isBye || !match.winner || !match.logs) return;
-          const isP1 = match.player1?.name === playerName;
-          const isP2 = match.player2?.name === playerName;
-          if (!isP1 && !isP2) return;
-
-          match.logs.forEach((leg: any) => {
-            const throws = isP1 ? leg.p1Throws : leg.p2Throws;
-            if (throws) {
-              throws.forEach((tStr: string) => {
-                tPoints += tStr === "BUST" ? 0 : parseInt(tStr);
-                tTurns++;
-              });
-            }
-          });
-        });
-
-        if (tTurns > 0) {
-          dataPoints.push(Number((tPoints / tTurns).toFixed(1)));
-          const d = new Date(tourney.finishedAt);
-          labels.push(`${d.getDate()}.${d.getMonth() + 1}`);
-        }
-      });
-
-      if (dataPoints.length >= 2) {
-        dataByPlayer[playerName] = {
-          labels: labels.slice(-10),
-          datasets: [{ data: dataPoints.slice(-10) }],
-        };
-      }
-    });
-
-    return dataByPlayer;
+    return calculateTournamentTrendData(history, appliedNames, entityType);
   }, [history, appliedNames]);
 
   const toggleSection = useCallback((key: string) => {

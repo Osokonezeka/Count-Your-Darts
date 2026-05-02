@@ -1,11 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation, useRouter } from "expo-router";
-import React, { useEffect, useLayoutEffect, useReducer, useState } from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useState,
+  useMemo,
+  useRef,
+} from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -15,8 +21,10 @@ import { useTheme } from "../../context/ThemeContext";
 import { TrainingKeyboard } from "../../components/keyboards/TrainingKeyboard";
 import { FinishModal } from "../../components/modals/FinishModal";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { useGameModals } from "../../hooks/useGameModals";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
 
 const TARGETS = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
@@ -86,7 +94,7 @@ function bobsReducer(state: GameState, action: any): GameState {
         if (player.score <= 0) {
           player.isBust = true;
           player.score = 0;
-          newSpeechText = "bust";
+          newSpeechText = "0";
         } else if (hitsCount === 0) {
           newSpeechText = "-" + (currentTargetValue * 2).toString();
         } else {
@@ -175,33 +183,52 @@ export default function BobsTwentySeven() {
   const { bullTerm, missTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
-  const styles = getStyles(theme);
 
-  const [state, dispatch] = useReducer(bobsReducer, {
-    playerStates: players.map((name) => ({
-      name,
-      score: 27,
-      highScore: 27,
-      currentTargetIdx: 0,
-      darts: 0,
-      turnThrows: [],
-      isFinished: false,
-      isBust: false,
-    })),
-    currentIndex: 0,
-    throwsThisTurn: 0,
-    history: [],
-    finishedCount: 0,
-    speechEvent: null,
-  });
+  const { resumeData } = useLocalSearchParams();
+  const parsedResume = useMemo(
+    () => (resumeData ? JSON.parse(resumeData as string) : null),
+    [resumeData],
+  );
+  const [matchId] = useState(() =>
+    parsedResume ? parsedResume.id : Date.now().toString(),
+  );
+  const isExiting = useRef(false);
 
-  const [matchTime, setMatchTime] = useState(0);
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    title: "",
-    message: "",
-    buttons: [] as AlertButton[],
-  });
+  const styles = useMemo(
+    () => ({
+      ...getSharedGameStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
+
+  const [state, dispatch] = useReducer(
+    bobsReducer,
+    parsedResume
+      ? parsedResume.gameState
+      : {
+          playerStates: players.map((name) => ({
+            name,
+            score: 27,
+            highScore: 27,
+            currentTargetIdx: 0,
+            darts: 0,
+            turnThrows: [],
+            isFinished: false,
+            isBust: false,
+          })),
+          currentIndex: 0,
+          throwsThisTurn: 0,
+          history: [],
+          finishedCount: 0,
+          speechEvent: null,
+        },
+  );
+
+  const [matchTime, setMatchTime] = useState(
+    () => parsedResume?.gameState?.savedMatchTime || 0,
+  );
+  const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   const allDone = state.playerStates.every((p) => p.isBust || p.isFinished);
   const isGameOver = allDone && state.playerStates.every((p) => p.isBust);
@@ -213,7 +240,7 @@ export default function BobsTwentySeven() {
   useEffect(() => {
     let interval: any;
     if (!allDone) {
-      interval = setInterval(() => setMatchTime((p) => p + 1), 1000);
+      interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
     }
     return () => clearInterval(interval);
   }, [allDone]);
@@ -227,26 +254,26 @@ export default function BobsTwentySeven() {
 
   useEffect(() => {
     if (state.speechEvent) {
-      if (state.speechEvent.text === "bust") {
-        speak(t(language, "bust") || "Bust");
-      } else if (state.speechEvent.text === "noScore") {
-        speak(t(language, "noScore") || "No score");
-      } else {
-        speak(state.speechEvent.text);
-      }
+      speak(state.speechEvent.text);
     }
-  }, [state.speechEvent, language]);
+  }, [state.speechEvent]);
 
-  const saveBobsStats = async () => {
+  const saveBobsStats = async (navigateAway: boolean = true) => {
     try {
+      if (navigateAway) isExiting.current = true;
       const now = new Date();
       const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
+      const isUnfinished = !allDone;
       const historyItem = {
-        id: Date.now().toString(),
+        id: matchId,
         date: formattedDate,
         duration: formatTime(matchTime),
         mode: "Bob's 27",
+        isUnfinished,
+        gameState: isUnfinished
+          ? { ...state, history: [], savedMatchTime: matchTime }
+          : undefined,
         players: state.playerStates
           .map((p) => ({
             name: p.name,
@@ -265,35 +292,46 @@ export default function BobsTwentySeven() {
       const existingHistory = existingHistoryStr
         ? JSON.parse(existingHistoryStr)
         : [];
+
+      const existingIndex = existingHistory.findIndex(
+        (h: any) => h.id === matchId,
+      );
+      if (existingIndex > -1) {
+        existingHistory[existingIndex] = historyItem;
+      } else {
+        existingHistory.unshift(historyItem);
+      }
+
       await AsyncStorage.setItem(
         "@dart_match_history",
-        JSON.stringify([historyItem, ...existingHistory]),
+        JSON.stringify(existingHistory),
       );
+      if (navigateAway) router.push("/play");
     } catch (e) {
       console.error("Save Bob's 27 error", e);
+      if (navigateAway) router.push("/play");
     }
   };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (allDone) return;
+      if (isExiting.current || allDone) return;
       e.preventDefault();
-      setAlertConfig({
-        title: t(language, "leaveGame") || "Leave game?",
-        message: t(language, "leaveGameNoHistory") || "Progress will be lost.",
-        buttons: [
-          { text: t(language, "cancel") || "Cancel", style: "cancel" },
-          {
-            text: t(language, "leave") || "Leave",
-            style: "destructive",
-            onPress: () => navigation.dispatch(e.data.action),
-          },
-        ],
+      const hasStarted = state.playerStates.some((p) => p.darts > 0);
+      if (!hasStarted) {
+        isExiting.current = true;
+        navigation.dispatch(e.data.action);
+        return;
+      }
+      showExitConfirm(() => {
+        saveBobsStats(false).then(() => {
+          isExiting.current = true;
+          navigation.dispatch(e.data.action);
+        });
       });
-      setAlertVisible(true);
     });
     return unsubscribe;
-  }, [navigation, allDone]);
+  }, [navigation, allDone, state, matchTime]);
 
   const handleThrow = (hit: boolean) => {
     if (allDone) return;
@@ -492,130 +530,18 @@ export default function BobsTwentySeven() {
         </View>
       </FinishModal>
 
-      <CustomAlert
-        visible={alertVisible}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onRequestClose={() => setAlertVisible(false)}
-      />
+      <GameAlerts />
     </SafeAreaView>
   );
 }
 
-const getStyles = (theme: any) =>
+const getSpecificStyles = (theme: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    customHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.cardBorder,
-    },
-    headerBackBtn: { padding: 8, marginLeft: -8 },
-    headerCenter: { alignItems: "center" },
-    headerTitle: {
-      fontSize: 17,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-    },
-    headerSub: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: theme.colors.textMuted,
-    },
-    headerRight: { minWidth: 40, alignItems: "flex-end" },
-    timerBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.primaryLight,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-      gap: 4,
-    },
-    timerText: {
-      fontSize: 14,
-      fontWeight: "800",
-      color: theme.colors.textMain,
-      fontVariant: ["tabular-nums"],
-    },
-
-    scoreBoardScroll: { flex: 1 },
-    scoreBoardContent: { padding: 10, gap: 8, paddingBottom: 20 },
-    playerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.card,
-      paddingVertical: 12,
-      paddingHorizontal: 15,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderColor: theme.colors.card,
-      elevation: 2,
-    },
-    activePlayerRow: {
-      borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryLight,
-    },
-    finishedPlayerRow: {
-      backgroundColor: theme.colors.background,
-      opacity: 0.8,
-    },
-
-    scoreCol: { flex: 1.2, alignItems: "flex-start" },
-    playerScore: {
-      fontSize: 36,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-      lineHeight: 40,
-    },
-    rankText: {
-      fontSize: 44,
-      fontWeight: "900",
-      color: theme.colors.success,
-      lineHeight: 44,
-    },
-    activeText: { color: theme.colors.primary },
-    playerName: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
-      fontWeight: "700",
-      textTransform: "uppercase",
-    },
-
-    throwsCol: { flex: 1.5, alignItems: "center", justifyContent: "center" },
-    throwsRow: { flexDirection: "row", gap: 6, marginBottom: 4 },
-    throwBox: {
-      width: 38,
-      height: 38,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: theme.colors.background,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      borderRadius: 6,
-    },
-    throwBoxActive: { borderColor: theme.colors.primary, borderWidth: 2 },
-    throwBoxText: { fontSize: 18, fontWeight: "900" },
     targetLabel: {
       fontSize: 10,
       fontWeight: "800",
       color: theme.colors.textMuted,
     },
-
-    statsCol: { flex: 1.3, alignItems: "flex-end", justifyContent: "center" },
-    statRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 4,
-    },
-    statBold: { fontWeight: "700", color: theme.colors.textMain, fontSize: 13 },
     statusBadge: {
       backgroundColor: theme.colors.background,
       paddingHorizontal: 6,
@@ -636,6 +562,4 @@ const getStyles = (theme: any) =>
       gap: 8,
     },
     statusTextEnd: { fontSize: 16, fontWeight: "900", letterSpacing: 1 },
-
-    modalActionsCol: { width: "100%", gap: 12 },
   });
