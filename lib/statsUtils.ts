@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
+import { translations, availableLanguages } from "./i18n";
 
 export interface Dart {
   v?: number;
@@ -133,25 +135,25 @@ export interface AggregatedStats {
   calculatedCheckoutPct?: number;
 }
 
-export const isBot = (name: string): boolean =>
-  (/\(.*?\b\d+\b.*?\)/.test(name) || /(adaptive|adaptacyjny)/i.test(name)) &&
-  name.toLowerCase().includes("bot");
+export const isBot = (name: string): boolean => {
+  const nameLower = name.toLowerCase();
+  const isAdaptive = availableLanguages.some((lang) => {
+    const adaptiveTerm = (translations[lang] as Record<string, string>)[
+      "adaptive"
+    ];
+    return adaptiveTerm && nameLower.includes(adaptiveTerm.toLowerCase());
+  });
+
+  return (
+    (/\(.*?\b\d+\b.*?\)/.test(name) || isAdaptive) && nameLower.includes("bot")
+  );
+};
 
 export const parseDateString = (dateStr: string): Date => {
-  try {
-    const [datePart, timePart] = dateStr.split(", ");
-    const [day, month, year] = datePart.split(".");
-    const [hour, minute] = timePart.split(":");
-    return new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-    );
-  } catch (e) {
-    return new Date(0);
-  }
+  if (!dateStr) return new Date(0);
+
+  const parsed = dayjs(dateStr);
+  return parsed.isValid() ? parsed.toDate() : new Date(0);
 };
 
 export const generateMatchStats = (
@@ -481,14 +483,10 @@ export const calculateOverallStatistics = (
   appliedNames: string[],
   timeFilter: string,
 ): AggregatedStats[] => {
-  const now = new Date();
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  );
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const now = dayjs();
+  const startOfToday = now.startOf("day").toDate();
+  const sevenDaysAgo = now.subtract(7, "day").toDate();
+  const thirtyDaysAgo = now.subtract(30, "day").toDate();
 
   const filteredHistory = history.filter((match) => {
     if (match.mode !== "X01") return false;
@@ -775,14 +773,10 @@ export const calculateTournamentStatistics = (
   timeFilter: string,
   entityType: string,
 ): AggregatedStats[] => {
-  const now = new Date();
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  );
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const now = dayjs();
+  const startOfToday = now.startOf("day").toDate();
+  const sevenDaysAgo = now.subtract(7, "day").toDate();
+  const thirtyDaysAgo = now.subtract(30, "day").toDate();
 
   const filteredHistory = history.filter((tourney) => {
     if (entityType === "team" && tourney.settings?.teamSize !== "team")
@@ -867,11 +861,12 @@ export const calculateTrendData = (
         });
         if (darts > 0) {
           dataPoints.push(Number(((pts / darts) * 3).toFixed(1)));
-          labels.push(
-            (match.date || "").split(".")[0] +
-              "." +
-              (match.date || "").split(".")[1],
-          );
+          const d = parseDateString(match.date || "");
+          if (d.getTime() !== 0) {
+            labels.push(dayjs(d).format("DD.MM"));
+          } else {
+            labels.push((match.date || "").substring(0, 5));
+          }
         }
       }
     });
@@ -932,7 +927,7 @@ export const calculateTournamentTrendData = (
       if (tTurns > 0) {
         dataPoints.push(Number((tPoints / tTurns).toFixed(1)));
         const d = new Date(tourney.finishedAt || "");
-        labels.push(`${d.getDate()}.${d.getMonth() + 1}`);
+        labels.push(dayjs(d).format("DD.MM"));
       }
     });
     if (dataPoints.length >= 2)

@@ -13,6 +13,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import dayjs from "dayjs";
+import "dayjs/locale/pl";
+import "dayjs/locale/en";
 
 import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
@@ -22,11 +25,10 @@ import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { t } from "../../lib/i18n";
 import {
-  Match,
   PlayerMatchStats,
   Turn,
   TurnDart,
-  AggregatedStats,
+  parseDateString,
 } from "../../lib/statsUtils";
 
 const HISTORY_KEY = "@dart_match_history";
@@ -76,6 +78,7 @@ export interface ParsedMatchStat {
   t2nd?: number;
   mPlayed?: number;
   mWon?: number;
+  isBust?: boolean;
 }
 
 interface MatchStatCardProps {
@@ -271,8 +274,14 @@ const MatchStatCard = React.memo(
                       colKey="name"
                       isName
                     />
-                    <SortableHeader label="First 9" colKey="first9" />
-                    <SortableHeader label="Average" colKey="avg" />
+                    <SortableHeader
+                      label={t(language, "firstNine") || "First 9"}
+                      colKey="first9"
+                    />
+                    <SortableHeader
+                      label={t(language, "average") || "Average"}
+                      colKey="avg"
+                    />
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -414,10 +423,18 @@ const MatchStatCard = React.memo(
                           <>
                             <View style={styles.rowHeader}>
                               <View style={styles.colNameWrap}>
-                                <Text style={styles.colText}>Cel</Text>
+                                <Text style={styles.colText}>
+                                  {t(language, "target") || "Target"}
+                                </Text>
                               </View>
-                              <SortableHeader label="Single" colKey="S" />
-                              <SortableHeader label="Double" colKey="D" />
+                              <SortableHeader
+                                label={t(language, "single") || "Single"}
+                                colKey="S"
+                              />
+                              <SortableHeader
+                                label={t(language, "double") || "Double"}
+                                colKey="D"
+                              />
                               <SortableHeader label={tripleTerm} colKey="T" />
                             </View>
                             {targets.map((target: number) => {
@@ -542,7 +559,10 @@ const MatchStatCard = React.memo(
                       label={t(language, "darts") || "Darts"}
                       colKey="darts"
                     />
-                    <SortableHeader label="Accuracy" colKey="avg" />
+                    <SortableHeader
+                      label={t(language, "accuracy") || "Accuracy"}
+                      colKey="avg"
+                    />
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -568,8 +588,14 @@ const MatchStatCard = React.memo(
                       colKey="name"
                       isName
                     />
-                    <SortableHeader label="Score" colKey="score" />
-                    <SortableHeader label="Status" colKey="status" />
+                    <SortableHeader
+                      label={t(language, "score") || "Score"}
+                      colKey="score"
+                    />
+                    <SortableHeader
+                      label={t(language, "status") || "Status"}
+                      colKey="status"
+                    />
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -581,10 +607,9 @@ const MatchStatCard = React.memo(
                         style={[
                           styles.cell,
                           {
-                            color:
-                              s.status === "BUST"
-                                ? theme.colors.danger
-                                : theme.colors.success,
+                            color: s.isBust
+                              ? theme.colors.danger
+                              : theme.colors.success,
                             fontSize: 11,
                             fontWeight: "bold",
                           },
@@ -604,8 +629,14 @@ const MatchStatCard = React.memo(
                       colKey="name"
                       isName
                     />
-                    <SortableHeader label="Score" colKey="score" />
-                    <SortableHeader label="Average" colKey="avg" />
+                    <SortableHeader
+                      label={t(language, "score") || "Score"}
+                      colKey="score"
+                    />
+                    <SortableHeader
+                      label={t(language, "average") || "Average"}
+                      colKey="avg"
+                    />
                     <SortableHeader label="140+" colKey="s140" />
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
@@ -677,10 +708,45 @@ export default function History() {
   useFocusEffect(
     useCallback(() => {
       navigation.setOptions({
-        headerTitle: t(language, "history") || "Historia",
+        headerTitle: t(language, "history") || "History",
         headerShadowVisible: false,
+        headerRight: () => (
+          <Pressable
+            onPress={() => {
+              setAlertConfig({
+                title: t(language, "delete") || "Delete",
+                message:
+                  t(language, "deleteHistoryConfirm") ||
+                  "Are you sure you want to delete all match history? This action cannot be undone.",
+                buttons: [
+                  { text: t(language, "cancel") || "Cancel", style: "cancel" },
+                  {
+                    text:
+                      t(language, "deletePermanently") || "Delete Permanently",
+                    style: "destructive",
+                    onPress: async () => {
+                      await AsyncStorage.multiRemove([
+                        "@dart_match_history",
+                        "@dart_overall_agg",
+                      ]);
+                      setHistory([]);
+                    },
+                  },
+                ],
+              });
+              setAlertVisible(true);
+            }}
+            style={{ marginRight: 16, padding: 4 }}
+          >
+            <Ionicons
+              name="trash-outline"
+              size={24}
+              color={theme.colors.danger || "#ef4444"}
+            />
+          </Pressable>
+        ),
       });
-    }, [navigation, language]),
+    }, [navigation, language, theme]),
   );
 
   useFocusEffect(
@@ -807,7 +873,12 @@ export default function History() {
         name: p.name,
         score: p.score || 0,
         darts: p.darts || 0,
-        status: p.status || (p.isBust ? "BUST" : "CLEARED"),
+        status:
+          p.status ||
+          (p.isBust
+            ? (t(language, "bust") || "BUST").toUpperCase()
+            : (t(language, "cleared") || "CLEARED").toUpperCase()),
+        isBust: p.isBust,
       }));
     }
 
@@ -964,11 +1035,11 @@ export default function History() {
       isCricket || isAroundTheClock || isBob27 || isHundredDarts;
 
     let displayDate = item.date;
-    if (isCricket && displayDate && !displayDate.includes(",")) {
-      displayDate = displayDate.replace(
-        /(\d{4}|\d{2}) (\d{2}:\d{2})/,
-        "$1, $2",
-      );
+    const parsedDate = parseDateString(item.date || "");
+    if (parsedDate.getTime() !== 0) {
+      displayDate = dayjs(parsedDate)
+        .locale(language === "pl" ? "pl" : "en")
+        .format("DD MMM YYYY, HH:mm");
     }
 
     const isUnfinished = item.isUnfinished;
@@ -1078,7 +1149,8 @@ export default function History() {
           <Text style={styles.settingsText}>{settingsStr}</Text>
           {(!isSpecialMode || isCricket) && (
             <Text style={styles.settingsTextBold}>
-              {item.settings?.legs || 1} Leg / {item.settings?.sets || 1} Set
+              {item.settings?.legs || 1} {t(language, "leg") || "Leg"} /{" "}
+              {item.settings?.sets || 1} {t(language, "set") || "Set"}
             </Text>
           )}
         </View>
@@ -1129,8 +1201,8 @@ export default function History() {
                         {item.mode === "Around the Clock" ||
                         (item.mode === "Cricket" &&
                           item.settings?.cricketMode === "no-score")
-                          ? `${p.darts || 0} darts`
-                          : `${p.score || 0} pkt`}
+                          ? `${p.darts || 0} ${t(language, "dartsShort") || "darts"}`
+                          : `${p.score || 0} ${t(language, "ptsShort") || "pts"}`}
                       </Text>
                     </>
                   ) : (
@@ -1139,7 +1211,9 @@ export default function History() {
                         L:{p.legs || 0} S:{p.sets || 0}
                       </Text>
                       <Text style={styles.playerScore}>
-                        {p.score === 0 ? "CHECKOUT" : `${p.score} pkt`}
+                        {p.score === 0
+                          ? t(language, "checkoutUpper") || "CHECKOUT"
+                          : `${p.score} ${t(language, "ptsShort") || "pts"}`}
                       </Text>
                     </>
                   )}
@@ -1173,15 +1247,27 @@ export default function History() {
     }
 
     if (selectedMatch.mode === "Around the Clock") {
-      return [{ id: "aroundtheclock_summary", title: "Around the Clock" }];
+      return [
+        {
+          id: "aroundtheclock_summary",
+          title: t(language, "aroundTheClock") || "Around the Clock",
+        },
+      ];
     }
 
     if (selectedMatch.mode === "Bob's 27") {
-      return [{ id: "bob27_summary", title: "Bob's 27" }];
+      return [
+        { id: "bob27_summary", title: t(language, "bobs27") || "Bob's 27" },
+      ];
     }
 
     if (selectedMatch.mode === "100 Darts") {
-      const sections = [{ id: "hundreddarts_summary", title: "100 Darts" }];
+      const sections = [
+        {
+          id: "hundreddarts_summary",
+          title: t(language, "100Darts") || "100 Darts",
+        },
+      ];
       if (hasAnyHits) {
         sections.push({
           id: "hit_chart",
@@ -1277,10 +1363,13 @@ export default function History() {
             options={[
               { id: "All", label: t(language, "all") || "All" },
               { id: "X01", label: "X01" },
-              { id: "Cricket", label: "Cricket" },
-              { id: "Bob's 27", label: "Bob's" },
+              { id: "Cricket", label: t(language, "cricket") || "Cricket" },
+              { id: "Bob's 27", label: t(language, "bobsShort") || "Bob's" },
               { id: "100 Darts", label: "100" },
-              { id: "Around the Clock", label: "Clock" },
+              {
+                id: "Around the Clock",
+                label: t(language, "clockShort") || "Clock",
+              },
             ]}
           />
         </ScrollView>
@@ -1341,7 +1430,9 @@ export default function History() {
         >
           <View style={styles.modalHeader}>
             <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.modalHeaderTitle}>Statystyki Meczu</Text>
+              <Text style={styles.modalHeaderTitle}>
+                {t(language, "matchStatsTitle") || "Match Statistics"}
+              </Text>
               <Text style={styles.modalHeaderSubtitle}>
                 {selectedMatch?.date}{" "}
                 {selectedMatch?.duration && `• ⏱ ${selectedMatch.duration}`}

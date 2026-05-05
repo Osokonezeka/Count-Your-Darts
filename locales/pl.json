@@ -59,6 +59,7 @@
   "noHistory": "Brak historii gier",
   "deleteMatch": "Usuń mecz",
   "deleteMatchConfirm": "Czy na pewno chcesz usunąć ten mecz z historii?",
+  "deleteHistoryConfirm": "Czy na pewno chcesz usunąć całą historię gier? Ta akcja jest nieodwracalna.",
   "today": "Dzisiaj",
   "all": "Cały czas",
   "terminology": "Terminologia",
@@ -137,6 +138,7 @@
   "shareGeneratedOn": "Wygenerowano",
   "shareStatsTitle": "Udostępnij statystyki",
   "shareStatsDesc": "Wybierz gracza, aby wygenerować kartę",
+  "shareDialogTitle": "Udostępnij swoje statystyki!",
   "shareTournaments": "TURNIEJE (1. / 2. MSC)",
   "shareMatchesPlayed": "ROZEGRANE MECZE",
   "shareCheckoutsHit": "CHECKOUTY / % TRAFIEŃ",
@@ -146,13 +148,11 @@
   "selectAll": "Zaznacz wszystkie",
   "noDataFilters": "Brak danych dla obecnych filtrów.",
   "tournament": "Turniej",
-
   "selectTournamentMode": "Wybierz tryb turnieju",
   "localGame": "Gra lokalna",
   "localGameDesc": "Graj na tym samym urządzeniu",
   "multiGame": "Gra na wielu urządzeniach",
   "multiGameDesc": "Wybierz gdy grasz na wielu urządzeniach (wymaga połączenia internetowego, ustawienia hosta i połączenia urządzeń w lobby)",
-
   "awaiting": "Oczekuje...",
   "byePlayer": "Wolny los",
   "automaticAdvance": "Automatyczny awans",
@@ -199,7 +199,6 @@
   "setsFinal": "Sety (Finał)",
   "legsFinal": "Legi (Finał)",
   "nextStep": "Dalej",
-
   "thirdPlaceMatchToggle": "Mecz o 3. miejsce?",
   "seeding": "Rozstawienie (Seeding)",
   "unfinishedTournaments": "Niedokończone turnieje",
@@ -214,7 +213,6 @@
   "resetMatchConfirm": "Zresetować ten mecz? Cały postęp zostanie utracony.",
   "resetMatchError": "Błąd podczas resetowania meczu:",
   "resume": "Wznów",
-
   "singleKnockout": "Pojedyncza eliminacja",
   "singleKnockoutDesc": "Gracze odpadają po jednej przegranej.",
   "doubleKnockout": "Podwójna eliminacja",
@@ -258,7 +256,6 @@
   "teamOverlapTitle": "Konflikt graczy",
   "teamOverlapMsg": "Jeden z graczy znajduje się już w innej wybranej drużynie.",
   "selectTeamsTitle": "Wybierz drużyny",
-
   "tournamentLoadError": "Błąd ładowania danych turnieju.",
   "matchStatsTitle": "Statystyki Meczu",
   "noStatsData": "Brak danych statystycznych dla tego meczu.",
@@ -267,7 +264,6 @@
   "tournamentFinishedMsg": "Zakończono turniej! Wszystkie mecze rozegrane. Turniej zostanie zapisany do historii.",
   "keepActive": "Zostaw w aktywnych",
   "saveToHistory": "Zapisz do historii",
-
   "wins": "Wygrywa!",
   "close": "Zamknij",
   "undoThrowTitle": "Cofnąć rzut?",
@@ -281,7 +277,6 @@
   "legsShort": "Legów",
   "scored": "Wynik",
   "toGo": "Zostało",
-
   "tournamentHistoryLoadError": "Błąd ładowania historii:",
   "unknown": "Nieznany",
   "noSavedTournaments": "Brak zapisanych turniejów.",
@@ -293,7 +288,6 @@
   "exitMatchSub": "Wynik zostanie zapisany.",
   "doublesDarts": "Lotki na podwójnych",
   "doublesDartsDesc": "Ile lotek w rzucie było rzucanych na podwójną?",
-
   "triple": "Triple",
   "treble": "Treble",
   "miss": "Miss",
@@ -318,5 +312,19 @@
   "boardZoomHint": "Uszczypnij / Przytrzymaj, aby przybliżyć i precyzyjnie celować 🔍",
   "heatmap": "Mapa trafień",
   "fastBot": "Szybki rzut bota",
-  "isThrowing": "rzuca..."
+  "isThrowing": "rzuca...",
+  "single": "Single",
+  "accuracy": "Celność",
+  "status": "Status",
+  "cleared": "Ukończono",
+  "score": "Wynik",
+  "bobsShort": "Bob's",
+  "clockShort": "Zegar",
+  "checkoutUpper": "CHECKOUT",
+  "dartsShort": "lotek",
+  "firstPlaceShort": "1.",
+  "secondPlaceShort": "2.",
+  "winsShort": "W",
+  "winPctShort": "% W",
+  "attemptsShort": "Próby"
 }

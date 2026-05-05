@@ -143,6 +143,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       color: "#fff",
       fontSize: 15,
       fontWeight: "800",
+      textAlign: "center",
     },
     buttonTextCancel: {
       color: theme.colors.textMuted,
