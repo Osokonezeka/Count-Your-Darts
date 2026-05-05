@@ -51,11 +51,13 @@ type GameState = {
   playerStates: PlayerState[];
   currentIndex: number;
   throwsThisTurn: number;
-  history: any[];
+  history: GameState[];
   finishedCount: number;
   speechEvent?: { text: string; id: number } | null;
   isUndoing?: boolean;
 };
+
+type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
 
 const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60)
@@ -65,7 +67,7 @@ const formatTime = (seconds: number) => {
   return `${m}:${s}`;
 };
 
-function bobsReducer(state: GameState, action: any): GameState {
+function bobsReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "THROW": {
       const { hit } = action.payload;
@@ -266,7 +268,7 @@ export default function BobsTwentySeven() {
   }, [players]);
 
   const botAvg = resolveBotAverage(
-    activePlayer.name,
+    activePlayer?.name || "",
     state.playerStates,
     "Bob's 27",
     undefined,
@@ -274,7 +276,8 @@ export default function BobsTwentySeven() {
   );
 
   useBotTurn({
-    condition: isBaselineLoaded && !allDone && !state.isUndoing,
+    condition:
+      isBaselineLoaded && !allDone && !state.isUndoing && !!activePlayer,
     botAvg,
     delay,
     historyLength: state.history.length,
@@ -297,7 +300,7 @@ export default function BobsTwentySeven() {
   }, [navigation]);
 
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval>;
     if (!allDone) {
       interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
     }
@@ -353,7 +356,7 @@ export default function BobsTwentySeven() {
         : [];
 
       const existingIndex = existingHistory.findIndex(
-        (h: any) => h.id === matchId,
+        (h: { id: string }) => h.id === matchId,
       );
       if (existingIndex > -1) {
         existingHistory[existingIndex] = historyItem;
@@ -545,7 +548,7 @@ export default function BobsTwentySeven() {
 
       {!allDone && (
         <BotAwareKeyboard
-          playerName={currentPlayer.name}
+          playerName={currentPlayer?.name || ""}
           onUndo={() => dispatch({ type: "UNDO" })}
           theme={theme}
           language={language}
@@ -602,7 +605,7 @@ export default function BobsTwentySeven() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     targetLabel: {
       fontSize: 10,

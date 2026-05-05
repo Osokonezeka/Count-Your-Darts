@@ -17,6 +17,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
+import { Tournament, Match } from "../../lib/statsUtils";
 
 export default function TournamentHistoryScreen() {
   const { theme } = useTheme();
@@ -41,7 +42,7 @@ export default function TournamentHistoryScreen() {
       t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
   };
 
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteAlert, setDeleteAlert] = useState({ visible: false, id: "" });
 
@@ -85,8 +86,8 @@ export default function TournamentHistoryScreen() {
     setDeleteAlert({ visible: false, id: "" });
   };
 
-  const renderItem = ({ item }: { item: any }) => {
-    const date = new Date(item.finishedAt).toLocaleDateString(
+  const renderItem = ({ item }: { item: Tournament }) => {
+    const date = new Date(item.finishedAt || "").toLocaleDateString(
       language === "pl" ? "pl-PL" : "en-US",
       {
         day: "2-digit",
@@ -101,25 +102,28 @@ export default function TournamentHistoryScreen() {
     let secondPlaceName = "";
 
     if (item.settings?.format === "round_robin") {
-      const stats: Record<string, any> = {};
-      item.players?.forEach((p: any) => {
+      const stats: Record<
+        string,
+        { won: number; legsFor: number; legsAgainst: number }
+      > = {};
+      item.players?.forEach((p) => {
         stats[p.name] = { won: 0, legsFor: 0, legsAgainst: 0 };
       });
-      item.bracket?.forEach((m: any) => {
+      item.bracket?.forEach((m: Match) => {
         if (m.isBye || !m.winner || !m.player1 || !m.player2) return;
         if (m.winner.id === m.player1.id) stats[m.player1.name].won++;
         else stats[m.player2.name].won++;
         if (m.score) {
-          if (item.settings && item.settings.targetSets > 1) {
-            stats[m.player1.name].legsFor += m.score.p1Sets;
-            stats[m.player1.name].legsAgainst += m.score.p2Sets;
-            stats[m.player2.name].legsFor += m.score.p2Sets;
-            stats[m.player2.name].legsAgainst += m.score.p1Sets;
+          if ((item.settings?.targetSets || 1) > 1) {
+            stats[m.player1.name].legsFor += m.score.p1Sets || 0;
+            stats[m.player1.name].legsAgainst += m.score.p2Sets || 0;
+            stats[m.player2.name].legsFor += m.score.p2Sets || 0;
+            stats[m.player2.name].legsAgainst += m.score.p1Sets || 0;
           } else {
-            stats[m.player1.name].legsFor += m.score.p1Legs;
-            stats[m.player1.name].legsAgainst += m.score.p2Legs;
-            stats[m.player2.name].legsFor += m.score.p2Legs;
-            stats[m.player2.name].legsAgainst += m.score.p1Legs;
+            stats[m.player1.name].legsFor += m.score.p1Legs || 0;
+            stats[m.player1.name].legsAgainst += m.score.p2Legs || 0;
+            stats[m.player2.name].legsFor += m.score.p2Legs || 0;
+            stats[m.player2.name].legsAgainst += m.score.p1Legs || 0;
           }
         }
       });
@@ -133,19 +137,19 @@ export default function TournamentHistoryScreen() {
       if (sorted.length > 1) secondPlaceName = sorted[1];
     } else {
       const koMatches = item.bracket?.filter(
-        (b: any) => b.phase === "knockout" || !b.phase,
+        (b) => b.phase === "knockout" || !b.phase,
       );
       if (koMatches && koMatches.length > 0) {
-        const totalR = Math.max(...koMatches.map((b: any) => b.round));
+        const totalR = Math.max(...koMatches.map((b: Match) => b.round || 0));
         const finalMatch = koMatches.find(
-          (m: any) => m.round === totalR && !m.isThirdPlace,
+          (m) => m.round === totalR && !m.isThirdPlace,
         );
         if (finalMatch && finalMatch.winner) {
           winnerName = finalMatch.winner.name;
           secondPlaceName =
-            finalMatch.player1?.id === finalMatch.winner.id
+            (finalMatch.player1?.id === finalMatch.winner.id
               ? finalMatch.player2?.name
-              : finalMatch.player1?.name;
+              : finalMatch.player1?.name) || "";
         }
       }
     }
@@ -184,7 +188,9 @@ export default function TournamentHistoryScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.tournamentName}>{item.settings.name}</Text>
+        <Text style={styles.tournamentName}>
+          {String(item.settings?.name || "")}
+        </Text>
 
         <View style={styles.tagsContainer}>
           {formatName && (
@@ -312,7 +318,7 @@ export default function TournamentHistoryScreen() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     historyCard: {
       backgroundColor: theme.colors.card,

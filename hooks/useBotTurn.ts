@@ -7,7 +7,7 @@ type UseBotTurnProps<T> = {
   historyLength: number;
   calculate: () => T;
   execute: (result: T) => void | Promise<void>;
-  dependencies?: any[];
+  dependencies?: unknown[];
 };
 
 export function useBotTurn<T>({

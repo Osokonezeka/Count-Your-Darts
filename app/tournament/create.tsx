@@ -23,6 +23,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
+import {
+  TournamentSettings,
+  PlayerMatchStats,
+  Match,
+} from "../../lib/statsUtils";
 
 type TournamentFormat =
   | "single_knockout"
@@ -47,7 +52,9 @@ export default function TournamentCreateScreen() {
   );
   const { isHost } = useLocalSearchParams();
 
-  const [activeTournaments, setActiveTournaments] = useState<any[]>([]);
+  const [activeTournaments, setActiveTournaments] = useState<
+    { settings: TournamentSettings; players: PlayerMatchStats[] }[]
+  >([]);
   const [isSavedModalVisible, setSavedModalVisible] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
   const [nameError, setNameError] = useState(false);
@@ -60,7 +67,11 @@ export default function TournamentCreateScreen() {
     visible: false,
     title: "",
     message: "",
-    buttons: [] as any[],
+    buttons: [] as {
+      text: string;
+      style?: "default" | "cancel" | "destructive";
+      onPress?: () => void;
+    }[],
   });
 
   const [config, setConfig] = useState({
@@ -116,13 +127,13 @@ export default function TournamentCreateScreen() {
           text: t(language, "cancel") || "Cancel",
           style: "cancel",
           onPress: () =>
-            setDeleteAlert((prev: any) => ({ ...prev, visible: false })),
+            setDeleteAlert((prev) => ({ ...prev, visible: false })),
         },
         {
           text: t(language, "delete") || "Delete",
           style: "destructive",
           onPress: async () => {
-            setDeleteAlert((prev: any) => ({ ...prev, visible: false }));
+            setDeleteAlert((prev) => ({ ...prev, visible: false }));
 
             const updated = activeTournaments.filter(
               (t) => t.settings.name !== tName,
@@ -141,7 +152,7 @@ export default function TournamentCreateScreen() {
             if (bracketStr) {
               const bracket = JSON.parse(bracketStr);
               if (Array.isArray(bracket)) {
-                bracket.forEach((m: any) =>
+                bracket.forEach((m: Match) =>
                   keysToRemove.push(`match_save_${m.id}`),
                 );
               }
@@ -155,8 +166,10 @@ export default function TournamentCreateScreen() {
     });
   };
 
-  const updateConfig = (key: keyof typeof config, value: any) =>
-    setConfig((prev: any) => ({ ...prev, [key]: value }));
+  const updateConfig = (
+    key: keyof typeof config,
+    value: string | number | boolean | Date,
+  ) => setConfig((prev) => ({ ...prev, [key]: value }));
 
   const openDatePicker = () => {
     setTempDate(config.startDate);
@@ -164,7 +177,7 @@ export default function TournamentCreateScreen() {
     setShowDatePicker(true);
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
+  const handleDateChange = (event: { type?: string }, selectedDate?: Date) => {
     if (Platform.OS === "ios") {
       if (selectedDate) setTempDate(selectedDate);
       return;
@@ -307,7 +320,7 @@ export default function TournamentCreateScreen() {
           <AnimatedSegmentedControl
             theme={theme}
             activeOption={config.teamSize}
-            onSelect={(val: any) => updateConfig("teamSize", val)}
+            onSelect={(val: string) => updateConfig("teamSize", val)}
             options={[
               {
                 id: "single",
@@ -323,7 +336,7 @@ export default function TournamentCreateScreen() {
             <AnimatedVerticalSelect
               theme={theme}
               activeOption={config.format}
-              onSelect={(val: any) => updateConfig("format", val)}
+              onSelect={(val: string) => updateConfig("format", val)}
               options={[
                 {
                   id: "single_knockout",
@@ -376,7 +389,7 @@ export default function TournamentCreateScreen() {
             <AnimatedSegmentedControl
               theme={theme}
               activeOption={config.bracketOrder}
-              onSelect={(val: any) => updateConfig("bracketOrder", val)}
+              onSelect={(val: string) => updateConfig("bracketOrder", val)}
               options={[
                 {
                   id: "top_to_bottom",
@@ -617,7 +630,8 @@ export default function TournamentCreateScreen() {
             }
             const nameExists = activeTournaments.some(
               (tItem) =>
-                tItem.settings.name.toLowerCase() === trimmedName.toLowerCase(),
+                String(tItem.settings.name || "").toLowerCase() ===
+                trimmedName.toLowerCase(),
             );
             if (nameExists) {
               setDeleteAlert({
@@ -630,7 +644,7 @@ export default function TournamentCreateScreen() {
                   {
                     text: t(language, "ok") || "OK",
                     onPress: () =>
-                      setDeleteAlert((prev: any) => ({
+                      setDeleteAlert((prev) => ({
                         ...prev,
                         visible: false,
                       })),
@@ -694,7 +708,7 @@ export default function TournamentCreateScreen() {
                 <View key={idx} style={styles.savedTournamentRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.savedTName} numberOfLines={1}>
-                      {tItem.settings.name}
+                      {String(tItem.settings.name || "")}
                     </Text>
                     <Text style={styles.savedTDesc}>
                       {tItem.players?.length || 0}{" "}
@@ -722,7 +736,9 @@ export default function TournamentCreateScreen() {
                     <AnimatedPressable
                       style={styles.actionBtnDelete}
                       onPress={() =>
-                        handleDeleteTournament(tItem.settings.name)
+                        handleDeleteTournament(
+                          String(tItem.settings.name || ""),
+                        )
                       }
                     >
                       <Ionicons name="trash" size={18} color="#fff" />
@@ -748,7 +764,7 @@ export default function TournamentCreateScreen() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     card: {
       backgroundColor: theme.colors.card,

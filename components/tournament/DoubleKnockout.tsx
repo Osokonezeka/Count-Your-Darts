@@ -19,6 +19,7 @@ import {
   SharedMatch as Match,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { TournamentSettings } from "../../lib/statsUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -76,6 +77,15 @@ export const resolveAutoMatches = (currentMatches: Match[]) => {
   return newMatches;
 };
 
+export interface DoubleKnockoutProps {
+  players: Player[];
+  settings: TournamentSettings;
+  viewMode?: "list" | "tree";
+  onMatchPress: (match: Match) => void;
+  initialBracket?: Match[] | null;
+  isReadOnly?: boolean;
+}
+
 export default function DoubleKnockout({
   players,
   settings,
@@ -83,7 +93,7 @@ export default function DoubleKnockout({
   onMatchPress,
   initialBracket = null,
   isReadOnly = false,
-}: any) {
+}: DoubleKnockoutProps) {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const router = useRouter();
@@ -333,8 +343,8 @@ export default function DoubleKnockout({
     (match: Match) => {
       let matchSettings = { ...settings };
       if (settings.customFinals && match.bracket === "gf") {
-        matchSettings.targetSets = settings.finalSets;
-        matchSettings.targetLegs = settings.finalLegs;
+        matchSettings.targetSets = Number(settings.finalSets);
+        matchSettings.targetLegs = Number(settings.finalLegs);
       } else if (settings.customSemis) {
         const totalWBRounds = Math.max(
           ...matches.filter((m) => m.bracket === "wb").map((m) => m.round),
@@ -348,8 +358,8 @@ export default function DoubleKnockout({
           (match.bracket === "wb" && match.round === totalWBRounds) ||
           (match.bracket === "lb" && match.round === totalLBRounds)
         ) {
-          matchSettings.targetSets = settings.semiSets;
-          matchSettings.targetLegs = settings.semiLegs;
+          matchSettings.targetSets = Number(settings.semiSets);
+          matchSettings.targetLegs = Number(settings.semiLegs);
         }
       }
       router.push({
@@ -610,7 +620,7 @@ export default function DoubleKnockout({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: {
       flex: 1,

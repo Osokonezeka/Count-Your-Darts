@@ -28,9 +28,9 @@ export const TerminologyProvider: React.FC<{ children: React.ReactNode }> = ({
         AsyncStorage.getItem("@settings_miss"),
         AsyncStorage.getItem("@settings_bull"),
       ]);
-      if (savedTriple) setTripleState(savedTriple as any);
-      if (savedMiss) setMissState(savedMiss as any);
-      if (savedBull) setBullState(savedBull as any);
+      if (savedTriple) setTripleState(savedTriple as "Triple" | "Treble");
+      if (savedMiss) setMissState(savedMiss as "0" | "Miss");
+      if (savedBull) setBullState(savedBull as "25" | "Bull");
     };
     loadSettings();
   }, []);

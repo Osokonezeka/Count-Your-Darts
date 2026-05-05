@@ -1,9 +1,19 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AnimatedPressable } from "../common/AnimatedPressable";
 import { useHaptics } from "../../context/HapticsContext";
 import * as Haptics from "expo-haptics";
+
+export interface ScoreKeyboardProps {
+  onKeyPress: (key: string) => void;
+  onDelete: () => void;
+  onSubmit: () => void;
+  theme: { colors: Record<string, string> };
+  style?: StyleProp<ViewStyle>;
+  keyStyle?: StyleProp<ViewStyle>;
+  hideWrapperBorder?: boolean;
+}
 
 export function ScoreKeyboard({
   onKeyPress,
@@ -13,7 +23,7 @@ export function ScoreKeyboard({
   style,
   keyStyle,
   hideWrapperBorder,
-}: any) {
+}: ScoreKeyboardProps) {
   const styles = getStyles(theme);
   const { isHapticsEnabled, intensity } = useHaptics();
 
@@ -68,7 +78,7 @@ export function ScoreKeyboard({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     wrapper: {
       marginTop: 4,

@@ -59,13 +59,18 @@ type PlayerCricketState = {
 };
 
 type CricketGameState = {
-  settings: any;
+  settings: {
+    cricketMode?: string;
+    legs?: number;
+    sets?: number;
+    [key: string]: string | number | boolean | undefined;
+  };
   playerStates: PlayerCricketState[];
   currentIndex: number;
   startingPlayerIndex: number;
   throwsThisTurn: number;
   currentTurnThrows: string[];
-  history: any[];
+  history: CricketGameState[];
   matchWinner: PlayerCricketState | null;
   legWinner: PlayerCricketState | null;
   setWinner: PlayerCricketState | null;
@@ -73,6 +78,19 @@ type CricketGameState = {
   turnPointsAdded?: number;
   isUndoing?: boolean;
 };
+
+type Action =
+  | {
+      type: "ADD_MARK";
+      payload: {
+        value: number;
+        multiplier: number;
+        cricketMode: string;
+        throwLabel: string;
+      };
+    }
+  | { type: "START_NEXT_LEG" }
+  | { type: "UNDO" };
 
 const getMarkSymbol = (count: number) => {
   if (count <= 0) return "";
@@ -91,13 +109,13 @@ const formatTime = (seconds: number) => {
 
 function cricketReducer(
   state: CricketGameState,
-  action: any,
+  action: Action,
 ): CricketGameState {
   switch (action.type) {
     case "ADD_MARK": {
       const { value, multiplier, cricketMode, throwLabel } = action.payload;
 
-      const snapshot = {
+      const snapshot: CricketGameState = {
         playerStates: state.playerStates.map((p) => ({
           ...p,
           marks: { ...p.marks },
@@ -111,6 +129,7 @@ function cricketReducer(
         legWinner: state.legWinner,
         setWinner: state.setWinner,
         turnPointsAdded: state.turnPointsAdded,
+        history: [],
         isUndoing: false,
       };
 
@@ -201,6 +220,7 @@ function cricketReducer(
             playerStates: updatedPlayers,
             currentTurnThrows: newTurnThrows,
             matchWinner: player,
+            history: [...(state.history || []), snapshot],
             speechEvent: newSpeechEvent,
             turnPointsAdded: newTurnPointsAdded,
             isUndoing: false,
@@ -212,6 +232,7 @@ function cricketReducer(
             playerStates: updatedPlayers,
             setWinner: player,
             currentTurnThrows: newTurnThrows,
+            history: [...(state.history || []), snapshot],
             speechEvent: newSpeechEvent,
             turnPointsAdded: newTurnPointsAdded,
             isUndoing: false,
@@ -222,6 +243,7 @@ function cricketReducer(
             playerStates: updatedPlayers,
             legWinner: player,
             currentTurnThrows: newTurnThrows,
+            history: [...(state.history || []), snapshot],
             speechEvent: newSpeechEvent,
             turnPointsAdded: newTurnPointsAdded,
             isUndoing: false,
@@ -411,7 +433,9 @@ export default function Cricket() {
   }, [state.legWinner, state.setWinner]);
 
   const { GameAlerts, showExitConfirm } = useGameModals(language);
-  const botCache = useRef<Record<number, any>>({});
+  const botCache = useRef<
+    Record<number, { hit: boolean; hitMult: number; missedVal: number }>
+  >({});
 
   useEffect(() => {
     if (
@@ -423,6 +447,7 @@ export default function Cricket() {
       return;
 
     const activePlayer = state.playerStates[state.currentIndex];
+    if (!activePlayer) return;
     const botAvg = resolveBotAverage(
       activePlayer.name,
       state.playerStates,
@@ -621,7 +646,7 @@ export default function Cricket() {
       const existingHistory = existingStr ? JSON.parse(existingStr) : [];
 
       const existingIndex = existingHistory.findIndex(
-        (h: any) => h.id === matchId,
+        (h: { id: string }) => h.id === matchId,
       );
       if (existingIndex > -1) {
         existingHistory[existingIndex] = historyItem;
@@ -838,7 +863,7 @@ export default function Cricket() {
               <Text style={styles.infoTurnTitle}>
                 {t(language, "turn") || "TURN"}:
               </Text>
-              <Text style={styles.infoActivePlayer}>{activePlayer.name}</Text>
+              <Text style={styles.infoActivePlayer}>{activePlayer?.name}</Text>
             </View>
 
             <View style={styles.throwsRow}>
@@ -862,7 +887,7 @@ export default function Cricket() {
       </View>
 
       <BotAwareKeyboard
-        playerName={activePlayer.name}
+        playerName={activePlayer?.name || ""}
         onUndo={handleUndo}
         theme={theme}
         language={language}
@@ -995,7 +1020,7 @@ export default function Cricket() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     headerSubInfo: {
       fontSize: 10,

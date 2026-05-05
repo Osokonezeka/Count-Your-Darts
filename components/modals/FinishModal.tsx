@@ -1,6 +1,16 @@
 import React from "react";
 import { Modal, View, Text, StyleSheet } from "react-native";
 
+export interface FinishModalProps {
+  visible: boolean;
+  title?: string;
+  subtitle?: string;
+  icon?: string;
+  iconBgColor?: string;
+  theme: { colors: Record<string, string> };
+  children?: React.ReactNode;
+}
+
 export function FinishModal({
   visible,
   title,
@@ -9,7 +19,7 @@ export function FinishModal({
   iconBgColor,
   theme,
   children,
-}: any) {
+}: FinishModalProps) {
   const styles = getStyles(theme);
 
   return (
@@ -41,7 +51,7 @@ export function FinishModal({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     modalOverlay: {
       flex: 1,

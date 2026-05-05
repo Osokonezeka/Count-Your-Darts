@@ -1,9 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const AppContext = createContext<any>(null);
+type AppContextType = {
+  playerName: string;
+  updatePlayerName: (name: string) => Promise<void>;
+};
 
-export function AppProvider({ children }: any) {
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
   const [playerName, setPlayerName] = useState("");
 
   useEffect(() => {
@@ -25,4 +30,8 @@ export function AppProvider({ children }: any) {
   );
 }
 
-export const useApp = () => useContext(AppContext);
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error("useApp must be used within AppProvider");
+  return context;
+};

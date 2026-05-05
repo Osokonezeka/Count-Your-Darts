@@ -12,10 +12,13 @@ export default function TournamentScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { language } = useLanguage();
-  const styles = useMemo(() => ({
-    ...getSharedTournamentStyles(theme),
-    ...getSpecificStyles(theme)
-  }), [theme]);
+  const styles = useMemo(
+    () => ({
+      ...getSharedTournamentStyles(theme),
+      ...getSpecificStyles(theme),
+    }),
+    [theme],
+  );
 
   return (
     <ScrollView
@@ -91,7 +94,7 @@ export default function TournamentScreen() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     sectionTitleMain: {
       fontSize: 22,

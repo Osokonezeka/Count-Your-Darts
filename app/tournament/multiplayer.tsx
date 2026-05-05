@@ -88,7 +88,7 @@ export default function MultiplayerScreen() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     backButton: {
       flexDirection: "row",

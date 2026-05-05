@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useLanguage } from "../../context/LanguageContext";
 import { t } from "../../lib/i18n";
+import { MatchStatItem, TournamentSettings } from "../../lib/statsUtils";
 
 export type SharedPlayer = { id: string; name: string };
 
@@ -22,9 +23,9 @@ export type SharedMatch = {
   loserDropSlot?: "p1" | "p2" | null;
   isBye: boolean;
   isThirdPlace?: boolean;
-  stats?: any[];
+  stats?: MatchStatItem[];
   score?: { p1Sets: number; p1Legs: number; p2Sets: number; p2Legs: number };
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export const MatchCard = React.memo(
@@ -40,12 +41,12 @@ export const MatchCard = React.memo(
   }: {
     match: SharedMatch;
     isMatchInProgress: boolean;
-    theme: any;
+    theme: { colors: Record<string, string> };
     onPlay: (match: SharedMatch) => void;
     onMatchPress?: (match: SharedMatch) => void;
     isReadOnly: boolean;
     onResetMatch?: (matchId: string) => void;
-    settings?: any;
+    settings?: TournamentSettings;
   }) => {
     const { language } = useLanguage();
     const styles = useMemo(() => getStyles(theme), [theme]);
@@ -241,7 +242,7 @@ export const MatchCard = React.memo(
   },
 );
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     resetMatchBtn: {
       position: "absolute",

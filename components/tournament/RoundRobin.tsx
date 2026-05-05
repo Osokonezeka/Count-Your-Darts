@@ -20,6 +20,16 @@ import {
   SharedMatch as Match,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { TournamentSettings } from "../../lib/statsUtils";
+
+export interface RoundRobinProps {
+  players: Player[];
+  settings: TournamentSettings;
+  onMatchPress: (match: Match) => void;
+  initialBracket?: Match[] | null;
+  isReadOnly?: boolean;
+  activeTab?: "matches" | "standings";
+}
 
 export default function RoundRobin({
   players,
@@ -28,7 +38,7 @@ export default function RoundRobin({
   initialBracket = null,
   isReadOnly = false,
   activeTab = "matches",
-}: any) {
+}: RoundRobinProps) {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const router = useRouter();
@@ -138,7 +148,18 @@ export default function RoundRobin({
   };
 
   const standings = useMemo(() => {
-    const stats: Record<string, any> = {};
+    const stats: Record<
+      string,
+      {
+        player: Player;
+        played: number;
+        won: number;
+        lost: number;
+        legsFor: number;
+        legsAgainst: number;
+        points: number;
+      }
+    > = {};
     players.forEach((p: Player) => {
       stats[p.id] = {
         player: p,
@@ -171,16 +192,16 @@ export default function RoundRobin({
       }
 
       if (m.score) {
-        if (settings && settings.targetSets > 1) {
-          stats[p1].legsFor += m.score.p1Sets;
-          stats[p1].legsAgainst += m.score.p2Sets;
-          stats[p2].legsFor += m.score.p2Sets;
-          stats[p2].legsAgainst += m.score.p1Sets;
+        if ((settings?.targetSets || 1) > 1) {
+          stats[p1].legsFor += m.score.p1Sets || 0;
+          stats[p1].legsAgainst += m.score.p2Sets || 0;
+          stats[p2].legsFor += m.score.p2Sets || 0;
+          stats[p2].legsAgainst += m.score.p1Sets || 0;
         } else {
-          stats[p1].legsFor += m.score.p1Legs;
-          stats[p1].legsAgainst += m.score.p2Legs;
-          stats[p2].legsFor += m.score.p2Legs;
-          stats[p2].legsAgainst += m.score.p1Legs;
+          stats[p1].legsFor += m.score.p1Legs || 0;
+          stats[p1].legsAgainst += m.score.p2Legs || 0;
+          stats[p2].legsFor += m.score.p2Legs || 0;
+          stats[p2].legsAgainst += m.score.p1Legs || 0;
         }
       }
     });
@@ -291,7 +312,7 @@ export default function RoundRobin({
               <Text style={styles.tableCell}>+/-</Text>
               <Text style={[styles.tableCell, styles.cellPoints]}>Pts</Text>
             </View>
-            {standings.map((s: any, idx) => {
+            {standings.map((s, idx) => {
               const diff = s.legsFor - s.legsAgainst;
               return (
                 <TouchableOpacity
@@ -421,7 +442,7 @@ export default function RoundRobin({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     listContainer: { paddingHorizontal: 16, paddingTop: 10 },

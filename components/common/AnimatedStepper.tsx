@@ -2,7 +2,19 @@ import React, { useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-const StepperButton = ({ onPress, iconName, theme, styles }: any) => {
+interface StepperButtonProps {
+  onPress: () => void;
+  iconName: keyof typeof Ionicons.glyphMap;
+  theme: { colors: Record<string, string> };
+  styles: ReturnType<typeof getStyles>;
+}
+
+const StepperButton = ({
+  onPress,
+  iconName,
+  theme,
+  styles,
+}: StepperButtonProps) => {
   const anim = useRef(new Animated.Value(0)).current;
 
   const handlePressIn = () => {
@@ -57,6 +69,19 @@ const StepperButton = ({ onPress, iconName, theme, styles }: any) => {
   );
 };
 
+export interface AnimatedStepperProps {
+  value: number | string;
+  setValue?: (val: number) => void;
+  label: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  displayValue?: string;
+  onLeftPress?: () => void;
+  onRightPress?: () => void;
+  theme: { colors: Record<string, string> };
+}
+
 export function AnimatedStepper({
   value,
   setValue,
@@ -68,15 +93,17 @@ export function AnimatedStepper({
   onLeftPress,
   onRightPress,
   theme,
-}: any) {
+}: AnimatedStepperProps) {
   const handleMinus = () => {
     if (onLeftPress) onLeftPress();
-    else if (value - step >= min) setValue(value - step);
+    else if (Number(value) - step >= min && setValue)
+      setValue(Number(value) - step);
   };
 
   const handlePlus = () => {
     if (onRightPress) onRightPress();
-    else if (value + step <= max) setValue(value + step);
+    else if (Number(value) + step <= max && setValue)
+      setValue(Number(value) + step);
   };
 
   const styles = getStyles(theme);
@@ -111,7 +138,7 @@ export function AnimatedStepper({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     stepperContainer: { flex: 1, alignItems: "center" },
     stepperLabel: {

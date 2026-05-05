@@ -1,6 +1,28 @@
 import React, { useRef } from "react";
-import { Text, Pressable, StyleSheet, Animated } from "react-native";
+import {
+  Text,
+  Pressable,
+  StyleSheet,
+  Animated,
+  StyleProp,
+  ViewStyle,
+  GestureResponderEvent,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+
+export interface AnimatedPrimaryButtonProps {
+  onPress?: ((event: GestureResponderEvent) => void) | (() => void);
+  title: string;
+  iconName?: keyof typeof Ionicons.glyphMap;
+  iconSize?: number;
+  iconPosition?: "left" | "right";
+  disabled?: boolean;
+  theme: { colors: Record<string, string> };
+  style?: StyleProp<ViewStyle>;
+  color?: string;
+  textColor?: string;
+  fontSize?: number;
+}
 
 export function AnimatedPrimaryButton({
   onPress,
@@ -14,7 +36,7 @@ export function AnimatedPrimaryButton({
   color,
   textColor = "#fff",
   fontSize = 16,
-}: any) {
+}: AnimatedPrimaryButtonProps) {
   const anim = useRef(new Animated.Value(0)).current;
 
   const handlePressIn = () => {

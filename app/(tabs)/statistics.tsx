@@ -34,6 +34,8 @@ import {
   getOverallStatisticsAsync,
   calculateTrendData,
   isBot,
+  Match,
+  AggregatedStats,
 } from "../../lib/statsUtils";
 
 const HISTORY_KEY = "@dart_match_history";
@@ -51,8 +53,8 @@ export default function Statistics() {
   const { theme } = useTheme();
   const styles = getStatisticsStyles(theme);
 
-  const [history, setHistory] = useState<any[]>([]);
-  const [stats, setStats] = useState<any[]>([]);
+  const [history, setHistory] = useState<Match[]>([]);
+  const [stats, setStats] = useState<AggregatedStats[]>([]);
   const [appliedNames, setAppliedNames] = useState<string[]>([]);
   const [tempNames, setTempNames] = useState<string[]>([]);
   const [showPlayerFilter, setShowPlayerFilter] = useState(false);
@@ -63,7 +65,7 @@ export default function Statistics() {
   );
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
 
-  const viewShotRef = useRef<any>(null);
+  const viewShotRef = useRef<ViewShot>(null);
 
   const defaultSections: Section[] = [
     { id: "trend" },
@@ -174,7 +176,7 @@ export default function Statistics() {
           setHistory(parsed);
           const allNames = Array.from(
             new Set(
-              parsed.flatMap((m: any) => m.players.map((p: any) => p.name)),
+              parsed.flatMap((m: Match) => m.players?.map((p) => p.name) || []),
             ),
           ) as string[];
           const humanNames = allNames.filter((name) => !isBot(name));
@@ -280,7 +282,7 @@ export default function Statistics() {
 
   const allHistoryPlayers = useMemo(() => {
     const allNames = Array.from(
-      new Set(history.flatMap((m) => m.players.map((p: any) => p.name))),
+      new Set(history.flatMap((m) => m.players?.map((p) => p.name) || [])),
     ) as string[];
     return allNames.filter((name) => !isBot(name));
   }, [history]);
@@ -300,7 +302,7 @@ export default function Statistics() {
       <AnimatedSegmentedControl
         theme={theme}
         activeOption={timeFilter}
-        onSelect={setTimeFilter}
+        onSelect={(val) => setTimeFilter(val as TimeFilter)}
         style={styles.segmentContainer}
         options={(["today", "7d", "30d", "all"] as TimeFilter[]).map((f) => ({
           id: f,
@@ -391,7 +393,7 @@ export default function Statistics() {
                 "Select a player to generate a sharing card"}
             </Text>
             <FlatList
-              data={stats.map((s: any) => s.name)}
+              data={stats.map((s: AggregatedStats) => s.name)}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <Pressable
@@ -444,7 +446,7 @@ export default function Statistics() {
           <ViewShot ref={viewShotRef} options={{ format: "jpg", quality: 1 }}>
             {(() => {
               const playerStats = stats.find(
-                (s: any) => s.name === selectedSharePlayer,
+                (s: AggregatedStats) => s.name === selectedSharePlayer,
               );
               return (
                 <ShareCard

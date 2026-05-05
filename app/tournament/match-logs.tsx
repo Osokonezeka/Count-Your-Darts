@@ -13,6 +13,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
+import { LegLog } from "../../lib/statsUtils";
 
 export default function MatchLogsScreen() {
   const { theme } = useTheme();
@@ -55,7 +56,7 @@ export default function MatchLogsScreen() {
     );
   }
 
-  const renderTableForLeg = (leg: any, legIndex: number) => {
+  const renderTableForLeg = (leg: LegLog, legIndex: number) => {
     const p1Throws = leg.p1Throws || [];
     const p2Throws = leg.p2Throws || [];
     const maxR = Math.max(p1Throws.length, p2Throws.length);
@@ -195,13 +196,13 @@ export default function MatchLogsScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
       >
-        {match.logs.map((leg: any, i: number) => renderTableForLeg(leg, i))}
+        {match.logs.map((leg: LegLog, i: number) => renderTableForLeg(leg, i))}
       </ScrollView>
     </View>
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     scroll: { flex: 1 },
     scrollContent: { padding: 16, paddingBottom: 40, gap: 24 },

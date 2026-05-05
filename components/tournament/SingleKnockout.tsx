@@ -12,8 +12,18 @@ import {
   SharedMatch as Match,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { TournamentSettings } from "../../lib/statsUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+
+export interface SingleKnockoutProps {
+  players: Player[];
+  settings: TournamentSettings;
+  viewMode?: "list" | "tree";
+  onMatchPress: (match: Match) => void;
+  initialBracket?: Match[] | null;
+  isReadOnly?: boolean;
+}
 
 export default function SingleKnockout({
   players,
@@ -22,7 +32,7 @@ export default function SingleKnockout({
   onMatchPress,
   initialBracket = null,
   isReadOnly = false,
-}: any) {
+}: SingleKnockoutProps) {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const router = useRouter();
@@ -242,15 +252,15 @@ export default function SingleKnockout({
         match.round === totalR &&
         !match.isThirdPlace
       ) {
-        matchSettings.targetSets = settings.finalSets;
-        matchSettings.targetLegs = settings.finalLegs;
+        matchSettings.targetSets = Number(settings.finalSets);
+        matchSettings.targetLegs = Number(settings.finalLegs);
       } else if (
         settings.customSemis &&
         match.round === totalR - 1 &&
         !match.isThirdPlace
       ) {
-        matchSettings.targetSets = settings.semiSets;
-        matchSettings.targetLegs = settings.semiLegs;
+        matchSettings.targetSets = Number(settings.semiSets);
+        matchSettings.targetLegs = Number(settings.semiLegs);
       }
       router.push({
         pathname: "/tournament/match",
@@ -391,7 +401,7 @@ export default function SingleKnockout({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, paddingTop: 10, paddingHorizontal: 16 },
     roundSection: { marginBottom: 24 },

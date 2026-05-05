@@ -7,8 +7,8 @@ import { t } from "../../lib/i18n";
 type BotThrowingOverlayProps = {
   playerName: string;
   onUndo: () => void;
-  theme: any;
-  language: any;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
 };
 
 export const BotThrowingOverlay = ({
@@ -34,7 +34,7 @@ export const BotThrowingOverlay = ({
   );
 };
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     botOverlay: {
       minHeight: 280,

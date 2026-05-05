@@ -21,6 +21,7 @@ import { t } from "../../lib/i18n";
 import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
 import { useGameModals } from "../../hooks/useGameModals";
 import { useX01Match } from "../../hooks/useX01Match";
+import { Match } from "../../lib/statsUtils";
 
 const { width } = Dimensions.get("window");
 
@@ -83,7 +84,7 @@ export default function TournamentMatchScreen() {
         const bStr = await AsyncStorage.getItem(bKey);
         if (bStr) {
           const bracket = JSON.parse(bStr);
-          const totalR = Math.max(...bracket.map((m: any) => m.round));
+          const totalR = Math.max(...bracket.map((m: Match) => m.round || 0));
 
           let overriddenSettings = { ...initialSettings };
 
@@ -92,27 +93,31 @@ export default function TournamentMatchScreen() {
             initialSettings.format === "groups_and_double_knockout"
           ) {
             if (initialSettings.customFinals && match.bracket === "gf") {
-              overriddenSettings.targetSets = initialSettings.finalSets;
-              overriddenSettings.targetLegs = initialSettings.finalLegs;
+              overriddenSettings.targetSets = Number(initialSettings.finalSets);
+              overriddenSettings.targetLegs = Number(initialSettings.finalLegs);
             } else if (initialSettings.customSemis) {
               const totalWBRounds = Math.max(
                 ...bracket
-                  .filter((m: any) => m.bracket === "wb")
-                  .map((m: any) => m.round),
+                  .filter((m: Match) => m.bracket === "wb")
+                  .map((m: Match) => m.round || 0),
                 1,
               );
               const totalLBRounds = Math.max(
                 ...bracket
-                  .filter((m: any) => m.bracket === "lb")
-                  .map((m: any) => m.round),
+                  .filter((m: Match) => m.bracket === "lb")
+                  .map((m: Match) => m.round || 0),
                 1,
               );
               if (
                 (match.bracket === "wb" && match.round === totalWBRounds) ||
                 (match.bracket === "lb" && match.round === totalLBRounds)
               ) {
-                overriddenSettings.targetSets = initialSettings.semiSets;
-                overriddenSettings.targetLegs = initialSettings.semiLegs;
+                overriddenSettings.targetSets = Number(
+                  initialSettings.semiSets,
+                );
+                overriddenSettings.targetLegs = Number(
+                  initialSettings.semiLegs,
+                );
               }
             }
           } else {
@@ -121,15 +126,15 @@ export default function TournamentMatchScreen() {
               match.round === totalR &&
               !match.isThirdPlace
             ) {
-              overriddenSettings.targetSets = initialSettings.finalSets;
-              overriddenSettings.targetLegs = initialSettings.finalLegs;
+              overriddenSettings.targetSets = Number(initialSettings.finalSets);
+              overriddenSettings.targetLegs = Number(initialSettings.finalLegs);
             } else if (
               initialSettings.customSemis &&
               match.round === totalR - 1 &&
               !match.isThirdPlace
             ) {
-              overriddenSettings.targetSets = initialSettings.semiSets;
-              overriddenSettings.targetLegs = initialSettings.semiLegs;
+              overriddenSettings.targetSets = Number(initialSettings.semiSets);
+              overriddenSettings.targetLegs = Number(initialSettings.semiLegs);
             }
           }
 
@@ -421,19 +426,20 @@ export default function TournamentMatchScreen() {
             </Text>
             <View style={styles.doublePromptActions}>
               {(() => {
+                if (!pendingTurn) return null;
                 let maxDarts = 3;
                 const bogey2Darts = [109, 108, 106, 105, 103, 102, 99];
 
                 if (
-                  pendingTurn?.currentLeft > 110 ||
-                  bogey2Darts.includes(pendingTurn?.currentLeft)
+                  pendingTurn.currentLeft > 110 ||
+                  bogey2Darts.includes(pendingTurn.currentLeft)
                 ) {
                   maxDarts = 1;
-                } else if (pendingTurn?.currentLeft > 50) {
+                } else if (pendingTurn.currentLeft > 50) {
                   maxDarts = 2;
                 }
 
-                if (pendingTurn?.newLeft === 0 && !pendingTurn?.isBust) {
+                if (pendingTurn.newLeft === 0 && !pendingTurn.isBust) {
                   const winOpts = Array.from(
                     { length: maxDarts },
                     (_, i) => i + 1,
@@ -561,7 +567,7 @@ export default function TournamentMatchScreen() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     matchHeader: {

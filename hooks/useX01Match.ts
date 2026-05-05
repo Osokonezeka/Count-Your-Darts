@@ -2,7 +2,12 @@ import { useState, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { debounce } from "lodash";
 import { IMPOSSIBLE_SCORES, BOGEY_NUMBERS } from "../lib/gameUtils";
-import { generateMatchStats } from "../lib/statsUtils";
+import {
+  generateMatchStats,
+  Match,
+  LegLog,
+  PlayerMatchStats,
+} from "../lib/statsUtils";
 import { useMatchStore } from "../store/useMatchStore";
 import { useSpeech } from "../context/SpeechContext";
 import { useBotDelay } from "./useBotDelay";
@@ -12,9 +17,18 @@ import {
   calculateX01BotTurnDetails,
 } from "../lib/bot";
 
+type X01Settings = {
+  startingPoints: number;
+  targetLegs: number;
+  targetSets: number;
+  inRule?: "straight" | "double" | "master";
+  outRule?: "straight" | "double" | "master";
+  name?: string;
+};
+
 export function useX01Match(
-  match: any,
-  settings: any,
+  match: Match,
+  settings: X01Settings,
   isFormatLoaded: boolean,
   callbacks: {
     showUndoConfirm: (playerName: string, onUndo: () => void) => void;
@@ -31,7 +45,7 @@ export function useX01Match(
   const [p2Throws, setP2Throws] = useState<string[]>([]);
   const [winner, setWinner] = useState<string | null>(null);
 
-  const [legsHistory, setLegsHistory] = useState<any[]>([]);
+  const [legsHistory, setLegsHistory] = useState<LegLog[]>([]);
   const [p1DoubleAttempts, setP1DoubleAttempts] = useState(0);
   const [p2DoubleAttempts, setP2DoubleAttempts] = useState(0);
 
@@ -39,7 +53,13 @@ export function useX01Match(
   const [p2DoubleThrows, setP2DoubleThrows] = useState<number[]>([]);
 
   const [showDoublePrompt, setShowDoublePrompt] = useState(false);
-  const [pendingTurn, setPendingTurn] = useState<any>(null);
+  const [pendingTurn, setPendingTurn] = useState<{
+    isP1: boolean;
+    score: number;
+    newLeft: number;
+    isBust: boolean;
+    currentLeft: number;
+  } | null>(null);
 
   const { speak } = useSpeech();
 
@@ -52,7 +72,12 @@ export function useX01Match(
   const { isFastBot, delay } = useBotDelay(isUndoing, 1500);
 
   const debouncedSaveMatch = useMemo(
-    () => debounce((id: string, data: any) => saveMatch(id, data), 500),
+    () =>
+      debounce(
+        (id: string, data: Parameters<typeof saveMatch>[1]) =>
+          saveMatch(id, data),
+        500,
+      ),
     [saveMatch],
   );
 
@@ -103,8 +128,8 @@ export function useX01Match(
         setP1DoubleThrows(savedData.p1DoubleThrows || []);
         setP2DoubleThrows(savedData.p2DoubleThrows || []);
       } else if (match) {
-        setActivePlayerId(match.player1.id);
-        setStarterId(match.player1.id);
+        setActivePlayerId(match.player1?.id || null);
+        setStarterId(match.player1?.id || null);
       }
       setIsLoaded(true);
     }
@@ -208,16 +233,17 @@ export function useX01Match(
       : p1Throws.length > 0
         ? match.player1?.name
         : "";
-    const targetId = isP1
-      ? p2Throws.length > 0
-        ? match.player2?.id
-        : match.player1?.id
-      : match.player1?.id;
+    const targetId =
+      (isP1
+        ? p2Throws.length > 0
+          ? match.player2?.id
+          : match.player1?.id
+        : match.player1?.id) || null;
 
     if (targetName) {
       callbacks.showUndoConfirm(targetName, () => {
         setIsUndoing(true);
-        if (targetId === match.player1.id) {
+        if (targetId === match.player1?.id) {
           setP1Throws((v: string[]) => v.slice(0, -1));
           setP1DoubleAttempts((v: number) =>
             Math.max(0, v - (p1DoubleThrows[p1DoubleThrows.length - 1] || 0)),
@@ -245,7 +271,7 @@ export function useX01Match(
       return;
     }
 
-    const isP1 = activePlayerId === match.player1.id;
+    const isP1 = activePlayerId === match.player1?.id;
     const currentLeft =
       settings.startingPoints -
       (isP1 ? p1Throws : p2Throws).reduce(
@@ -302,7 +328,7 @@ export function useX01Match(
         if (match.player2) setActivePlayerId(match.player2.id);
       } else {
         setP2Throws([...p2Throws, result]);
-        setActivePlayerId(match.player1.id);
+        setActivePlayerId(match.player1?.id || null);
       }
       setCurrentInput("");
     }
@@ -316,7 +342,7 @@ export function useX01Match(
     winningDartsAtDouble: number,
   ) => {
     let mWinner = null;
-    let mWinnerObj = null;
+    let mWinnerObj: PlayerMatchStats | undefined = undefined;
     const f1 = isP1 ? [...p1Throws, winningThrowStr] : p1Throws;
     const f2 = !isP1 ? [...p2Throws, winningThrowStr] : p2Throws;
     const newHistory = [
@@ -324,8 +350,8 @@ export function useX01Match(
       {
         p1Throws: f1,
         p2Throws: f2,
-        winnerId: isP1 ? match.player1.id : match.player2.id,
-        starterId: starterId,
+        winnerId: isP1 ? match.player1?.id : match.player2?.id,
+        starterId: starterId || undefined,
       },
     ];
     setLegsHistory(newHistory);
@@ -340,7 +366,7 @@ export function useX01Match(
       if (nLeg1 === settings.targetLegs) {
         nSet1++;
         if (nSet1 === settings.targetSets) {
-          mWinner = match.player1.name;
+          mWinner = match.player1?.name;
           mWinnerObj = match.player1;
         } else {
           nLeg1 = 0;
@@ -354,7 +380,7 @@ export function useX01Match(
       if (nLeg2 === settings.targetLegs) {
         nSet2++;
         if (nSet2 === settings.targetSets) {
-          mWinner = match.player2.name;
+          mWinner = match.player2?.name;
           mWinnerObj = match.player2;
         } else {
           nLeg2 = 0;
@@ -373,8 +399,8 @@ export function useX01Match(
         const bKey = `bracket_structure_${settings.name?.replace(/\s/g, "_")}`;
         const bStr = await AsyncStorage.getItem(bKey);
         if (bStr) {
-          const bracket = JSON.parse(bStr);
-          const idx = bracket.findIndex((m: any) => m.id === match.id);
+          const bracket: Match[] = JSON.parse(bStr);
+          const idx = bracket.findIndex((m: Match) => m.id === match.id);
           if (idx > -1) {
             bracket[idx].winner = mWinnerObj;
             bracket[idx].score = {
@@ -397,14 +423,14 @@ export function useX01Match(
 
             const nextId = bracket[idx].nextMatchId;
             if (nextId) {
-              const nIdx = bracket.findIndex((m: any) => m.id === nextId);
+              const nIdx = bracket.findIndex((m: Match) => m.id === nextId);
               if (nIdx > -1) {
                 if (bracket[idx].nextMatchSlot === "p1")
                   bracket[nIdx].player1 = mWinnerObj;
                 else if (bracket[idx].nextMatchSlot === "p2")
                   bracket[nIdx].player2 = mWinnerObj;
                 else {
-                  if (bracket[idx].matchIndex % 2 === 0)
+                  if ((bracket[idx].matchIndex || 0) % 2 === 0)
                     bracket[nIdx].player1 = mWinnerObj;
                   else bracket[nIdx].player2 = mWinnerObj;
                 }
@@ -413,7 +439,7 @@ export function useX01Match(
 
             const dropId = bracket[idx].loserDropMatchId;
             if (dropId) {
-              const dIdx = bracket.findIndex((m: any) => m.id === dropId);
+              const dIdx = bracket.findIndex((m: Match) => m.id === dropId);
               if (dIdx > -1) {
                 const mLoserObj = isP1 ? match.player2 : match.player1;
                 if (bracket[idx].loserDropSlot === "p1")
@@ -424,10 +450,10 @@ export function useX01Match(
 
             if (bracket[idx].bracket === "gf" && bracket[idx].round === 1) {
               const gfM1 = bracket.find(
-                (x: any) => x.bracket === "gf" && x.round === 2,
+                (x: Match) => x.bracket === "gf" && x.round === 2,
               );
               if (gfM1) {
-                if (mWinnerObj.id === bracket[idx].player1?.id) {
+                if (mWinnerObj?.id === bracket[idx].player1?.id) {
                   gfM1.isBye = true;
                   gfM1.winner = mWinnerObj;
                 } else {
@@ -437,12 +463,12 @@ export function useX01Match(
               }
             }
 
-            const totalR = Math.max(...bracket.map((m: any) => m.round));
+            const totalR = Math.max(...bracket.map((m: Match) => m.round || 0));
             if (bracket[idx].round === totalR - 1) {
               const loser = isP1 ? match.player2 : match.player1;
-              const tpIdx = bracket.findIndex((m: any) => m.isThirdPlace);
+              const tpIdx = bracket.findIndex((m: Match) => m.isThirdPlace);
               if (tpIdx > -1) {
-                if (bracket[idx].matchIndex % 2 === 0)
+                if ((bracket[idx].matchIndex || 0) % 2 === 0)
                   bracket[tpIdx].player1 = loser;
                 else bracket[tpIdx].player2 = loser;
               }
@@ -459,7 +485,9 @@ export function useX01Match(
       setP1DoubleThrows([]);
       setP2DoubleThrows([]);
       const nStart =
-        starterId === match.player1.id ? match.player2.id : match.player1.id;
+        starterId === match.player1?.id
+          ? match.player2?.id || null
+          : match.player1?.id || null;
       setStarterId(nStart);
       setActivePlayerId(nStart);
       setCurrentInput("");

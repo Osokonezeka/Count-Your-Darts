@@ -15,7 +15,23 @@ import { t } from "../../lib/i18n";
 import { getBotCheckoutChance } from "../../lib/bot";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const CustomSlider = ({ value, onValueChange, min, max, step, theme }: any) => {
+interface CustomSliderProps {
+  value: number;
+  onValueChange: (val: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  theme: { colors: Record<string, string> };
+}
+
+const CustomSlider = ({
+  value,
+  onValueChange,
+  min,
+  max,
+  step,
+  theme,
+}: CustomSliderProps) => {
   const [width, setWidth] = useState(0);
   const widthRef = useRef(0);
   const valueRef = useRef(value);
@@ -104,6 +120,16 @@ const CustomSlider = ({ value, onValueChange, min, max, step, theme }: any) => {
   );
 };
 
+export interface AddBotModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onAdd: (difficulty: number) => void;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
+  gameMode: string;
+  trainingMode: string;
+}
+
 export const AddBotModal = ({
   visible,
   onClose,
@@ -112,7 +138,7 @@ export const AddBotModal = ({
   language,
   gameMode,
   trainingMode,
-}: any) => {
+}: AddBotModalProps) => {
   const [difficulty, setDifficulty] = useState(45);
   const [isAdaptive, setIsAdaptive] = useState(false);
   const styles = getStyles(theme);
@@ -268,7 +294,7 @@ export const AddBotModal = ({
   );
 };
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     modalOverlay: {
       flex: 1,

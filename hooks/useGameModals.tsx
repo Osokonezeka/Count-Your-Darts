@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import CustomAlert, { AlertButton } from "../components/modals/CustomAlert";
 import { t } from "../lib/i18n";
 
-export function useGameModals(language: any) {
+export function useGameModals(language: Parameters<typeof t>[0]) {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
     title: "",

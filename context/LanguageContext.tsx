@@ -2,9 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Lang, availableLanguages } from "../lib/i18n";
 
-const LanguageContext = createContext<any>(null);
+type LanguageContextType = {
+  language: Lang;
+  changeLanguage: (lang: Lang) => Promise<void>;
+};
 
-export function LanguageProvider({ children }: any) {
+const LanguageContext = createContext<LanguageContextType | undefined>(
+  undefined,
+);
+
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Lang>("en");
 
   useEffect(() => {
@@ -28,4 +35,9 @@ export function LanguageProvider({ children }: any) {
   );
 }
 
-export const useLanguage = () => useContext(LanguageContext);
+export const useLanguage = () => {
+  const context = useContext(LanguageContext);
+  if (!context)
+    throw new Error("useLanguage must be used within LanguageProvider");
+  return context;
+};

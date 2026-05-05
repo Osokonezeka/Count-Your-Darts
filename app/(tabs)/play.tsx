@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import DraggableFlatList, {
   ScaleDecorator,
+  RenderItemParams,
 } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -29,12 +30,12 @@ import { isBot } from "../../lib/statsUtils";
 const STORAGE_KEY_PLAYERS = "@last_selected_players";
 const STORAGE_KEY_CONFIG = "@last_game_config";
 
-const IN_LABELS: any = {
+const IN_LABELS: Record<string, string> = {
   straight: "straightIn",
   double: "doubleIn",
   master: "masterIn",
 };
-const OUT_LABELS: any = {
+const OUT_LABELS: Record<string, string> = {
   straight: "straightOut",
   double: "doubleOut",
   master: "masterOut",
@@ -300,7 +301,9 @@ export default function Play() {
               <AnimatedSegmentedControl
                 theme={theme}
                 activeOption={gameMode}
-                onSelect={setGameMode}
+                onSelect={(val) =>
+                  setGameMode(val as "X01" | "Cricket" | "Training")
+                }
                 options={[
                   { id: "X01", label: t(language, "x01") || "X01" },
                   { id: "Cricket", label: t(language, "cricket") || "Cricket" },
@@ -319,7 +322,11 @@ export default function Play() {
                   <AnimatedVerticalSelect
                     theme={theme}
                     activeOption={trainingMode}
-                    onSelect={(val: any) => setTrainingMode(val)}
+                    onSelect={(val: string) =>
+                      setTrainingMode(
+                        val as "around_the_clock" | "100_darts" | "bobs_27",
+                      )
+                    }
                     options={[
                       {
                         id: "around_the_clock",
@@ -453,11 +460,11 @@ export default function Play() {
                   router.push("/gamemodes/cricket");
                 else if (gameMode === "Training") {
                   if (trainingMode === "around_the_clock")
-                    router.push("/gamemodes/aroundtheclock" as any);
+                    router.push("/gamemodes/aroundtheclock");
                   else if (trainingMode === "100_darts")
-                    router.push("/gamemodes/hundreddarts" as any);
+                    router.push("/gamemodes/hundreddarts");
                   else if (trainingMode === "bobs_27")
-                    router.push("/gamemodes/bobstwentyseven" as any);
+                    router.push("/gamemodes/bobstwentyseven");
                 }
               }}
             />
@@ -552,8 +559,13 @@ export default function Play() {
             </View>
           </>
         }
-        renderItem={({ item, drag, isActive, getIndex }: any) => {
-          const index = getIndex ? getIndex() : 0;
+        renderItem={({
+          item,
+          drag,
+          isActive,
+          getIndex,
+        }: RenderItemParams<string>) => {
+          const index = getIndex ? (getIndex() ?? 0) : 0;
           return (
             <ScaleDecorator activeScale={1.03}>
               <View style={styles.playersCardMiddle} collapsable={false}>
@@ -651,7 +663,9 @@ export default function Play() {
                 <AnimatedSegmentedControl
                   theme={theme}
                   activeOption={inRule}
-                  onSelect={setInRule}
+                  onSelect={(val) =>
+                    setInRule(val as "straight" | "double" | "master")
+                  }
                   options={(["straight", "double", "master"] as const).map(
                     (rule) => ({
                       id: rule,
@@ -662,7 +676,9 @@ export default function Play() {
                 <AnimatedSegmentedControl
                   theme={theme}
                   activeOption={outRule}
-                  onSelect={setOutRule}
+                  onSelect={(val) =>
+                    setOutRule(val as "straight" | "double" | "master")
+                  }
                   style={{ marginTop: 10 }}
                   options={(["double", "master", "straight"] as const).map(
                     (rule) => ({
@@ -708,12 +724,12 @@ export default function Play() {
           setNewPlayerName("");
           setAddPopupVisible(true);
         }}
-        onEditPress={(p: any) => {
+        onEditPress={(p: { name: string }) => {
           setEditingPlayerName(p.name);
           setNewPlayerName(p.name);
           setAddPopupVisible(true);
         }}
-        onDeletePress={(p: any) => handleDeletePlayer(p.name)}
+        onDeletePress={(p: { name: string }) => handleDeletePlayer(p.name)}
         addLabel={t(language, "addNewPlayer") || "Add new player"}
         emptyText={t(language, "noPlayers") || "No more players"}
         theme={theme}
@@ -759,7 +775,7 @@ export default function Play() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { padding: 16, paddingBottom: 40, overflow: "visible" },
