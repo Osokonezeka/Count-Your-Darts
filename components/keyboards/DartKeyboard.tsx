@@ -3,6 +3,19 @@ import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { t } from "../../lib/i18n";
 
+interface DartKeyboardProps {
+  onThrow: (value: number) => void;
+  onMiss: () => void;
+  onMultiplierToggle: (mult: 2 | 3) => void;
+  onUndo: () => void;
+  multiplier: 1 | 2 | 3;
+  theme: { colors: Record<string, string> };
+  bullTerm: string;
+  missTerm: string;
+  tripleTerm: string;
+  language: Parameters<typeof t>[0];
+}
+
 export function DartKeyboard({
   onThrow,
   onMiss,
@@ -14,7 +27,7 @@ export function DartKeyboard({
   missTerm,
   tripleTerm,
   language,
-}: any) {
+}: DartKeyboardProps) {
   const styles = getStyles(theme);
   return (
     <>
@@ -101,7 +114,7 @@ export function DartKeyboard({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     keyRow7: { flexDirection: "row", gap: 6 },
     keyRow4: { flexDirection: "row", gap: 6, marginTop: 4 },

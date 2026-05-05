@@ -19,7 +19,7 @@ export type ManagePlayerItem = {
   id: string;
   name: string;
   subtitle?: string;
-  originalData?: any;
+  originalData?: unknown;
 };
 
 interface ManagePlayersModalProps {
@@ -32,7 +32,7 @@ interface ManagePlayersModalProps {
   onDeletePress: (player: ManagePlayerItem) => void;
   addLabel: string;
   emptyText: string;
-  theme: any;
+  theme: { colors: Record<string, string> };
 }
 
 export function ManagePlayersModal({
@@ -175,7 +175,7 @@ export function ManagePlayersModal({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     sheetOverlay: { flex: 1, justifyContent: "flex-end" },
     sheetBackdrop: { backgroundColor: "#000" },

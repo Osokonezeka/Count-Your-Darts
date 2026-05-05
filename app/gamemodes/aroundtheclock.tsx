@@ -52,10 +52,12 @@ type GameState = {
   playerStates: PlayerState[];
   currentIndex: number;
   throwsThisTurn: number;
-  history: any[];
+  history: GameState[];
   finishedCount: number;
   isUndoing?: boolean;
 };
+
+type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
 
 const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60)
@@ -65,7 +67,7 @@ const formatTime = (seconds: number) => {
   return `${m}:${s}`;
 };
 
-function clockReducer(state: GameState, action: any): GameState {
+function clockReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "THROW": {
       const { hit } = action.payload;
@@ -228,7 +230,7 @@ export default function AroundTheClock() {
   }, [players]);
 
   const botAvg = resolveBotAverage(
-    activePlayer.name,
+    activePlayer?.name || "",
     state.playerStates,
     "Around the Clock",
     undefined,
@@ -236,7 +238,8 @@ export default function AroundTheClock() {
   );
 
   useBotTurn({
-    condition: isBaselineLoaded && !allFinished && !state.isUndoing,
+    condition:
+      isBaselineLoaded && !allFinished && !state.isUndoing && !!activePlayer,
     botAvg,
     delay,
     historyLength: state.history.length,
@@ -259,7 +262,7 @@ export default function AroundTheClock() {
   }, [navigation]);
 
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval>;
     if (!allFinished) {
       interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
     }
@@ -307,7 +310,7 @@ export default function AroundTheClock() {
         : [];
 
       const existingIndex = existingHistory.findIndex(
-        (h: any) => h.id === matchId,
+        (h: { id: string }) => h.id === matchId,
       );
       if (existingIndex > -1) {
         existingHistory[existingIndex] = historyItem;
@@ -479,7 +482,7 @@ export default function AroundTheClock() {
 
       {!allFinished && (
         <BotAwareKeyboard
-          playerName={currentPlayer.name}
+          playerName={currentPlayer?.name || ""}
           onUndo={() => dispatch({ type: "UNDO" })}
           theme={theme}
           language={language}
@@ -526,7 +529,7 @@ export default function AroundTheClock() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     targetValue: {
       fontSize: 36,

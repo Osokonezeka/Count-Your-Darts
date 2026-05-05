@@ -20,8 +20,21 @@ import Svg, {
 import { getStatisticsStyles } from "./StatisticsStyles";
 import { t } from "../../lib/i18n";
 import { useTheme } from "../../context/ThemeContext";
+import { AggregatedStats } from "../../lib/statsUtils";
 
-export const ShareStatBox = ({ label, value, theme, fullWidth }: any) => (
+interface ShareStatBoxProps {
+  label: string;
+  value: string | number;
+  theme: { colors: Record<string, string> };
+  fullWidth?: boolean;
+}
+
+export const ShareStatBox = ({
+  label,
+  value,
+  theme,
+  fullWidth,
+}: ShareStatBoxProps) => (
   <View
     style={{
       width: fullWidth ? "100%" : "48%",
@@ -60,6 +73,17 @@ export const ShareStatBox = ({ label, value, theme, fullWidth }: any) => (
   </View>
 );
 
+interface ShareCardProps {
+  playerName: string;
+  subtitle: string;
+  topRightBox: { label: string; value: string | number };
+  boxes: { label: string; value: string | number; fullWidth?: boolean }[];
+  trendData?: { labels: string[]; datasets: { data: number[] }[] };
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
+  footerText?: string;
+}
+
 export const ShareCard = ({
   playerName,
   subtitle,
@@ -69,7 +93,7 @@ export const ShareCard = ({
   theme,
   language,
   footerText,
-}: any) => {
+}: ShareCardProps) => {
   if (!playerName)
     return (
       <View
@@ -140,7 +164,7 @@ export const ShareCard = ({
           marginBottom: 12,
         }}
       >
-        {boxes.map((box: any, idx: number) => (
+        {boxes.map((box, idx: number) => (
           <ShareStatBox
             key={idx}
             label={box.label}
@@ -240,6 +264,15 @@ export const ShareCard = ({
   );
 };
 
+interface TrendCardProps {
+  data: Record<string, { labels: string[]; datasets: { data: number[] }[] }>;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
+  isOpen: boolean;
+  onToggle: () => void;
+  drag?: () => void;
+}
+
 export const TrendCard = ({
   data,
   theme,
@@ -247,7 +280,7 @@ export const TrendCard = ({
   isOpen,
   onToggle,
   drag,
-}: any) => {
+}: TrendCardProps) => {
   const styles = getStatisticsStyles(theme);
   const [openPlayers, setOpenPlayers] = useState<Record<string, boolean>>({});
   const togglePlayer = (name: string) =>
@@ -352,7 +385,17 @@ export const TrendCard = ({
   );
 };
 
-export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
+interface HeatmapBoardProps {
+  coords: { x: number; y: number }[];
+  theme: { colors: Record<string, string> };
+  size?: number;
+}
+
+export const HeatmapBoard = ({
+  coords,
+  theme,
+  size = 280,
+}: HeatmapBoardProps) => {
   const cx = size / 2;
   const cy = size / 2;
   const rDoubleOut = 0.82 * cx;
@@ -381,7 +424,7 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
   let maxCount = 0;
 
   if (coords && Array.isArray(coords)) {
-    coords.forEach((c: any) => {
+    coords.forEach((c) => {
       const gridX = Math.floor(((c.x + 1) / 2) * gridSize);
       const gridY = Math.floor(((c.y + 1) / 2) * gridSize);
 
@@ -506,6 +549,22 @@ export const HeatmapBoard = ({ coords, theme, size = 280 }: any) => {
   );
 };
 
+interface StatCardProps {
+  item: { id: string; title?: string };
+  drag?: () => void;
+  stats: AggregatedStats[];
+  isOpen: boolean;
+  onToggle: () => void;
+  noPlayersSelected?: boolean;
+  collapsedPlayers?: Record<string, boolean>;
+  onTogglePlayer?: (key: string) => void;
+  tripleTerm?: string;
+  missTerm?: string;
+  bullTerm?: string;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
+}
+
 export const StatCard = React.memo(
   ({
     item,
@@ -521,13 +580,12 @@ export const StatCard = React.memo(
     bullTerm,
     theme,
     language,
-  }: any) => {
+  }: StatCardProps) => {
     const [sortConfig, setSortConfig] = useState<{
       col: string;
       asc: boolean;
     } | null>(null);
     const styles = getStatisticsStyles(theme);
-
     const handleSort = (col: string) => {
       if (sortConfig?.col === col) {
         if (!sortConfig.asc) setSortConfig({ col, asc: true });
@@ -564,8 +622,8 @@ export const StatCard = React.memo(
     const sortedStats = useMemo(() => {
       if (!sortConfig || item.id === "hit_chart") return stats;
       return [...stats].sort((a, b) => {
-        let valA: any = 0,
-          valB: any = 0;
+        let valA: string | number = 0,
+          valB: string | number = 0;
         switch (sortConfig.col) {
           case "name":
             valA = a.name.toLowerCase();
@@ -592,24 +650,24 @@ export const StatCard = React.memo(
             valB = b.mWon;
             break;
           case "winPct":
-            valA = a.winPct;
-            valB = b.winPct;
+            valA = a.winPct || 0;
+            valB = b.winPct || 0;
             break;
           case "avg":
-            valA = a.calculatedAvg;
-            valB = b.calculatedAvg;
+            valA = a.calculatedAvg || 0;
+            valB = b.calculatedAvg || 0;
             break;
           case "first9":
-            valA = a.calculatedFirst9;
-            valB = b.calculatedFirst9;
+            valA = a.calculatedFirst9 || 0;
+            valB = b.calculatedFirst9 || 0;
             break;
           case "checkoutDarts":
             valA = a.checkoutDarts;
             valB = b.checkoutDarts;
             break;
           case "checkoutPct":
-            valA = a.calculatedCheckoutPct;
-            valB = b.calculatedCheckoutPct;
+            valA = a.calculatedCheckoutPct || 0;
+            valB = b.calculatedCheckoutPct || 0;
             break;
           case "s60":
             valA = a.s60;
@@ -633,7 +691,9 @@ export const StatCard = React.memo(
           return sortConfig.asc
             ? valA.localeCompare(valB)
             : valB.localeCompare(valA);
-        return sortConfig.asc ? valA - valB : valB - valA;
+        return sortConfig.asc
+          ? (valA as number) - (valB as number)
+          : (valB as number) - (valA as number);
       });
     }, [stats, sortConfig, item.id]);
 
@@ -707,7 +767,7 @@ export const StatCard = React.memo(
                       <SortableHeader label="1st" colKey="t1st" />
                       <SortableHeader label="2nd" colKey="t2nd" />
                     </View>
-                    {sortedStats.map((s: any) => (
+                    {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
                         <Text style={styles.cellName}>{s.name}</Text>
                         <Text style={styles.cell}>{s.tPlayed}</Text>
@@ -716,9 +776,7 @@ export const StatCard = React.memo(
                             styles.cell,
                             { color: theme.colors.warning, fontWeight: "900" },
                           ]}
-                        >
-                          {s.t1st}
-                        </Text>
+                        ></Text>
                         <Text
                           style={[
                             styles.cell,
@@ -746,7 +804,7 @@ export const StatCard = React.memo(
                       <SortableHeader label="W" colKey="mWon" />
                       <SortableHeader label="W %" colKey="winPct" />
                     </View>
-                    {sortedStats.map((s: any) => (
+                    {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
                         <Text style={styles.cellName}>{s.name}</Text>
                         <Text style={styles.cell}>{s.mPlayed}</Text>
@@ -755,7 +813,9 @@ export const StatCard = React.memo(
                         >
                           {s.mWon}
                         </Text>
-                        <Text style={styles.cell}>{s.winPct.toFixed(0)}%</Text>
+                        <Text style={styles.cell}>
+                          {(s.winPct || 0).toFixed(0)}%
+                        </Text>
                       </View>
                     ))}
                   </>
@@ -771,11 +831,11 @@ export const StatCard = React.memo(
                       <SortableHeader label="First 9" colKey="first9" />
                       <SortableHeader label="Average" colKey="avg" />
                     </View>
-                    {sortedStats.map((s: any) => (
+                    {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
                         <Text style={styles.cellName}>{s.name}</Text>
                         <Text style={styles.cell}>
-                          {s.calculatedFirst9.toFixed(1)}
+                          {(s.calculatedFirst9 || 0).toFixed(1)}
                         </Text>
                         <Text
                           style={[
@@ -783,7 +843,7 @@ export const StatCard = React.memo(
                             { color: theme.colors.success, fontWeight: "bold" },
                           ]}
                         >
-                          {s.calculatedAvg.toFixed(1)}
+                          {(s.calculatedAvg || 0).toFixed(1)}
                         </Text>
                       </View>
                     ))}
@@ -800,14 +860,14 @@ export const StatCard = React.memo(
                       <SortableHeader label="Att" colKey="checkoutDarts" />
                       <SortableHeader label="Hit %" colKey="checkoutPct" />
                     </View>
-                    {sortedStats.map((s: any) => (
+                    {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
                         <Text style={styles.cellName}>{s.name}</Text>
                         <Text style={styles.cell}>{s.checkoutDarts}</Text>
                         <Text
                           style={[styles.cell, { color: theme.colors.success }]}
                         >
-                          {s.calculatedCheckoutPct.toFixed(1)}%
+                          {(s.calculatedCheckoutPct || 0).toFixed(1)}%
                         </Text>
                       </View>
                     ))}
@@ -826,7 +886,7 @@ export const StatCard = React.memo(
                       <SortableHeader label="140+" colKey="s140" />
                       <SortableHeader label="180" colKey="s180" />
                     </View>
-                    {sortedStats.map((s: any) => (
+                    {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
                         <Text style={styles.cellName}>{s.name}</Text>
                         <Text style={styles.cell}>{s.s60}</Text>
@@ -846,7 +906,7 @@ export const StatCard = React.memo(
                 )}
                 {item.id === "hit_chart" && (
                   <View style={{ paddingTop: 10 }}>
-                    {sortedStats.map((s: any) => {
+                    {sortedStats.map((s: AggregatedStats) => {
                       const defaultTargets = [
                         20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6,
                         5, 4, 3, 2, 1, 25, 0,
@@ -865,8 +925,9 @@ export const StatCard = React.memo(
                       let targets = [...defaultTargets];
                       if (sortConfig && !isCollapsed) {
                         targets.sort((a, b) => {
-                          const hitsA = s.hits[a][sortConfig.col];
-                          const hitsB = s.hits[b][sortConfig.col];
+                          const colKey = sortConfig.col as "S" | "D" | "T";
+                          const hitsA = s.hits[a]?.[colKey] || 0;
+                          const hitsB = s.hits[b]?.[colKey] || 0;
                           if (hitsA === hitsB)
                             return (
                               defaultTargets.indexOf(a) -
@@ -880,6 +941,7 @@ export const StatCard = React.memo(
                           <Pressable
                             style={styles.hitPlayerHeader}
                             onPress={() =>
+                              onTogglePlayer &&
                               onTogglePlayer(`${item.id}_${s.name}`)
                             }
                           >
@@ -903,7 +965,7 @@ export const StatCard = React.memo(
                                   colKey="T"
                                 />
                               </View>
-                              {targets.map((target) => {
+                              {targets.map((target: number) => {
                                 const h = s.hits[target];
                                 if (!h || (h.S === 0 && h.D === 0 && h.T === 0))
                                   return null;
@@ -939,7 +1001,7 @@ export const StatCard = React.memo(
                 )}
                 {item.id === "heatmap" && (
                   <View style={{ paddingTop: 10 }}>
-                    {stats.map((s: any) => {
+                    {stats.map((s: AggregatedStats) => {
                       if (!s.coords || s.coords.length === 0) return null;
                       const isCollapsed =
                         collapsedPlayers &&
@@ -949,6 +1011,7 @@ export const StatCard = React.memo(
                           <Pressable
                             style={styles.hitPlayerHeader}
                             onPress={() =>
+                              onTogglePlayer &&
                               onTogglePlayer(`${item.id}_${s.name}`)
                             }
                           >

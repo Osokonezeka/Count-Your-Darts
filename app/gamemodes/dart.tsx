@@ -86,7 +86,7 @@ type GameState = {
   currentIndex: number;
   startingPlayerIndex: number;
   throwsThisTurn: number;
-  history: any[];
+  history: GameState[];
   legWinner: PlayerState | null;
   setWinner: PlayerState | null;
   matchWinner: PlayerState | null;
@@ -129,7 +129,31 @@ const initialState = (players: string[], settings: GameSettings): GameState => {
   };
 };
 
-function gameReducer(state: GameState, action: any): GameState {
+type Action =
+  | {
+      type: "ADD_THROW";
+      payload: {
+        value: number;
+        multiplier: number;
+        coords?: { x: number; y: number };
+      };
+    }
+  | { type: "ADD_DART_VISUAL"; payload: { value: number; multiplier: number } }
+  | {
+      type: "ADD_TURN_SCORE";
+      payload: {
+        score: number;
+        dartsAtDouble?: number;
+        isBust?: boolean;
+        individualDarts?: { value: number; multiplier: number }[] | null;
+      };
+    }
+  | { type: "START_NEXT_LEG" }
+  | { type: "CONTINUE_AFTER_WIN" }
+  | { type: "UNDO" }
+  | { type: "RESET_CURRENT_TURN" };
+
+function gameReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
@@ -197,7 +221,7 @@ function gameReducer(state: GameState, action: any): GameState {
       const currentDartScore = value * multiplier;
       const previousDartsScore = player.turnThrows
         .slice(0, -1)
-        .reduce((sum: number, t: any) => sum + t.value * t.multiplier, 0);
+        .reduce((sum: number, t: Throw) => sum + t.value * t.multiplier, 0);
       const turnSumTotal = previousDartsScore + currentDartScore;
 
       let newSpeechText: string | null = null;
@@ -370,12 +394,14 @@ function gameReducer(state: GameState, action: any): GameState {
       if (openedThisTurn) player.hasOpened = true;
 
       if (individualDarts) {
-        player.turnThrows = individualDarts.map((d: any) => ({
-          value: d.value,
-          multiplier: d.multiplier,
-          darts: 1,
-          isScoreInput: false,
-        }));
+        player.turnThrows = individualDarts.map(
+          (d: { value: number; multiplier: number }) => ({
+            value: d.value,
+            multiplier: d.multiplier,
+            darts: 1,
+            isScoreInput: false,
+          }),
+        );
       } else {
         player.turnThrows = [
           ...(player.turnThrows || []),
@@ -391,7 +417,7 @@ function gameReducer(state: GameState, action: any): GameState {
       const itemsAdded = individualDarts ? individualDarts.length : 1;
       const previousDartsScore = player.turnThrows
         .slice(0, -itemsAdded)
-        .reduce((sum: number, t: any) => sum + t.value * t.multiplier, 0);
+        .reduce((sum: number, t: Throw) => sum + t.value * t.multiplier, 0);
       const turnSumTotal = previousDartsScore + turnScore;
 
       let newSpeechText: string | null = null;
@@ -634,7 +660,12 @@ export default function Game() {
   } = useGameModals(language);
 
   const [showDoublePrompt, setShowDoublePrompt] = useState(false);
-  const [pendingTurn, setPendingTurn] = useState<any>(null);
+  const [pendingTurn, setPendingTurn] = useState<{
+    score: number;
+    newLeft: number;
+    isBust: boolean;
+    currentLeft: number;
+  } | null>(null);
 
   const [state, dispatch] = useReducer(
     gameReducer,
@@ -742,7 +773,7 @@ export default function Game() {
 
   const { isFastBot, delay } = useBotDelay(state.isUndoing, 700);
   const botAvg = resolveBotAverage(
-    currentPlayer.name,
+    currentPlayer?.name || "",
     state.playerStates,
     "X01",
     state.settings,
@@ -757,7 +788,8 @@ export default function Game() {
       !state.matchWinner &&
       !showDoublePrompt &&
       !state.isUndoing &&
-      state.throwsThisTurn === 0,
+      state.throwsThisTurn === 0 &&
+      !!currentPlayer,
     botAvg,
     delay,
     historyLength: state.history.length,
@@ -911,7 +943,7 @@ export default function Game() {
         }
 
         const validTurnsFormatted = validTurns.map((turn) =>
-          turn.map((t: any) => ({
+          turn.map((t: Throw) => ({
             v: t.value,
             m: t.multiplier,
             d: t.darts,
@@ -964,7 +996,7 @@ export default function Game() {
         : [];
 
       const existingIndex = existingHistory.findIndex(
-        (h: any) => h.id === matchId,
+        (h: { id: string }) => h.id === matchId,
       );
       if (existingIndex > -1) {
         existingHistory[existingIndex] = historyItem;
@@ -1374,7 +1406,7 @@ export default function Game() {
       </View>
 
       <BotAwareKeyboard
-        playerName={currentPlayer.name}
+        playerName={currentPlayer?.name || ""}
         onUndo={handleUndo}
         theme={theme}
         language={language}
@@ -1497,19 +1529,20 @@ export default function Game() {
             </Text>
             <View style={styles.doublePromptActions}>
               {(() => {
+                if (!pendingTurn) return null;
                 let maxDarts = 3;
                 if (
-                  pendingTurn?.currentLeft > 110 ||
+                  pendingTurn.currentLeft > 110 ||
                   [109, 108, 106, 105, 103, 102, 99].includes(
-                    pendingTurn?.currentLeft,
+                    pendingTurn.currentLeft,
                   )
                 ) {
                   maxDarts = 1;
-                } else if (pendingTurn?.currentLeft > 50) {
+                } else if (pendingTurn.currentLeft > 50) {
                   maxDarts = 2;
                 }
 
-                if (pendingTurn?.newLeft === 0 && !pendingTurn?.isBust) {
+                if (pendingTurn.newLeft === 0 && !pendingTurn.isBust) {
                   const winOpts = Array.from(
                     { length: maxDarts },
                     (_, i) => i + 1,
@@ -1590,7 +1623,7 @@ export default function Game() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     headerGameType: {
       fontSize: 18,

@@ -2,6 +2,18 @@ import React from "react";
 import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+export interface TrainingKeyboardProps {
+  playerName: string;
+  instructionText: string;
+  targetValue: string | number;
+  hitLabel: string;
+  missLabel: string;
+  onHit: () => void;
+  onMiss: () => void;
+  onUndo: () => void;
+  theme: { colors: Record<string, string> };
+}
+
 export function TrainingKeyboard({
   playerName,
   instructionText,
@@ -12,7 +24,7 @@ export function TrainingKeyboard({
   onMiss,
   onUndo,
   theme,
-}: any) {
+}: TrainingKeyboardProps) {
   const styles = getStyles(theme);
 
   return (
@@ -50,7 +62,7 @@ export function TrainingKeyboard({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     keyboard: {
       padding: 16,

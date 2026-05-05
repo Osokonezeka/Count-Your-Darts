@@ -12,6 +12,17 @@ import {
 } from "react-native";
 import { t } from "../../lib/i18n";
 
+export interface PlayerModalProps {
+  visible: boolean;
+  title: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
+}
+
 export function PlayerModal({
   visible,
   title,
@@ -21,7 +32,7 @@ export function PlayerModal({
   onSave,
   theme,
   language,
-}: any) {
+}: PlayerModalProps) {
   const styles = getStyles(theme);
 
   return (
@@ -71,7 +82,7 @@ export function PlayerModal({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     modalOverlay: {
       flex: 1,

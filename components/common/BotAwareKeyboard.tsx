@@ -1,16 +1,17 @@
 import React from "react";
-import { View } from "react-native";
+import { View, StyleProp, ViewStyle } from "react-native";
 import { getBotDifficultyFromName } from "../../lib/bot";
 import { BotThrowingOverlay } from "./BotThrowingOverlay";
+import { t } from "../../lib/i18n";
 
 type BotAwareKeyboardProps = {
   playerName: string;
   onUndo: () => void;
-  theme: any;
-  language: any;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
   children: React.ReactNode;
-  style?: any;
-  botStyle?: any;
+  style?: StyleProp<ViewStyle>;
+  botStyle?: StyleProp<ViewStyle>;
 };
 
 export const BotAwareKeyboard = ({

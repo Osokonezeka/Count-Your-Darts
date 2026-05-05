@@ -80,7 +80,7 @@ export default function CustomAlert({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     overlay: {
       flex: 1,

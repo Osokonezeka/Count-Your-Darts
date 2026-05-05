@@ -21,8 +21,21 @@ import {
   SharedMatch as Match,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { TournamentSettings } from "../../lib/statsUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+
+export interface GroupsAndKnockoutProps {
+  players: Player[];
+  settings: TournamentSettings;
+  viewMode?: "list" | "tree";
+  activeTab?: "matches" | "standings";
+  onMatchPress: (match: Match) => void;
+  initialBracket?: Match[] | null;
+  isReadOnly?: boolean;
+  phaseView: "group" | "knockout";
+  setPhaseView: (phase: "group" | "knockout") => void;
+}
 
 export default function GroupsAndKnockout({
   players,
@@ -34,7 +47,7 @@ export default function GroupsAndKnockout({
   isReadOnly = false,
   phaseView,
   setPhaseView,
-}: any) {
+}: GroupsAndKnockoutProps): React.JSX.Element {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const router = useRouter();
@@ -105,7 +118,7 @@ export default function GroupsAndKnockout({
     const groupIds = Array.from(
       new Set(groupPhase.map((m) => m.groupId!)),
     ).sort();
-    const standingsByGroup: Record<string, any[]> = {};
+    const standingsByGroup: Record<string, Player[]> = {};
 
     groupIds.forEach((gId) => {
       const gMatches = groupPhase.filter((m) => m.groupId === gId);
@@ -116,7 +129,10 @@ export default function GroupsAndKnockout({
       });
       const gPlayers = Object.values(gPlayersMap).filter((p) => p.id !== "bye");
 
-      const stats: any = {};
+      const stats: Record<
+        string,
+        { player: Player; pts: number; diff: number; legsFor: number }
+      > = {};
       gPlayers.forEach(
         (p) => (stats[p.id] = { player: p, pts: 0, diff: 0, legsFor: 0 }),
       );
@@ -130,24 +146,29 @@ export default function GroupsAndKnockout({
           stats[p2].pts++;
         }
         if (m.score) {
-          const l1 = settings.targetSets > 1 ? m.score.p1Sets : m.score.p1Legs;
-          const l2 = settings.targetSets > 1 ? m.score.p2Sets : m.score.p2Legs;
+          const l1 =
+            (settings.targetSets || 1) > 1
+              ? m.score.p1Sets || 0
+              : m.score.p1Legs || 0;
+          const l2 =
+            (settings.targetSets || 1) > 1
+              ? m.score.p2Sets || 0
+              : m.score.p2Legs || 0;
           stats[p1].legsFor += l1;
           stats[p2].legsFor += l2;
           stats[p1].diff += l1 - l2;
           stats[p2].diff += l2 - l1;
         }
       });
-      const sorted = Object.values(stats).sort((a: any, b: any) => {
+      const sorted = Object.values(stats).sort((a, b) => {
         if (b.pts !== a.pts) return b.pts - a.pts;
         if (b.diff !== a.diff) return b.diff - a.diff;
         return b.legsFor - a.legsFor;
       });
-      standingsByGroup[gId] = sorted.map((s: any) => s.player);
+      standingsByGroup[gId] = sorted.map((s) => s.player);
     });
 
     const G = groupIds.length;
-    const N = players.length;
     let A = 2;
 
     const round1Slots = [];
@@ -457,7 +478,18 @@ export default function GroupsAndKnockout({
   };
 
   const standingsByGroup = useMemo(() => {
-    const result: Record<string, any[]> = {};
+    const result: Record<
+      string,
+      {
+        player: Player;
+        played: number;
+        won: number;
+        lost: number;
+        legsFor: number;
+        legsAgainst: number;
+        points: number;
+      }[]
+    > = {};
     const groupMatches = matches.filter((m) => m.phase === "group");
     const groupIds = Array.from(
       new Set(groupMatches.map((m) => m.groupId!)),
@@ -472,7 +504,18 @@ export default function GroupsAndKnockout({
       });
       const gPlayers = Object.values(gPlayersMap).filter((p) => p.id !== "bye");
 
-      const stats: any = {};
+      const stats: Record<
+        string,
+        {
+          player: Player;
+          played: number;
+          won: number;
+          lost: number;
+          legsFor: number;
+          legsAgainst: number;
+          points: number;
+        }
+      > = {};
       gPlayers.forEach(
         (p) =>
           (stats[p.id] = {
@@ -494,6 +537,7 @@ export default function GroupsAndKnockout({
         if (m.winner.id === p1) {
           stats[p1].won++;
           stats[p2].lost++;
+
           stats[p1].points++;
         } else {
           stats[p2].won++;
@@ -501,15 +545,21 @@ export default function GroupsAndKnockout({
           stats[p2].points++;
         }
         if (m.score) {
-          const l1 = settings.targetSets > 1 ? m.score.p1Sets : m.score.p1Legs;
-          const l2 = settings.targetSets > 1 ? m.score.p2Sets : m.score.p2Legs;
+          const l1 =
+            (settings.targetSets || 1) > 1
+              ? m.score.p1Sets || 0
+              : m.score.p1Legs || 0;
+          const l2 =
+            (settings.targetSets || 1) > 1
+              ? m.score.p2Sets || 0
+              : m.score.p2Legs || 0;
           stats[p1].legsFor += l1;
           stats[p1].legsAgainst += l2;
           stats[p2].legsFor += l2;
           stats[p2].legsAgainst += l1;
         }
       });
-      result[gId] = Object.values(stats).sort((a: any, b: any) => {
+      result[gId] = Object.values(stats).sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
         const diffA = a.legsFor - a.legsAgainst;
         const diffB = b.legsFor - b.legsAgainst;
@@ -573,14 +623,14 @@ export default function GroupsAndKnockout({
       setSelectedPlayerMatches(null);
       let matchSettings = { ...settings };
       if (match.phase === "group" && settings.customGroups) {
-        matchSettings.targetSets = settings.groupSets;
-        matchSettings.targetLegs = settings.groupLegs;
-        matchSettings.startingPoints = settings.groupPoints;
+        matchSettings.targetSets = Number(settings.groupSets);
+        matchSettings.targetLegs = Number(settings.groupLegs);
+        matchSettings.startingPoints = Number(settings.groupPoints);
       } else if (match.phase === "knockout") {
         if (settings.format === "groups_and_double_knockout") {
           if (settings.customFinals && match.bracket === "gf") {
-            matchSettings.targetSets = settings.finalSets;
-            matchSettings.targetLegs = settings.finalLegs;
+            matchSettings.targetSets = Number(settings.finalSets);
+            matchSettings.targetLegs = Number(settings.finalLegs);
           } else if (settings.customSemis) {
             const totalWBRounds = Math.max(
               ...koMatches
@@ -598,8 +648,8 @@ export default function GroupsAndKnockout({
               (match.bracket === "wb" && match.round === totalWBRounds) ||
               (match.bracket === "lb" && match.round === totalLBRounds)
             ) {
-              matchSettings.targetSets = settings.semiSets;
-              matchSettings.targetLegs = settings.semiLegs;
+              matchSettings.targetSets = Number(settings.semiSets);
+              matchSettings.targetLegs = Number(settings.semiLegs);
             }
           }
         } else {
@@ -608,15 +658,15 @@ export default function GroupsAndKnockout({
             match.round === totalKORounds &&
             !match.isThirdPlace
           ) {
-            matchSettings.targetSets = settings.finalSets;
-            matchSettings.targetLegs = settings.finalLegs;
+            matchSettings.targetSets = Number(settings.finalSets);
+            matchSettings.targetLegs = Number(settings.finalLegs);
           } else if (
             settings.customSemis &&
             match.round === totalKORounds - 1 &&
             !match.isThirdPlace
           ) {
-            matchSettings.targetSets = settings.semiSets;
-            matchSettings.targetLegs = settings.semiLegs;
+            matchSettings.targetSets = Number(settings.semiSets);
+            matchSettings.targetLegs = Number(settings.semiLegs);
           }
         }
       }
@@ -786,7 +836,7 @@ export default function GroupsAndKnockout({
                       Pts
                     </Text>
                   </View>
-                  {standingsByGroup[gId].map((s: any, idx) => {
+                  {standingsByGroup[gId].map((s, idx) => {
                     const diff = s.legsFor - s.legsAgainst;
                     let A = 2;
                     const isAdvancing = idx < A;
@@ -1166,7 +1216,7 @@ export default function GroupsAndKnockout({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     phaseTabsContainer: {

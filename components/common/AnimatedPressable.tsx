@@ -1,7 +1,26 @@
 import React, { useRef } from "react";
-import { Pressable, Animated } from "react-native";
+import {
+  Pressable,
+  Animated,
+  StyleProp,
+  ViewStyle,
+  Insets,
+  GestureResponderEvent,
+} from "react-native";
 
 const AnimatedPressableComponent = Animated.createAnimatedComponent(Pressable);
+
+export interface AnimatedPressableProps {
+  onPress?: ((event: GestureResponderEvent) => void) | (() => void);
+  onLongPress?: ((event: GestureResponderEvent) => void) | (() => void);
+  delayLongPress?: number;
+  hitSlop?: number | Insets | null;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  children?: React.ReactNode;
+  scaleTo?: number;
+  opacityTo?: number;
+}
 
 export function AnimatedPressable({
   onPress,
@@ -13,7 +32,7 @@ export function AnimatedPressable({
   children,
   scaleTo = 0.95,
   opacityTo = 0.8,
-}: any) {
+}: AnimatedPressableProps) {
   const anim = useRef(new Animated.Value(0)).current;
 
   const handlePressIn = () => {

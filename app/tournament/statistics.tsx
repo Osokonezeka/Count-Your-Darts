@@ -31,6 +31,9 @@ import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import {
   getTournamentStatisticsAsync,
   calculateTournamentTrendData,
+  Tournament,
+  AggregatedStats,
+  PlayerMatchStats,
 } from "../../lib/statsUtils";
 
 const TOURNAMENT_HISTORY_KEY = "@tournament_history";
@@ -48,8 +51,8 @@ export default function TournamentStatistics() {
   const { theme } = useTheme();
   const styles = getStatisticsStyles(theme);
 
-  const [history, setHistory] = useState<any[]>([]);
-  const [stats, setStats] = useState<any[]>([]);
+  const [history, setHistory] = useState<Tournament[]>([]);
+  const [stats, setStats] = useState<AggregatedStats[]>([]);
   const [appliedNames, setAppliedNames] = useState<string[]>([]);
   const [tempNames, setTempNames] = useState<string[]>([]);
 
@@ -62,7 +65,7 @@ export default function TournamentStatistics() {
   const [entityType, setEntityType] = useState<EntityType>("single");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
 
-  const viewShotRef = useRef<any>(null);
+  const viewShotRef = useRef<ViewShot>(null);
 
   const defaultSections: Section[] = [
     { id: "trend" },
@@ -124,14 +127,14 @@ export default function TournamentStatistics() {
   );
 
   const allHistoryPlayers = useMemo(() => {
-    const filtered = history.filter((t: any) =>
+    const filtered = history.filter((t: Tournament) =>
       entityType === "team"
         ? t.settings?.teamSize === "team"
         : t.settings?.teamSize !== "team",
     );
     const map = new Map();
-    filtered.forEach((t: any) => {
-      t.players?.forEach((p: any) => {
+    filtered.forEach((t: Tournament) => {
+      t.players?.forEach((p: PlayerMatchStats) => {
         if (!map.has(p.name)) {
           map.set(p.name, {
             name: p.name,
@@ -289,7 +292,7 @@ export default function TournamentStatistics() {
         <AnimatedSegmentedControl
           theme={theme}
           activeOption={entityType}
-          onSelect={setEntityType}
+          onSelect={(val) => setEntityType(val as EntityType)}
           style={styles.segmentContainer}
           options={[
             { id: "single", label: t(language, "players") || "Players" },
@@ -299,7 +302,7 @@ export default function TournamentStatistics() {
         <AnimatedSegmentedControl
           theme={theme}
           activeOption={timeFilter}
-          onSelect={setTimeFilter}
+          onSelect={(val) => setTimeFilter(val as TimeFilter)}
           style={[styles.segmentContainer, { marginTop: 12 }]}
           options={(["today", "7d", "30d", "all"] as TimeFilter[]).map((f) => ({
             id: f,
@@ -406,7 +409,7 @@ export default function TournamentStatistics() {
             </Text>
             <FlatList
               style={{ flexShrink: 1 }}
-              data={stats.map((s: any) => s.name)}
+              data={stats.map((s: AggregatedStats) => s.name)}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <Pressable
@@ -440,7 +443,7 @@ export default function TournamentStatistics() {
           <ViewShot ref={viewShotRef} options={{ format: "jpg", quality: 1 }}>
             {(() => {
               const playerStats = stats.find(
-                (s: any) => s.name === selectedSharePlayer,
+                (s: AggregatedStats) => s.name === selectedSharePlayer,
               );
               return (
                 <ShareCard

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LegLog } from "../lib/statsUtils";
 
 export interface MatchData {
   p1Score: { sets: number; legs: number };
@@ -9,7 +10,7 @@ export interface MatchData {
   p2Throws: string[];
   activePlayerId: string | null;
   starterId: string | null;
-  legsHistory: any[];
+  legsHistory: LegLog[];
   p1DoubleAttempts: number;
   p2DoubleAttempts: number;
   p1DoubleThrows: number[];

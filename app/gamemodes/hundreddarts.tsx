@@ -68,7 +68,7 @@ type GameState = {
   playerStates: PlayerState[];
   currentIndex: number;
   throwsThisTurn: number;
-  history: any[];
+  history: GameState[];
   speechEvent?: { text: string; id: number } | null;
   isUndoing?: boolean;
 };
@@ -80,7 +80,27 @@ const formatThrow = (t: Throw) => {
   return `${prefix}${t.value}`;
 };
 
-function scoringReducer(state: GameState, action: any): GameState {
+type Action =
+  | {
+      type: "ADD_THROW";
+      payload: {
+        value: number;
+        multiplier: number;
+        coords?: { x: number; y: number };
+      };
+    }
+  | { type: "ADD_DART_VISUAL"; payload: { value: number; multiplier: number } }
+  | {
+      type: "ADD_TURN_SCORE";
+      payload: {
+        score: number;
+        individualDarts?: { value: number; multiplier: number }[];
+      };
+    }
+  | { type: "UNDO" }
+  | { type: "RESET_CURRENT_TURN" };
+
+function scoringReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
@@ -193,12 +213,14 @@ function scoringReducer(state: GameState, action: any): GameState {
       player.dartsCount += dartsToLog;
 
       if (individualDarts) {
-        player.turnThrows = individualDarts.map((d: any) => ({
-          value: d.value,
-          multiplier: d.multiplier,
-          darts: 1,
-          isScoreInput: false,
-        }));
+        player.turnThrows = individualDarts.map(
+          (d: { value: number; multiplier: number }) => ({
+            value: d.value,
+            multiplier: d.multiplier,
+            darts: 1,
+            isScoreInput: false,
+          }),
+        );
       } else {
         player.turnThrows = [
           {
@@ -389,7 +411,7 @@ export default function OneHundredDarts() {
   }, [players]);
 
   const botAvg = resolveBotAverage(
-    activePlayer.name,
+    activePlayer?.name || "",
     state.playerStates,
     "100 Darts",
     undefined,
@@ -401,7 +423,8 @@ export default function OneHundredDarts() {
       isBaselineLoaded &&
       !allDone &&
       !state.isUndoing &&
-      state.throwsThisTurn === 0,
+      state.throwsThisTurn === 0 &&
+      !!activePlayer,
     botAvg,
     delay,
     historyLength: state.history.length,
@@ -412,7 +435,8 @@ export default function OneHundredDarts() {
       if (maxDartsLeft < 3) {
         individualDarts = individualDarts.slice(0, maxDartsLeft);
         botScore = individualDarts.reduce(
-          (sum: number, d: any) => sum + d.value * d.multiplier,
+          (sum: number, d: { value: number; multiplier: number }) =>
+            sum + d.value * d.multiplier,
           0,
         );
       }
@@ -442,7 +466,7 @@ export default function OneHundredDarts() {
   }, [navigation]);
 
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval>;
     if (!allDone) {
       interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
     }
@@ -501,7 +525,7 @@ export default function OneHundredDarts() {
             }
 
             const validTurnsFormatted = validTurns.map((turn) =>
-              turn.map((t: any) => ({
+              turn.map((t: Throw) => ({
                 v: t.value,
                 m: t.multiplier,
                 d: t.darts,
@@ -537,7 +561,7 @@ export default function OneHundredDarts() {
         : [];
 
       const existingIndex = existingHistory.findIndex(
-        (h: any) => h.id === matchId,
+        (h: { id: string }) => h.id === matchId,
       );
       if (existingIndex > -1) {
         existingHistory[existingIndex] = historyItem;
@@ -792,7 +816,7 @@ export default function OneHundredDarts() {
 
       {!allDone && (
         <BotAwareKeyboard
-          playerName={state.playerStates[state.currentIndex].name}
+          playerName={activePlayer?.name || ""}
           onUndo={handleUndo}
           theme={theme}
           language={language}
@@ -868,7 +892,7 @@ export default function OneHundredDarts() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     targetLabel: {
       fontSize: 10,

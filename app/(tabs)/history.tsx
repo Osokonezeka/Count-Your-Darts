@@ -21,6 +21,13 @@ import { useTheme } from "../../context/ThemeContext";
 import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { t } from "../../lib/i18n";
+import {
+  Match,
+  PlayerMatchStats,
+  Turn,
+  TurnDart,
+  AggregatedStats,
+} from "../../lib/statsUtils";
 
 const HISTORY_KEY = "@dart_match_history";
 
@@ -29,10 +36,10 @@ export type MatchHistory = {
   date: string;
   duration?: string;
   mode: string;
-  settings?: any;
-  players: any[];
+  settings?: Record<string, string | number | boolean | undefined>;
+  players: PlayerMatchStats[];
   isUnfinished?: boolean;
-  gameState?: any;
+  gameState?: Record<string, unknown>;
 };
 
 const MODE_COLORS: Record<string, { bg: string; text: string; label: string }> =
@@ -43,6 +50,48 @@ const MODE_COLORS: Record<string, { bg: string; text: string; label: string }> =
     "100 Darts": { bg: "#f0f9ff", text: "#0ea5e9", label: "100" },
     "Around the Clock": { bg: "#fdf2f8", text: "#ec4899", label: "CLOCK" },
   };
+
+export interface ParsedMatchStat {
+  name: string;
+  score?: number;
+  darts?: number;
+  avg?: number | string;
+  first9DartsPoints?: number;
+  first9DartsCount?: number;
+  totalPoints?: number;
+  totalDarts?: number;
+  checkoutDarts?: number;
+  checkoutHits?: number;
+  s60?: number;
+  s100?: number;
+  s140?: number;
+  s180?: number;
+  closed?: number;
+  mpr?: string;
+  status?: string;
+  hits?: Record<number, { S: number; D: number; T: number }>;
+  coords?: { x: number; y: number }[];
+  tPlayed?: number;
+  t1st?: number;
+  t2nd?: number;
+  mPlayed?: number;
+  mWon?: number;
+}
+
+interface MatchStatCardProps {
+  item: { id: string; title: string };
+  stats: ParsedMatchStat[];
+  isOpen: boolean;
+  onToggle: () => void;
+  collapsedPlayers: Record<string, boolean>;
+  onTogglePlayer: (id: string) => void;
+  tripleTerm: string;
+  missTerm: string;
+  bullTerm: string;
+  language: Parameters<typeof t>[0];
+  theme?: { colors: Record<string, string> };
+  mode?: string;
+}
 
 const MatchStatCard = React.memo(
   ({
@@ -56,7 +105,7 @@ const MatchStatCard = React.memo(
     missTerm,
     bullTerm,
     language,
-  }: any) => {
+  }: MatchStatCardProps) => {
     const { theme } = useTheme();
     const styles = getStyles(theme);
 
@@ -78,8 +127,8 @@ const MatchStatCard = React.memo(
       if (!sortConfig || item.id === "hit_chart") return stats;
 
       return [...stats].sort((a, b) => {
-        let valA: any = 0;
-        let valB: any = 0;
+        let valA: string | number = 0;
+        let valB: string | number = 0;
         switch (sortConfig.col) {
           case "name":
             valA = a.name.toLowerCase();
@@ -87,72 +136,88 @@ const MatchStatCard = React.memo(
             break;
           case "avg":
             valA =
-              a.totalDarts > 0
-                ? (a.totalPoints / a.totalDarts) * 3
-                : parseFloat(a.avg || 0);
+              (a.totalDarts || 0) > 0
+                ? ((a.totalPoints || 0) / (a.totalDarts || 1)) * 3
+                : parseFloat(String(a.avg || 0));
             valB =
-              b.totalDarts > 0
-                ? (b.totalPoints / b.totalDarts) * 3
-                : parseFloat(b.avg || 0);
+              (b.totalDarts || 0) > 0
+                ? ((b.totalPoints || 0) / (b.totalDarts || 1)) * 3
+                : parseFloat(String(b.avg || 0));
             break;
           case "first9":
             valA =
-              a.first9DartsCount > 0
-                ? (a.first9DartsPoints / a.first9DartsCount) * 3
+              (a.first9DartsCount || 0) > 0
+                ? ((a.first9DartsPoints || 0) / (a.first9DartsCount || 1)) * 3
                 : 0;
             valB =
-              b.first9DartsCount > 0
-                ? (b.first9DartsPoints / b.first9DartsCount) * 3
+              (b.first9DartsCount || 0) > 0
+                ? ((b.first9DartsPoints || 0) / (b.first9DartsCount || 1)) * 3
                 : 0;
             break;
           case "checkoutDarts":
-            valA = a.checkoutDarts;
-            valB = b.checkoutDarts;
+            valA = a.checkoutDarts || 0;
+            valB = b.checkoutDarts || 0;
             break;
           case "checkoutPct":
-            valA = a.checkoutDarts > 0 ? a.checkoutHits / a.checkoutDarts : 0;
-            valB = b.checkoutDarts > 0 ? b.checkoutHits / b.checkoutDarts : 0;
+            valA =
+              (a.checkoutDarts || 0) > 0
+                ? (a.checkoutHits || 0) / (a.checkoutDarts || 1)
+                : 0;
+            valB =
+              (b.checkoutDarts || 0) > 0
+                ? (b.checkoutHits || 0) / (b.checkoutDarts || 1)
+                : 0;
             break;
           case "s60":
-            valA = a.s60;
-            valB = b.s60;
+            valA = a.s60 || 0;
+            valB = b.s60 || 0;
             break;
           case "s100":
-            valA = a.s100;
-            valB = b.s100;
+            valA = a.s100 || 0;
+            valB = b.s100 || 0;
             break;
           case "s140":
-            valA = a.s140;
-            valB = b.s140;
+            valA = a.s140 || 0;
+            valB = b.s140 || 0;
             break;
           case "s180":
-            valA = a.s180;
-            valB = b.s180;
+            valA = a.s180 || 0;
+            valB = b.s180 || 0;
             break;
           case "score":
-            valA = a.score;
-            valB = b.score;
+            valA = a.score || 0;
+            valB = b.score || 0;
             break;
           case "darts":
-            valA = a.darts;
-            valB = b.darts;
+            valA = a.darts || 0;
+            valB = b.darts || 0;
             break;
           case "closed":
-            valA = a.closed;
-            valB = b.closed;
+            valA = a.closed || 0;
+            valB = b.closed || 0;
             break;
           case "mpr":
-            valA = parseFloat(a.mpr);
-            valB = parseFloat(b.mpr);
+            valA = parseFloat(a.mpr || "0");
+            valB = parseFloat(b.mpr || "0");
             break;
           case "status":
-            valA = a.status;
-            valB = b.status;
+            valA = a.status || "";
+            valB = b.status || "";
             break;
         }
 
         if (valA === valB) return 0;
-        return sortConfig.asc ? (valA > valB ? 1 : -1) : valA < valB ? 1 : -1;
+        if (typeof valA === "string" && typeof valB === "string")
+          return sortConfig.asc
+            ? valA.localeCompare(valB)
+            : valB.localeCompare(valA);
+        return sortConfig.asc
+          ? (valA as number) > (valB as number)
+            ? 1
+            : -1
+          : (valA as number) < (valB as number)
+            ? 1
+            : -1;
       });
     }, [stats, sortConfig, item.id]);
 
@@ -209,12 +274,14 @@ const MatchStatCard = React.memo(
                     <SortableHeader label="First 9" colKey="first9" />
                     <SortableHeader label="Average" colKey="avg" />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text style={styles.cell}>
                         {(
-                          (s.first9DartsPoints / s.first9DartsCount) * 3 || 0
+                          ((s.first9DartsPoints || 0) /
+                            (s.first9DartsCount || 1)) *
+                            3 || 0
                         ).toFixed(1)}
                       </Text>
                       <Text
@@ -223,7 +290,9 @@ const MatchStatCard = React.memo(
                           { color: theme.colors.success, fontWeight: "bold" },
                         ]}
                       >
-                        {((s.totalPoints / s.totalDarts) * 3 || 0).toFixed(1)}
+                        {(
+                          ((s.totalPoints || 0) / (s.totalDarts || 1)) * 3 || 0
+                        ).toFixed(1)}
                       </Text>
                     </View>
                   ))}
@@ -246,17 +315,18 @@ const MatchStatCard = React.memo(
                       colKey="checkoutPct"
                     />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text style={styles.cell}>{s.checkoutDarts}</Text>
                       <Text
                         style={[styles.cell, { color: theme.colors.success }]}
                       >
-                        {s.checkoutDarts > 0
-                          ? ((s.checkoutHits / s.checkoutDarts) * 100).toFixed(
-                              1,
-                            ) + "%"
+                        {(s.checkoutDarts || 0) > 0
+                          ? (
+                              ((s.checkoutHits || 0) / (s.checkoutDarts || 1)) *
+                              100
+                            ).toFixed(1) + "%"
                           : "0%"}
                       </Text>
                     </View>
@@ -276,7 +346,7 @@ const MatchStatCard = React.memo(
                     <SortableHeader label="140+" colKey="s140" />
                     <SortableHeader label="180" colKey="s180" />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text style={styles.cell}>{s.s60}</Text>
@@ -296,7 +366,7 @@ const MatchStatCard = React.memo(
               )}
               {item.id === "hit_chart" && (
                 <View style={{ paddingTop: 10 }}>
-                  {sortedStats.map((s: any) => {
+                  {sortedStats.map((s: ParsedMatchStat) => {
                     const defaultTargets = [
                       20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5,
                       4, 3, 2, 1, 25, 0,
@@ -314,14 +384,17 @@ const MatchStatCard = React.memo(
                     let targets = [...defaultTargets];
                     if (sortConfig && !isCollapsed) {
                       targets.sort((a, b) => {
-                        const hitsA = s.hits[a][sortConfig.col];
-                        const hitsB = s.hits[b][sortConfig.col];
+                        const colKey = sortConfig.col as "S" | "D" | "T";
+                        const hitsA = s.hits?.[a]?.[colKey] || 0;
+                        const hitsB = s.hits?.[b]?.[colKey] || 0;
                         if (hitsA === hitsB)
                           return (
                             defaultTargets.indexOf(a) -
                             defaultTargets.indexOf(b)
                           );
-                        return sortConfig.asc ? hitsA - hitsB : hitsB - hitsA;
+                        return sortConfig.asc
+                          ? (hitsA as number) - (hitsB as number)
+                          : (hitsB as number) - (hitsA as number);
                       });
                     }
                     return (
@@ -347,8 +420,8 @@ const MatchStatCard = React.memo(
                               <SortableHeader label="Double" colKey="D" />
                               <SortableHeader label={tripleTerm} colKey="T" />
                             </View>
-                            {targets.map((target) => {
-                              const h = s.hits[target];
+                            {targets.map((target: number) => {
+                              const h = s.hits?.[target];
                               if (!h || (h.S === 0 && h.D === 0 && h.T === 0))
                                 return null;
                               return (
@@ -383,7 +456,7 @@ const MatchStatCard = React.memo(
               )}
               {item.id === "heatmap" && (
                 <View style={{ paddingTop: 10 }}>
-                  {sortedStats.map((s: any) => {
+                  {sortedStats.map((s: ParsedMatchStat) => {
                     if (!s.coords || s.coords.length === 0) return null;
                     const isCollapsed =
                       collapsedPlayers &&
@@ -435,7 +508,7 @@ const MatchStatCard = React.memo(
                     />
                     <SortableHeader label="MPR" colKey="mpr" />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text
@@ -471,7 +544,7 @@ const MatchStatCard = React.memo(
                     />
                     <SortableHeader label="Accuracy" colKey="avg" />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text style={styles.cell}>{s.darts}</Text>
@@ -498,7 +571,7 @@ const MatchStatCard = React.memo(
                     <SortableHeader label="Score" colKey="score" />
                     <SortableHeader label="Status" colKey="status" />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text style={[styles.cell, { fontWeight: "bold" }]}>
@@ -535,7 +608,7 @@ const MatchStatCard = React.memo(
                     <SortableHeader label="Average" colKey="avg" />
                     <SortableHeader label="140+" colKey="s140" />
                   </View>
-                  {sortedStats.map((s: any) => (
+                  {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
                       <Text style={styles.cellName}>{s.name}</Text>
                       <Text style={[styles.cell, { fontWeight: "bold" }]}>
@@ -690,7 +763,7 @@ export default function History() {
           p.totalClosedTargets !== undefined
             ? p.totalClosedTargets
             : p.marks
-              ? Object.values(p.marks).filter((m: any) => m >= 3).length
+              ? Object.values(p.marks).filter((m: number) => m >= 3).length
               : p.closedTargets || 0;
 
         const totalMarks =
@@ -699,7 +772,7 @@ export default function History() {
             : p.totalMarks !== undefined
               ? p.totalMarks
               : (Object.values(p.marks || {}).reduce(
-                  (a: any, b: any) => a + b,
+                  (a: number, b: number) => a + b,
                   0,
                 ) as number);
         const totalDarts =
@@ -740,14 +813,14 @@ export default function History() {
 
     if (selectedMatch.mode === "100 Darts") {
       return selectedMatch.players.map((p) => {
-        const hits: Record<string, any> = {};
+        const hits: Record<number, { S: number; D: number; T: number }> = {};
         [...Array(20)].forEach((_, i) => (hits[i + 1] = { S: 0, D: 0, T: 0 }));
         hits[25] = { S: 0, D: 0, T: 0 };
         hits[0] = { S: 0, D: 0, T: 0 };
 
         if (p.allTurns) {
-          p.allTurns.forEach((turn: any[]) => {
-            turn.forEach((dart) => {
+          p.allTurns.forEach((turn: Turn) => {
+            turn.forEach((dart: TurnDart) => {
               if (
                 dart &&
                 typeof dart === "object" &&
@@ -774,7 +847,7 @@ export default function History() {
       });
     }
 
-    const playerMap: Record<string, any> = {};
+    const playerMap: Record<string, ParsedMatchStat> = {};
     const winner = [...selectedMatch.players].sort(
       (a, b) =>
         (b.sets || 0) - (a.sets || 0) ||
@@ -782,7 +855,7 @@ export default function History() {
         (a.score || 0) - (b.score || 0),
     )[0];
 
-    selectedMatch.players.forEach((p: any) => {
+    selectedMatch.players.forEach((p: PlayerMatchStats) => {
       playerMap[p.name] = {
         name: p.name,
         mPlayed: 1,
@@ -797,66 +870,83 @@ export default function History() {
         s140: 0,
         s100: 0,
         s60: 0,
+        tPlayed: 0,
+        t1st: 0,
+        t2nd: 0,
         hits: {},
         coords: [],
       };
       [...Array(20)].forEach(
-        (_, i) => (playerMap[p.name].hits[i + 1] = { S: 0, D: 0, T: 0 }),
+        (_, i) => (playerMap[p.name].hits![i + 1] = { S: 0, D: 0, T: 0 }),
       );
-      playerMap[p.name].hits[25] = { S: 0, D: 0, T: 0 };
-      playerMap[p.name].hits[0] = { S: 0, D: 0, T: 0 };
+      playerMap[p.name].hits![25] = { S: 0, D: 0, T: 0 };
+      playerMap[p.name].hits![0] = { S: 0, D: 0, T: 0 };
 
       if (p.allTurns) {
-        const sumOfLengths = p.allTurns.reduce(
-          (acc: number, t: any[]) => acc + t.length,
+        const turns = p.allTurns;
+        const sumOfLengths = turns.reduce(
+          (acc: number, t: Turn) => acc + t.length,
           0,
         );
         const isBuggyCompressed =
           p.totalMatchDarts &&
           p.totalMatchDarts > sumOfLengths &&
-          !p.allTurns.some((t: any[]) => t.some((d: any) => d.d !== undefined));
+          !turns.some((t: Turn) =>
+            t.some(
+              (d: TurnDart) =>
+                typeof d === "object" && d !== null && d.d !== undefined,
+            ),
+          );
 
-        p.allTurns.forEach((turn: any[], index: number) => {
+        turns.forEach((turn: Turn, index: number) => {
           const turnSum = turn.reduce(
-            (a, b) => a + (typeof b === "number" ? b : b.v * b.m),
+            (a: number, b: TurnDart) =>
+              a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
             0,
           );
 
           let turnDarts = turn.reduce(
-            (a: any, b: any) =>
-              a + (typeof b === "number" ? 1 : b.d !== undefined ? b.d : 1),
+            (a: number, b: TurnDart) =>
+              a +
+              (typeof b === "number"
+                ? 1
+                : typeof b === "object" && b !== null && b.d !== undefined
+                  ? b.d
+                  : 1),
             0,
           );
-          if (isBuggyCompressed) {
+          if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
             turnDarts =
-              index === p.allTurns.length - 1
-                ? p.totalMatchDarts - index * 3
-                : 3;
+              index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
           }
 
-          playerMap[p.name].totalPoints += turnSum;
-          playerMap[p.name].totalDarts += turnDarts;
+          playerMap[p.name].totalPoints! += turnSum;
+          playerMap[p.name].totalDarts! += turnDarts;
           if (index < 3) {
-            playerMap[p.name].first9DartsPoints += turnSum;
-            playerMap[p.name].first9DartsCount += turnDarts;
+            playerMap[p.name].first9DartsPoints! += turnSum;
+            playerMap[p.name].first9DartsCount! += turnDarts;
           }
-          if (turnSum >= 180) playerMap[p.name].s180++;
-          else if (turnSum >= 140) playerMap[p.name].s140++;
-          else if (turnSum >= 100) playerMap[p.name].s100++;
-          else if (turnSum >= 60) playerMap[p.name].s60++;
-          turn.forEach((dart) => {
-            const isScoreInput = dart.i === true || isBuggyCompressed;
+          if (turnSum >= 180) playerMap[p.name].s180!++;
+          else if (turnSum >= 140) playerMap[p.name].s140!++;
+          else if (turnSum >= 100) playerMap[p.name].s100!++;
+          else if (turnSum >= 60) playerMap[p.name].s60!++;
+          turn.forEach((dart: TurnDart) => {
+            const isScoreInput =
+              (typeof dart === "object" && dart !== null && dart.i === true) ||
+              isBuggyCompressed;
             if (isScoreInput) return;
-            if (dart.c) playerMap[p.name].coords.push(dart.c);
+            if (typeof dart === "object" && dart !== null && dart.c)
+              playerMap[p.name].coords!.push(dart.c);
 
             if (
               typeof dart === "object" &&
+              dart !== null &&
               dart.v !== undefined &&
-              playerMap[p.name].hits[dart.v]
+              playerMap[p.name].hits![dart.v]
             ) {
-              if (dart.m === 1) playerMap[p.name].hits[dart.v].S++;
-              if (dart.m === 2) playerMap[p.name].hits[dart.v].D++;
-              if (dart.m === 3) playerMap[p.name].hits[dart.v].T++;
+              if (dart.m === 1) playerMap[p.name].hits![dart.v].S++;
+              if (dart.m === 2) playerMap[p.name].hits![dart.v].D++;
+              if (dart.m === 3) playerMap[p.name].hits![dart.v].T++;
             }
           });
         });
@@ -928,7 +1018,7 @@ export default function History() {
 
     let settingsStr = "";
     if (item.mode === "X01")
-      settingsStr = `${item.settings?.startPoints || 501} • ${(item.settings?.inRule || "straight").toUpperCase()} IN • ${(item.settings?.outRule || "double").toUpperCase()} OUT`;
+      settingsStr = `${item.settings?.startPoints || 501} • ${String(item.settings?.inRule || "straight").toUpperCase()} IN • ${String(item.settings?.outRule || "double").toUpperCase()} OUT`;
     else if (item.mode === "Cricket")
       settingsStr = `CRICKET • ${(item.settings?.cricketMode === "no-score" ? "No Score" : "Standard").toUpperCase()}`;
     else settingsStr = item.mode.toUpperCase();
@@ -1065,10 +1155,11 @@ export default function History() {
   const activeSections = useMemo(() => {
     if (!selectedMatch) return [];
 
-    const hasAnyHits = singleMatchStats.some((s: any) => {
+    const hasAnyHits = singleMatchStats.some((s: ParsedMatchStat) => {
       if (!s.hits) return false;
       return Object.values(s.hits).some(
-        (h: any) => h.S > 0 || h.D > 0 || h.T > 0,
+        (h: { S: number; D: number; T: number }) =>
+          h.S > 0 || h.D > 0 || h.T > 0,
       );
     });
 
@@ -1098,7 +1189,7 @@ export default function History() {
         });
       }
       const hasAnyCoords = singleMatchStats.some(
-        (s: any) => s.coords && s.coords.length > 0,
+        (s: ParsedMatchStat) => s.coords && s.coords.length > 0,
       );
       if (hasAnyCoords) {
         sections.push({
@@ -1132,7 +1223,7 @@ export default function History() {
       });
 
     const hasAnyCoords = singleMatchStats.some(
-      (s: any) => s.coords && s.coords.length > 0,
+      (s: ParsedMatchStat) => s.coords && s.coords.length > 0,
     );
     if (hasAnyCoords)
       sections.push({
@@ -1171,7 +1262,17 @@ export default function History() {
           <AnimatedSegmentedControl
             theme={theme}
             activeOption={filterMode}
-            onSelect={setFilterMode}
+            onSelect={(val) =>
+              setFilterMode(
+                val as
+                  | "All"
+                  | "X01"
+                  | "Cricket"
+                  | "Around the Clock"
+                  | "Bob's 27"
+                  | "100 Darts",
+              )
+            }
             style={[styles.filterContainer, { width: 580 }]}
             options={[
               { id: "All", label: t(language, "all") || "All" },
@@ -1255,7 +1356,12 @@ export default function History() {
                   onPress={() => {
                     setSelectedMatch(null);
 
-                    let targetPath = "/gamemodes/dart";
+                    let targetPath:
+                      | "/gamemodes/dart"
+                      | "/gamemodes/cricket"
+                      | "/gamemodes/hundreddarts"
+                      | "/gamemodes/bobstwentyseven"
+                      | "/gamemodes/aroundtheclock" = "/gamemodes/dart";
                     if (selectedMatch.mode === "Cricket")
                       targetPath = "/gamemodes/cricket";
                     else if (selectedMatch.mode === "100 Darts")
@@ -1266,7 +1372,7 @@ export default function History() {
                       targetPath = "/gamemodes/aroundtheclock";
 
                     router.push({
-                      pathname: targetPath as any,
+                      pathname: targetPath,
                       params: { resumeData: JSON.stringify(selectedMatch) },
                     });
                   }}
@@ -1325,7 +1431,7 @@ export default function History() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     filterContainer: {

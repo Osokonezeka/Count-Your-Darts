@@ -1,6 +1,8 @@
 import { StyleSheet } from "react-native";
 
-export const getSharedTournamentStyles = (theme: any) =>
+export const getSharedTournamentStyles = (theme: {
+  colors: Record<string, string>;
+}) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { padding: 16, paddingBottom: 40 },

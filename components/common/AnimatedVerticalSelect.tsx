@@ -1,7 +1,32 @@
 import React, { useEffect, useRef } from "react";
-import { View,Pressable, StyleSheet, Animated } from "react-native";
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Animated,
+  StyleProp,
+  ViewStyle,
+} from "react-native";
 
-const VerticalOption = ({ opt, isActive, onSelect, theme }: any) => {
+export interface VerticalOptionType {
+  id: string;
+  title: string;
+  desc?: string;
+}
+
+interface VerticalOptionProps {
+  opt: VerticalOptionType;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  theme: { colors: Record<string, string> };
+}
+
+const VerticalOption = ({
+  opt,
+  isActive,
+  onSelect,
+  theme,
+}: VerticalOptionProps) => {
   const anim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
 
   useEffect(() => {
@@ -50,16 +75,24 @@ const VerticalOption = ({ opt, isActive, onSelect, theme }: any) => {
   );
 };
 
+export interface AnimatedVerticalSelectProps {
+  options: VerticalOptionType[];
+  activeOption: string;
+  onSelect: (id: string) => void;
+  theme: { colors: Record<string, string> };
+  style?: StyleProp<ViewStyle>;
+}
+
 export function AnimatedVerticalSelect({
   options,
   activeOption,
   onSelect,
   theme,
   style,
-}: any) {
+}: AnimatedVerticalSelectProps) {
   return (
     <View style={[{ gap: 8 }, style]}>
-      {options.map((opt: any) => (
+      {options.map((opt) => (
         <VerticalOption
           key={opt.id}
           opt={opt}

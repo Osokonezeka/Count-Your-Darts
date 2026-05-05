@@ -37,6 +37,7 @@ import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 import { useMatchStore } from "../../store/useMatchStore";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
+import { Match } from "../../lib/statsUtils";
 
 type Player = {
   id: string;
@@ -47,8 +48,17 @@ type Player = {
 
 const TOURNAMENT_PLAYERS_KEY = "@dart_tournament_players";
 
+interface PlayerRowProps {
+  player: Player;
+  isSelected: boolean;
+  onToggle: (id: string) => void;
+  theme: { colors: Record<string, string> };
+  styles: ReturnType<typeof getSpecificStyles> &
+    ReturnType<typeof getSharedTournamentStyles>;
+}
+
 const PlayerRow = React.memo(
-  ({ player, isSelected, onToggle, theme, styles }: any) => (
+  ({ player, isSelected, onToggle, theme, styles }: PlayerRowProps) => (
     <AnimatedPressable
       style={styles.playerSelectRow}
       onPress={() => onToggle(player.id)}
@@ -149,7 +159,9 @@ export default function TournamentPlayersScreen() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const isExiting = useRef(false);
-  const pendingNavAction = useRef<any>(null);
+  const pendingNavAction = useRef<
+    Parameters<typeof navigation.dispatch>[0] | null
+  >(null);
 
   useEffect(() => {
     const loadDb = async () => {
@@ -248,7 +260,7 @@ export default function TournamentPlayersScreen() {
         if (Array.isArray(savedBracket)) {
           if (selectedPlayersKey) keysToRemove.push(selectedPlayersKey);
 
-          savedBracket.forEach((match: any) => {
+          savedBracket.forEach((match: Match) => {
             matchIdsToRemove.push(match.id);
           });
         }
@@ -716,7 +728,8 @@ export default function TournamentPlayersScreen() {
             );
             let savedArr = savedArrStr ? JSON.parse(savedArrStr) : [];
             savedArr = savedArr.filter(
-              (t: any) => t.settings.name !== settings.name,
+              (t: { settings: { name: string } }) =>
+                t.settings.name !== settings.name,
             );
             savedArr.push({ settings: settings, players: selectedPlayers });
             await AsyncStorage.setItem(
@@ -786,8 +799,12 @@ export default function TournamentPlayersScreen() {
             setPlayerModalVisible(true);
           }
         }}
-        onEditPress={(p: any) => startEdit(p.originalData)}
-        onDeletePress={(p: any) => confirmDelete(p.originalData)}
+        onEditPress={(p) =>
+          p.originalData && startEdit(p.originalData as Player)
+        }
+        onDeletePress={(p) =>
+          p.originalData && confirmDelete(p.originalData as Player)
+        }
         addLabel={
           settings?.teamSize === "team"
             ? t(language, "addTeam") || "Add team"
@@ -1095,7 +1112,7 @@ export default function TournamentPlayersScreen() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     summaryCard: {
       backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.1)",

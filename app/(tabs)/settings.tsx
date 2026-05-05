@@ -50,6 +50,16 @@ export default function Settings() {
   const [isLangModalVisible, setLangModalVisible] = useState(false);
   const [isFastBotEnabled, setIsFastBotEnabled] = useState(false);
 
+  const [localTriple, setLocalTriple] = useState(tripleTerm);
+  const [localMiss, setLocalMiss] = useState(missTerm);
+  const [localBull, setLocalBull] = useState(bullTerm);
+  const [localThemeMode, setLocalThemeMode] = useState(themeMode);
+
+  useEffect(() => setLocalTriple(tripleTerm), [tripleTerm]);
+  useEffect(() => setLocalMiss(missTerm), [missTerm]);
+  useEffect(() => setLocalBull(bullTerm), [bullTerm]);
+  useEffect(() => setLocalThemeMode(themeMode), [themeMode]);
+
   useEffect(() => {
     AsyncStorage.getItem("@fast_bot_enabled").then((val) =>
       setIsFastBotEnabled(val === "true"),
@@ -142,8 +152,11 @@ export default function Settings() {
           </Text>
           <AnimatedSegmentedControl
             theme={theme}
-            activeOption={tripleTerm}
-            onSelect={setTripleTerm}
+            activeOption={localTriple}
+            onSelect={(val) => {
+              setLocalTriple(val as "Triple" | "Treble");
+              setTimeout(() => setTripleTerm(val as "Triple" | "Treble"), 50);
+            }}
             options={[
               { id: "Triple", label: t(language, "triple") || "Triple" },
               { id: "Treble", label: t(language, "treble") || "Treble" },
@@ -155,8 +168,11 @@ export default function Settings() {
           </Text>
           <AnimatedSegmentedControl
             theme={theme}
-            activeOption={missTerm}
-            onSelect={setMissTerm}
+            activeOption={localMiss}
+            onSelect={(val) => {
+              setLocalMiss(val as "0" | "Miss");
+              setTimeout(() => setMissTerm(val as "0" | "Miss"), 50);
+            }}
             options={[
               { id: "0", label: "0" },
               { id: "Miss", label: t(language, "miss") || "Miss" },
@@ -168,8 +184,11 @@ export default function Settings() {
           </Text>
           <AnimatedSegmentedControl
             theme={theme}
-            activeOption={bullTerm}
-            onSelect={setBullTerm}
+            activeOption={localBull}
+            onSelect={(val) => {
+              setLocalBull(val as "25" | "Bull");
+              setTimeout(() => setBullTerm(val as "25" | "Bull"), 50);
+            }}
             options={[
               { id: "25", label: "25" },
               { id: "Bull", label: t(language, "bull") || "Bull" },
@@ -193,8 +212,14 @@ export default function Settings() {
 
           <AnimatedSegmentedControl
             theme={theme}
-            activeOption={themeMode}
-            onSelect={setThemeMode}
+            activeOption={localThemeMode}
+            onSelect={(val) => {
+              setLocalThemeMode(val as "light" | "auto" | "dark");
+              setTimeout(
+                () => setThemeMode(val as "light" | "auto" | "dark"),
+                50,
+              );
+            }}
             options={[
               {
                 id: "light",
@@ -305,7 +330,9 @@ export default function Settings() {
               <AnimatedSegmentedControl
                 theme={theme}
                 activeOption={intensity}
-                onSelect={setIntensity}
+                onSelect={(val) =>
+                  setIntensity(val as "light" | "medium" | "heavy")
+                }
                 options={[
                   { id: "light", label: t(language, "light") || "Light" },
                   { id: "medium", label: t(language, "medium") || "Medium" },
@@ -418,7 +445,7 @@ export default function Settings() {
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { padding: 16, paddingTop: 20, paddingBottom: 40 },

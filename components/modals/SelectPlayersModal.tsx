@@ -12,6 +12,35 @@ import { Ionicons } from "@expo/vector-icons";
 import { AnimatedPressable } from "../common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 
+export interface SelectPlayerItem {
+  name: string;
+  subtitle?: string;
+}
+
+export interface SelectPlayersModalProps {
+  visible: boolean;
+  title: string;
+  players: (string | SelectPlayerItem)[];
+  selectedPlayers: string[];
+  onTogglePlayer: (name: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  confirmText: string;
+  confirmColor?: string;
+  cancelText?: string;
+  showSearch?: boolean;
+  searchQuery?: string;
+  onSearchChange?: (text: string) => void;
+  showSelectAll?: boolean;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  allSelected?: boolean;
+  searchPlaceholder?: string;
+  countLabel?: string;
+  theme: { colors: Record<string, string> };
+  language: Parameters<typeof t>[0];
+}
+
 export function SelectPlayersModal({
   visible,
   title,
@@ -34,7 +63,7 @@ export function SelectPlayersModal({
   countLabel,
   theme,
   language,
-}: any) {
+}: SelectPlayersModalProps) {
   const styles = getStyles(theme);
 
   return (
@@ -177,7 +206,7 @@ export function SelectPlayersModal({
   );
 }
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     modalOverlay: {
       flex: 1,

@@ -21,6 +21,13 @@ import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import { useMatchStore } from "../../store/useMatchStore";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
+import {
+  Match,
+  MatchStatItem,
+  PlayerMatchStats,
+  TournamentSettings,
+} from "../../lib/statsUtils";
+import { SharedMatch } from "../../components/tournament/MatchCard";
 
 export default function TournamentBracketScreen() {
   const { theme } = useTheme();
@@ -37,15 +44,15 @@ export default function TournamentBracketScreen() {
   const { tournamentData, playersData, bracketData, isHistoryView } =
     useLocalSearchParams();
 
-  const settings = useMemo(
+  const settings = useMemo<TournamentSettings | null>(
     () => (tournamentData ? JSON.parse(tournamentData as string) : null),
     [tournamentData],
   );
-  const players = useMemo(
+  const players = useMemo<PlayerMatchStats[]>(
     () => (playersData ? JSON.parse(playersData as string) : []),
     [playersData],
   );
-  const initialBracket = useMemo(
+  const initialBracket = useMemo<SharedMatch[] | null>(
     () => (bracketData ? JSON.parse(bracketData as string) : null),
     [bracketData],
   );
@@ -54,7 +61,7 @@ export default function TournamentBracketScreen() {
   const [isDeleteAlertVisible, setDeleteAlertVisible] = useState(false);
   const [isFinishedPromptVisible, setFinishedPromptVisible] = useState(false);
 
-  const [selectedMatch, setSelectedMatch] = useState<any>(null);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isStatsModalVisible, setStatsModalVisible] = useState(false);
 
   const [isSaved, setIsSaved] = useState(false);
@@ -77,36 +84,38 @@ export default function TournamentBracketScreen() {
               if (settings.format === "round_robin") {
                 isFinished =
                   bracket.length > 0 &&
-                  bracket.every((m: any) => m.winner !== null || m.isBye);
+                  bracket.every((m: Match) => m.winner !== null || m.isBye);
               } else if (
                 settings.format === "groups_and_knockout" ||
                 settings.format === "groups_and_double_knockout"
               ) {
                 const koMatches = bracket.filter(
-                  (m: any) => m.phase === "knockout",
+                  (m: Match) => m.phase === "knockout",
                 );
                 if (koMatches.length > 0) {
                   const totalR = Math.max(
-                    ...koMatches.map((m: any) => m.round),
+                    ...koMatches.map((m: Match) => m.round || 0),
                   );
                   const finalRoundMatches = koMatches.filter(
-                    (m: any) => m.round === totalR,
+                    (m: Match) => m.round === totalR,
                   );
                   isFinished =
                     finalRoundMatches.length > 0 &&
                     finalRoundMatches.every(
-                      (m: any) => m.winner !== null || m.isBye,
+                      (m: Match) => m.winner !== null || m.isBye,
                     );
                 }
               } else {
-                const totalR = Math.max(...bracket.map((m: any) => m.round));
+                const totalR = Math.max(
+                  ...bracket.map((m: Match) => m.round || 0),
+                );
                 const finalRoundMatches = bracket.filter(
-                  (m: any) => m.round === totalR,
+                  (m: Match) => m.round === totalR,
                 );
                 isFinished =
                   finalRoundMatches.length > 0 &&
                   finalRoundMatches.every(
-                    (m: any) => m.winner !== null || m.isBye,
+                    (m: Match) => m.winner !== null || m.isBye,
                   );
               }
               if (isFinished) {
@@ -151,7 +160,7 @@ export default function TournamentBracketScreen() {
       const keysToRemove = [bracketStorageKey, selectedPlayersKey];
       const matchIdsToRemove: string[] = [];
       if (Array.isArray(bracket)) {
-        bracket.forEach((match: any) => {
+        bracket.forEach((match: Match) => {
           matchIdsToRemove.push(match.id);
         });
       }
@@ -162,7 +171,8 @@ export default function TournamentBracketScreen() {
       if (savedArrStr) {
         let savedArr = JSON.parse(savedArrStr);
         savedArr = savedArr.filter(
-          (t: any) => t.settings.name !== settings.name,
+          (t: { settings: { name: string } }) =>
+            t.settings.name !== settings.name,
         );
         await AsyncStorage.setItem(
           "@active_tournaments",
@@ -186,7 +196,7 @@ export default function TournamentBracketScreen() {
       if (savedBracketStr) {
         const savedBracket = JSON.parse(savedBracketStr);
         if (Array.isArray(savedBracket)) {
-          savedBracket.forEach((match: any) => {
+          savedBracket.forEach((match: Match) => {
             matchIdsToRemove.push(match.id);
           });
         }
@@ -198,7 +208,8 @@ export default function TournamentBracketScreen() {
       if (savedArrStr) {
         let savedArr = JSON.parse(savedArrStr);
         savedArr = savedArr.filter(
-          (t: any) => t.settings.name !== settings.name,
+          (t: { settings: { name: string } }) =>
+            t.settings.name !== settings.name,
         );
         await AsyncStorage.setItem(
           "@active_tournaments",
@@ -213,8 +224,8 @@ export default function TournamentBracketScreen() {
     router.back();
   };
 
-  const handleMatchPress = (match: any) => {
-    setSelectedMatch(match);
+  const handleMatchPress = (match: SharedMatch | Match) => {
+    setSelectedMatch(match as Match);
     setStatsModalVisible(true);
   };
 
@@ -413,19 +424,21 @@ export default function TournamentBracketScreen() {
                 showsVerticalScrollIndicator={false}
               >
                 {selectedMatch.stats && selectedMatch.stats.length > 0 ? (
-                  selectedMatch.stats.map((stat: any, idx: number) => (
-                    <View
-                      key={idx}
-                      style={[
-                        styles.statRow,
-                        idx % 2 === 0 && styles.statRowAlternate,
-                      ]}
-                    >
-                      <Text style={styles.statValueLeft}>{stat.p1}</Text>
-                      <Text style={styles.statLabelCenter}>{stat.label}</Text>
-                      <Text style={styles.statValueRight}>{stat.p2}</Text>
-                    </View>
-                  ))
+                  selectedMatch.stats.map(
+                    (stat: MatchStatItem, idx: number) => (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.statRow,
+                          idx % 2 === 0 && styles.statRowAlternate,
+                        ]}
+                      >
+                        <Text style={styles.statValueLeft}>{stat.p1}</Text>
+                        <Text style={styles.statLabelCenter}>{stat.label}</Text>
+                        <Text style={styles.statValueRight}>{stat.p2}</Text>
+                      </View>
+                    ),
+                  )
                 ) : (
                   <View style={{ padding: 30, alignItems: "center" }}>
                     <Ionicons
@@ -501,7 +514,7 @@ export default function TournamentBracketScreen() {
         message={
           t(language, "deleteTournamentConfirmName")?.replace(
             "{{name}}",
-            settings?.name,
+            String(settings?.name || ""),
           ) ||
           `Are you sure you want to delete '${settings?.name}'? Results WILL NOT be saved in history.`
         }
@@ -523,7 +536,7 @@ export default function TournamentBracketScreen() {
   );
 }
 
-const getSpecificStyles = (theme: any) =>
+const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     headerTitle: {
       flex: 1,

@@ -352,11 +352,27 @@ export const getBotDifficultyFromName = (name: string): number | null => {
   return null;
 };
 
+export interface BotPlayerState {
+  name: string;
+  score?: number;
+  darts?: number;
+  dartsCount?: number;
+  totalMatchDarts?: number;
+  totalMatchScore?: number;
+  marks?: Record<number, number>;
+  hits?: number;
+}
+
+export interface BotMatchSettings {
+  startPoints?: number;
+  [key: string]: string | number | boolean | undefined;
+}
+
 export const resolveBotAverage = (
   botName: string,
-  playerStates: any[],
+  playerStates: BotPlayerState[],
   mode: "X01" | "100 Darts" | "Cricket" | "Around the Clock" | "Bob's 27",
-  settings?: any,
+  settings?: BotMatchSettings,
   historicalBaseline?: number,
 ): number | null => {
   const baseAvg = getBotDifficultyFromName(botName);
@@ -385,7 +401,7 @@ export const resolveBotAverage = (
         const score =
           h.totalMatchScore !== undefined
             ? h.totalMatchScore
-            : startPoints - h.score;
+            : startPoints - (h.score || 0);
         const ppa = (score / darts) * 3;
         if (ppa > highestPPA) highestPPA = ppa;
       }
@@ -398,10 +414,10 @@ export const resolveBotAverage = (
     return Math.max(20, Math.min(120, Math.round(smoothedPPA + 2)));
   } else if (mode === "100 Darts") {
     humans.forEach((h) => {
-      const darts = h.dartsCount !== undefined ? h.dartsCount : h.darts;
+      const darts = h.dartsCount !== undefined ? h.dartsCount : h.darts || 0;
       if (darts > maxDarts) maxDarts = darts;
       if (darts > 0) {
-        const ppa = (h.score / darts) * 3;
+        const ppa = ((h.score || 0) / darts) * 3;
         if (ppa > highestPPA) highestPPA = ppa;
       }
     });
@@ -417,7 +433,7 @@ export const resolveBotAverage = (
       if (darts > maxDarts) maxDarts = darts;
       if (darts > 0) {
         const marks = Object.values(h.marks || {}).reduce(
-          (a: any, b: any) => a + b,
+          (a: number, b: number) => a + b,
           0,
         ) as number;
         const mpr = (marks / darts) * 3;
@@ -436,7 +452,7 @@ export const resolveBotAverage = (
       const darts = h.darts || 0;
       if (darts > maxDarts) maxDarts = darts;
       if (darts > 0) {
-        const acc = h.hits / darts;
+        const acc = (h.hits || 0) / darts;
         if (acc > highestAcc) highestAcc = acc;
       }
     });
@@ -451,7 +467,7 @@ export const resolveBotAverage = (
     humans.forEach((h) => {
       const darts = h.darts || 0;
       if (darts > maxDarts) maxDarts = darts;
-      if (h.score > highestScore) highestScore = h.score;
+      if ((h.score || 0) > highestScore) highestScore = h.score || 0;
     });
 
     let currentAvg = 40;

@@ -1,6 +1,8 @@
 import { StyleSheet } from "react-native";
 
-export const getStatisticsStyles = (theme: any) =>
+export const getStatisticsStyles = (theme: {
+  colors: Record<string, string>;
+}) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     header: {

@@ -1,5 +1,29 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Animated,
+  StyleProp,
+  ViewStyle,
+  TextStyle,
+} from "react-native";
+
+export interface SegmentedControlOption {
+  id: string;
+  label: string;
+  icon?: (isActive: boolean) => React.ReactNode;
+  textStyle?: StyleProp<TextStyle>;
+}
+
+export interface AnimatedSegmentedControlProps {
+  options: SegmentedControlOption[];
+  activeOption: string;
+  onSelect: (id: string) => void;
+  theme: { colors: Record<string, string> };
+  style?: StyleProp<ViewStyle>;
+}
 
 export function AnimatedSegmentedControl({
   options,
@@ -7,11 +31,11 @@ export function AnimatedSegmentedControl({
   onSelect,
   theme,
   style,
-}: any) {
+}: AnimatedSegmentedControlProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const activeIndex = Math.max(
     0,
-    options.findIndex((o: any) => o.id === activeOption),
+    options.findIndex((o) => o.id === activeOption),
   );
   const translateX = useRef(new Animated.Value(0)).current;
 
@@ -48,7 +72,7 @@ export function AnimatedSegmentedControl({
           ]}
         />
       )}
-      {options.map((opt: any, idx: number) => {
+      {options.map((opt, idx: number) => {
         const isActive = activeIndex === idx;
         return (
           <Pressable

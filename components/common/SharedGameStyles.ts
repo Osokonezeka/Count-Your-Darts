@@ -1,6 +1,8 @@
 import { StyleSheet } from "react-native";
 
-export const getSharedGameStyles = (theme: any) =>
+export const getSharedGameStyles = (theme: {
+  colors: Record<string, string>;
+}) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     customHeader: {
