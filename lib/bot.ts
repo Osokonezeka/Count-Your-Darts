@@ -1,4 +1,5 @@
 import { getCheckoutInfo } from "./checkouts";
+import { translations, availableLanguages } from "./i18n";
 
 export const breakdownScoreToDarts = (
   score: number,
@@ -335,12 +336,18 @@ export const breakdownScoreToDarts = (
 };
 
 export const getBotDifficultyFromName = (name: string): number | null => {
-  if (
-    /(adaptive|adaptacyjny)/i.test(name) &&
-    name.toLowerCase().includes("bot")
-  ) {
+  const nameLower = name.toLowerCase();
+  const isAdaptive = availableLanguages.some((lang) => {
+    const adaptiveTerm = (translations[lang] as Record<string, string>)[
+      "adaptive"
+    ];
+    return adaptiveTerm && nameLower.includes(adaptiveTerm.toLowerCase());
+  });
+
+  if (isAdaptive && nameLower.includes("bot")) {
     return 0;
   }
+
   const match = name.match(/\((.*?)\)/);
   if (match && match[1]) {
     const numberMatch = match[1].match(/\d+/);

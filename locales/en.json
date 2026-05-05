@@ -59,6 +59,7 @@
   "noHistory": "No match history available",
   "deleteMatch": "Delete match",
   "deleteMatchConfirm": "Are you sure you want to remove this match from the history?",
+  "deleteHistoryConfirm": "Are you sure you want to delete all match history? This action cannot be undone.",
   "today": "Today",
   "all": "All time",
   "terminology": "Terminology",
@@ -137,6 +138,7 @@
   "shareGeneratedOn": "Generated on",
   "shareStatsTitle": "Share Stats",
   "shareStatsDesc": "Select a player to generate a sharing card",
+  "shareDialogTitle": "Share your Darts Stats!",
   "shareTournaments": "TOURNAMENTS (1st / 2nd)",
   "shareMatchesPlayed": "MATCHES PLAYED",
   "shareCheckoutsHit": "CHECKOUTS / HIT %",
@@ -146,13 +148,11 @@
   "selectAll": "Select all",
   "noDataFilters": "No data available for applied filters.",
   "tournament": "Tournament",
-
   "selectTournamentMode": "Select tournament mode",
   "localGame": "Local game",
   "localGameDesc": "Play on the same device",
   "multiGame": "Multiplayer game",
   "multiGameDesc": "Select this option if you're playing on multiple devices (requires an internet connection, host settings, and connecting devices in the lobby)",
-
   "awaiting": "Awaiting...",
   "byePlayer": "Bye",
   "automaticAdvance": "Automatic advance",
@@ -199,7 +199,6 @@
   "setsFinal": "Sets (Final)",
   "legsFinal": "Legs (Final)",
   "nextStep": "Next step",
-
   "thirdPlaceMatchToggle": "3rd place match?",
   "seeding": "Seeding",
   "unfinishedTournaments": "Unfinished tournaments",
@@ -214,7 +213,6 @@
   "resetMatchConfirm": "Restart this match? All progress will be lost.",
   "resetMatchError": "Error resetting match:",
   "resume": "Resume",
-
   "singleKnockout": "Single Knockout",
   "singleKnockoutDesc": "Players are eliminated after one loss.",
   "doubleKnockout": "Double Knockout",
@@ -258,7 +256,6 @@
   "teamOverlapTitle": "Player Conflict",
   "teamOverlapMsg": "One of the players is already in another selected team.",
   "selectTeamsTitle": "Select teams",
-
   "tournamentLoadError": "Error loading tournament data.",
   "matchStatsTitle": "Match Statistics",
   "noStatsData": "No statistical data available for this match.",
@@ -267,7 +264,6 @@
   "tournamentFinishedMsg": "Tournament finished! All matches played. The tournament will be saved to history.",
   "keepActive": "Keep active",
   "saveToHistory": "Save to history",
-
   "wins": "Wins!",
   "close": "Close",
   "undoThrowTitle": "Undo throw?",
@@ -281,7 +277,6 @@
   "legsShort": "Legs",
   "scored": "Scored",
   "toGo": "To Go",
-
   "tournamentHistoryLoadError": "Error loading history:",
   "unknown": "Unknown",
   "noSavedTournaments": "No saved tournaments.",
@@ -293,7 +288,6 @@
   "exitMatchSub": "Score will be saved.",
   "doublesDarts": "Darts at double",
   "doublesDartsDesc": "How many darts were thrown at a double?",
-
   "triple": "Triple",
   "treble": "Treble",
   "miss": "Miss",
@@ -318,5 +312,19 @@
   "boardZoomHint": "Pinch / Hold to zoom in and aim precisely 🔍",
   "heatmap": "Heatmap",
   "fastBot": "Fast bot throw",
-  "isThrowing": "is throwing..."
+  "isThrowing": "is throwing...",
+  "single": "Single",
+  "accuracy": "Accuracy",
+  "status": "Status",
+  "cleared": "Cleared",
+  "score": "Score",
+  "bobsShort": "Bob's",
+  "clockShort": "Clock",
+  "checkoutUpper": "CHECKOUT",
+  "dartsShort": "darts",
+  "firstPlaceShort": "1st",
+  "secondPlaceShort": "2nd",
+  "winsShort": "W",
+  "winPctShort": "W %",
+  "attemptsShort": "Att"
 }

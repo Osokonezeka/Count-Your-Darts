@@ -17,6 +17,7 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ViewShot from "react-native-view-shot";
+import dayjs from "dayjs";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -225,7 +226,8 @@ export default function Statistics() {
         try {
           const uri = await viewShotRef.current.capture();
           await Sharing.shareAsync(uri, {
-            dialogTitle: "Share your Darts Stats!",
+            dialogTitle:
+              t(language, "shareDialogTitle") || "Share your Darts Stats!",
             mimeType: "image/jpeg",
           });
         } catch (error) {
@@ -479,7 +481,7 @@ export default function Statistics() {
                   trendData={trendData[selectedSharePlayer as string]}
                   theme={theme}
                   language={language}
-                  footerText={`${t(language, "shareGeneratedOn") || "Generated on"} ${new Date().toLocaleDateString()}`}
+                  footerText={`${t(language, "shareGeneratedOn") || "Generated on"} ${dayjs().format("DD.MM.YYYY")}`}
                 />
               );
             })()}

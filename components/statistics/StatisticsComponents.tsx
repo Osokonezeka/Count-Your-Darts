@@ -764,8 +764,14 @@ export const StatCard = React.memo(
                         label={t(language, "playedShort") || "Played"}
                         colKey="tPlayed"
                       />
-                      <SortableHeader label="1st" colKey="t1st" />
-                      <SortableHeader label="2nd" colKey="t2nd" />
+                      <SortableHeader
+                        label={t(language, "firstPlaceShort") || "1st"}
+                        colKey="t1st"
+                      />
+                      <SortableHeader
+                        label={t(language, "secondPlaceShort") || "2nd"}
+                        colKey="t2nd"
+                      />
                     </View>
                     {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
@@ -800,9 +806,18 @@ export const StatCard = React.memo(
                         colKey="name"
                         isName
                       />
-                      <SortableHeader label="Matches" colKey="mPlayed" />
-                      <SortableHeader label="W" colKey="mWon" />
-                      <SortableHeader label="W %" colKey="winPct" />
+                      <SortableHeader
+                        label={t(language, "matches") || "Matches"}
+                        colKey="mPlayed"
+                      />
+                      <SortableHeader
+                        label={t(language, "winsShort") || "W"}
+                        colKey="mWon"
+                      />
+                      <SortableHeader
+                        label={t(language, "winPctShort") || "W %"}
+                        colKey="winPct"
+                      />
                     </View>
                     {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
@@ -828,8 +843,14 @@ export const StatCard = React.memo(
                         colKey="name"
                         isName
                       />
-                      <SortableHeader label="First 9" colKey="first9" />
-                      <SortableHeader label="Average" colKey="avg" />
+                      <SortableHeader
+                        label={t(language, "firstNine") || "First 9"}
+                        colKey="first9"
+                      />
+                      <SortableHeader
+                        label={t(language, "average") || "Average"}
+                        colKey="avg"
+                      />
                     </View>
                     {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
@@ -857,8 +878,14 @@ export const StatCard = React.memo(
                         colKey="name"
                         isName
                       />
-                      <SortableHeader label="Att" colKey="checkoutDarts" />
-                      <SortableHeader label="Hit %" colKey="checkoutPct" />
+                      <SortableHeader
+                        label={t(language, "attemptsShort") || "Att"}
+                        colKey="checkoutDarts"
+                      />
+                      <SortableHeader
+                        label={t(language, "hitPercent") || "Hit %"}
+                        colKey="checkoutPct"
+                      />
                     </View>
                     {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
@@ -956,10 +983,18 @@ export const StatCard = React.memo(
                             <>
                               <View style={styles.rowHeader}>
                                 <View style={styles.colNameWrap}>
-                                  <Text style={styles.colText}>Target</Text>
+                                  <Text style={styles.colText}>
+                                    {t(language, "target") || "Target"}
+                                  </Text>
                                 </View>
-                                <SortableHeader label="Single" colKey="S" />
-                                <SortableHeader label="Double" colKey="D" />
+                                <SortableHeader
+                                  label={t(language, "single") || "Single"}
+                                  colKey="S"
+                                />
+                                <SortableHeader
+                                  label={t(language, "double") || "Double"}
+                                  colKey="D"
+                                />
                                 <SortableHeader
                                   label={tripleTerm || "Triple"}
                                   colKey="T"
@@ -1037,8 +1072,10 @@ export const StatCard = React.memo(
                 {stats.length === 0 && (
                   <Text style={styles.emptyText}>
                     {noPlayersSelected
-                      ? "No players selected"
-                      : "No data is available for this period"}
+                      ? t(language, "noPlayersSelected") ||
+                        "No players selected"
+                      : t(language, "noData") ||
+                        "No data is available for this period"}
                   </Text>
                 )}
               </View>
