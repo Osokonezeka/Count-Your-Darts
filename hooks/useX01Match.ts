@@ -5,8 +5,12 @@ import { IMPOSSIBLE_SCORES, BOGEY_NUMBERS } from "../lib/gameUtils";
 import { generateMatchStats } from "../lib/statsUtils";
 import { useMatchStore } from "../store/useMatchStore";
 import { useSpeech } from "../context/SpeechContext";
-import { useLanguage } from "../context/LanguageContext";
-import { t } from "../lib/i18n";
+import { useBotDelay } from "./useBotDelay";
+import { useBotTurn } from "./useBotTurn";
+import {
+  getBotDifficultyFromName,
+  calculateX01BotTurnDetails,
+} from "../lib/bot";
 
 export function useX01Match(
   match: any,
@@ -38,13 +42,14 @@ export function useX01Match(
   const [pendingTurn, setPendingTurn] = useState<any>(null);
 
   const { speak } = useSpeech();
-  const { language } = useLanguage();
 
   const saveMatch = useMatchStore((state) => state.saveMatch);
   const clearMatch = useMatchStore((state) => state.clearMatch);
   const savedData = useMatchStore((state) => state.matches[match?.id]);
   const hasHydrated = useMatchStore.persist.hasHydrated();
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
+  const { isFastBot, delay } = useBotDelay(isUndoing, 1500);
 
   const debouncedSaveMatch = useMemo(
     () => debounce((id: string, data: any) => saveMatch(id, data), 500),
@@ -140,6 +145,51 @@ export function useX01Match(
     debouncedSaveMatch,
   ]);
 
+  const isP1 = activePlayerId === match?.player1?.id;
+  const activeName = isP1 ? match?.player1?.name : match?.player2?.name;
+  const botAvg = activeName ? getBotDifficultyFromName(activeName) : null;
+
+  useBotTurn({
+    condition:
+      !winner && !showDoublePrompt && !!match && isLoaded && !isUndoing,
+    botAvg,
+    delay,
+    historyLength: (isP1 ? p1Throws : p2Throws).length,
+    calculate: () => {
+      const currentLeft =
+        settings.startingPoints -
+        (isP1 ? p1Throws : p2Throws).reduce(
+          (a: number, b: string) => a + (b === "BUST" ? 0 : parseInt(b)),
+          0,
+        );
+      const outRule = settings.outRule || "double";
+      const inRule = settings.inRule || "straight";
+      const hasOpened =
+        inRule === "straight" ||
+        (isP1 ? p1Throws : p2Throws).some(
+          (t: string) => t !== "BUST" && parseInt(t) > 0,
+        );
+      const details = calculateX01BotTurnDetails(
+        botAvg!,
+        currentLeft,
+        hasOpened,
+        inRule,
+        outRule,
+        0,
+      );
+      return {
+        botScore: details.botScore,
+        newLeft: details.newLeft,
+        isBust: details.isBust,
+        dartsAtDouble: details.dartsAtDouble,
+      };
+    },
+    execute: ({ botScore, newLeft, isBust, dartsAtDouble }) => {
+      processTurn(isP1, botScore, newLeft, isBust, dartsAtDouble);
+    },
+    dependencies: [activePlayerId, winner, showDoublePrompt, isFastBot],
+  });
+
   const handleKeyPress = (val: string) => {
     if (currentInput.length < 3 && !winner)
       setCurrentInput((prev: string) => prev + val);
@@ -166,6 +216,7 @@ export function useX01Match(
 
     if (targetName) {
       callbacks.showUndoConfirm(targetName, () => {
+        setIsUndoing(true);
         if (targetId === match.player1.id) {
           setP1Throws((v: string[]) => v.slice(0, -1));
           setP1DoubleAttempts((v: number) =>
@@ -229,6 +280,7 @@ export function useX01Match(
     isBust: boolean,
     dartsAtDouble: number,
   ) => {
+    setIsUndoing(false);
     speak(isBust ? "0" : score.toString());
 
     if (isP1) {

@@ -4,6 +4,10 @@ A feature-rich React Native mobile application built with [Expo](https://expo.de
 
 ## ✨ Features
 
+- **🤖 Smart AI & Bots**:
+  - Play against bots with varying difficulty levels (from beginner to pro averages).
+  - **Adaptive Bot**: Automatically scales to your historical average and adjusts dynamically during the match.
+  - Realistic gameplay utilizing Gaussian distribution (normal curve), human-like checkout misses, and aggressive defensive strategies in Cricket.
 - **🎯 Multiple Game Modes**:
   - X01 (Standard Darts with custom Check-In/Check-Out rules)
   - Cricket (Standard & No Score)

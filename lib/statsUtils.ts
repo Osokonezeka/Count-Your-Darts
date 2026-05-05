@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+export const isBot = (name: string) =>
+  (/\(.*?\b\d+\b.*?\)/.test(name) || /(adaptive|adaptacyjny)/i.test(name)) &&
+  name.toLowerCase().includes("bot");
+
 export const parseDateString = (dateStr: string) => {
   try {
     const [datePart, timePart] = dateStr.split(", ");
@@ -138,7 +142,7 @@ const formatPlayerMap = (
   appliedNames: string[],
 ) => {
   return Object.values(playerMap)
-    .filter((s: any) => appliedNames.includes(s.name))
+    .filter((s: any) => appliedNames.includes(s.name) && !isBot(s.name))
     .map((s: any) => ({
       ...s,
       winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
@@ -338,12 +342,13 @@ const formatTournamentPlayerMap = (
   appliedNames: string[],
 ) => {
   return Object.values(playerMap)
-    .filter((s: any) => appliedNames.includes(s.name))
+    .filter((s: any) => appliedNames.includes(s.name) && !isBot(s.name))
     .map((s: any) => ({
       ...s,
       winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
-      calculatedAvg: s.totalDarts > 0 ? s.totalPoints / s.totalDarts : 0,
-      calculatedFirst9: s.first9Count > 0 ? s.first9Points / s.first9Count : 0,
+      calculatedAvg: s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * 3 : 0,
+      calculatedFirst9:
+        s.first9Count > 0 ? (s.first9Points / s.first9Count) * 3 : 0,
       calculatedCheckoutPct:
         s.checkoutDarts > 0 ? (s.checkoutHits / s.checkoutDarts) * 100 : 0,
     }));
@@ -501,10 +506,10 @@ const processTournamentMatchesIncremental = (
             throws.forEach((tStr, idx) => {
               const val = tStr === "BUST" ? 0 : parseInt(tStr);
               playerMap[name].totalPoints += val;
-              playerMap[name].totalDarts++;
+              playerMap[name].totalDarts += 3;
               if (idx < 3) {
                 playerMap[name].first9Points += val;
-                playerMap[name].first9Count++;
+                playerMap[name].first9Count += 3;
               }
               if (val >= 180) playerMap[name].s180++;
               else if (val >= 140) playerMap[name].s140++;
@@ -633,6 +638,8 @@ export const calculateTrendData = (history: any[], appliedNames: string[]) => {
 
   const dataByPlayer: Record<string, any> = {};
   appliedNames.forEach((playerName) => {
+    if (isBot(playerName)) return;
+
     const dataPoints: number[] = [];
     const labels: string[] = [];
     const playerMatches = chronologicalHistory.filter((match) =>
@@ -698,6 +705,8 @@ export const calculateTournamentTrendData = (
 
   const dataByPlayer: Record<string, any> = {};
   appliedNames.forEach((playerName) => {
+    if (isBot(playerName)) return;
+
     const dataPoints: number[] = [];
     const labels: string[] = [];
     const playerTourneys = chronologicalHistory.filter((t) =>
@@ -732,4 +741,112 @@ export const calculateTournamentTrendData = (
       dataByPlayer[playerName] = { labels, datasets: [{ data: dataPoints }] };
   });
   return dataByPlayer;
+};
+
+export const getPlayersHistoricalBaseline = async (
+  players: string[],
+  mode: string,
+): Promise<number | undefined> => {
+  try {
+    const historyStr = await AsyncStorage.getItem("@dart_match_history");
+    if (!historyStr) return undefined;
+    const history = JSON.parse(historyStr);
+
+    let highestAvg = 0;
+    const modeHistory = history.filter((h: any) => h.mode === mode);
+    if (modeHistory.length === 0) return undefined;
+
+    players.forEach((playerName) => {
+      let totalPts = 0;
+      let totalDarts = 0;
+      let totalMarks = 0;
+      let totalHits = 0;
+
+      modeHistory.forEach((match: any) => {
+        const p = match.players?.find((x: any) => x.name === playerName);
+        if (!p) return;
+
+        if (mode === "X01") {
+          if (p.allTurns) {
+            const sumOfLengths = p.allTurns.reduce(
+              (acc: number, t: any[]) => acc + t.length,
+              0,
+            );
+            const isBuggyCompressed =
+              p.totalMatchDarts &&
+              p.totalMatchDarts > sumOfLengths &&
+              !p.allTurns.some((t: any[]) =>
+                t.some((d: any) => d.d !== undefined),
+              );
+            p.allTurns.forEach((turn: any[], index: number) => {
+              totalPts += turn.reduce(
+                (a: any, b: any) => a + (typeof b === "number" ? b : b.v * b.m),
+                0,
+              );
+              let turnDarts = turn.reduce(
+                (a: any, b: any) =>
+                  a + (typeof b === "number" ? 1 : b.d !== undefined ? b.d : 1),
+                0,
+              );
+              if (isBuggyCompressed)
+                turnDarts =
+                  index === p.allTurns.length - 1
+                    ? p.totalMatchDarts - index * 3
+                    : 3;
+              totalDarts += turnDarts;
+            });
+          } else if (p.totalMatchDarts) {
+            const startPts = match.settings?.startPoints || 501;
+            const scored =
+              p.totalMatchScore !== undefined
+                ? p.totalMatchScore
+                : Math.max(0, startPts - (p.score || 0));
+            totalPts += scored;
+            totalDarts += p.totalMatchDarts;
+          }
+        } else if (mode === "100 Darts") {
+          totalPts += p.score || 0;
+          totalDarts += p.darts || p.dartsCount || 0;
+        } else if (mode === "Bob's 27") {
+          totalPts += p.score || 0;
+          totalDarts += 1;
+        } else if (mode === "Cricket") {
+          totalMarks +=
+            p.totalMatchMarks !== undefined
+              ? p.totalMatchMarks
+              : p.totalMarks ||
+                (p.marks
+                  ? Object.values(p.marks).reduce((a: any, b: any) => a + b, 0)
+                  : 0);
+          totalDarts +=
+            p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts || 0;
+        } else if (mode === "Around the Clock") {
+          totalHits +=
+            p.hits !== undefined
+              ? p.hits
+              : p.accuracy
+                ? (parseFloat(p.accuracy) / 100) * (p.darts || 0)
+                : 0;
+          totalDarts += p.darts || 0;
+        }
+      });
+
+      let playerAvg = 0;
+      if (mode === "X01" || mode === "100 Darts") {
+        if (totalDarts > 0) playerAvg = (totalPts / totalDarts) * 3;
+      } else if (mode === "Bob's 27") {
+        if (totalDarts > 0) playerAvg = totalPts / totalDarts;
+      } else if (mode === "Cricket") {
+        if (totalDarts > 0) playerAvg = (totalMarks / totalDarts) * 3;
+      } else if (mode === "Around the Clock") {
+        if (totalDarts > 0) playerAvg = totalHits / totalDarts;
+      }
+
+      if (playerAvg > highestAvg) highestAvg = playerAvg;
+    });
+
+    return highestAvg > 0 ? highestAvg : undefined;
+  } catch (e) {
+    return undefined;
+  }
 };

@@ -33,6 +33,7 @@ import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import {
   getOverallStatisticsAsync,
   calculateTrendData,
+  isBot,
 } from "../../lib/statsUtils";
 
 const HISTORY_KEY = "@dart_match_history";
@@ -176,7 +177,8 @@ export default function Statistics() {
               parsed.flatMap((m: any) => m.players.map((p: any) => p.name)),
             ),
           ) as string[];
-          setAppliedNames((prev) => (prev.length === 0 ? allNames : prev));
+          const humanNames = allNames.filter((name) => !isBot(name));
+          setAppliedNames((prev) => (prev.length === 0 ? humanNames : prev));
         }
       });
     }, []),
@@ -277,9 +279,10 @@ export default function Statistics() {
   );
 
   const allHistoryPlayers = useMemo(() => {
-    return Array.from(
+    const allNames = Array.from(
       new Set(history.flatMap((m) => m.players.map((p: any) => p.name))),
     ) as string[];
+    return allNames.filter((name) => !isBot(name));
   }, [history]);
 
   const filteredHistoryPlayers = useMemo(() => {

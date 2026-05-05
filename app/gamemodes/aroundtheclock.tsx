@@ -24,6 +24,15 @@ import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryBu
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { useBotDelay } from "../../hooks/useBotDelay";
+import { useBotTurn } from "../../hooks/useBotTurn";
+import {
+  getBotDifficultyFromName,
+  simulateClockBotThrow,
+  resolveBotAverage,
+} from "../../lib/bot";
+import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const TARGETS = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
@@ -45,6 +54,7 @@ type GameState = {
   throwsThisTurn: number;
   history: any[];
   finishedCount: number;
+  isUndoing?: boolean;
 };
 
 const formatTime = (seconds: number) => {
@@ -60,6 +70,7 @@ function clockReducer(state: GameState, action: any): GameState {
     case "THROW": {
       const { hit } = action.payload;
       const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
       const player = { ...updatedPlayers[state.currentIndex] };
@@ -93,6 +104,7 @@ function clockReducer(state: GameState, action: any): GameState {
             playerStates: updatedPlayers,
             finishedCount: state.finishedCount + 1,
             history: [...state.history, snapshot],
+            isUndoing: false,
           };
         }
 
@@ -113,6 +125,7 @@ function clockReducer(state: GameState, action: any): GameState {
             ? state.finishedCount + 1
             : state.finishedCount,
           history: [...state.history, snapshot],
+          isUndoing: false,
         };
       }
 
@@ -121,6 +134,7 @@ function clockReducer(state: GameState, action: any): GameState {
         playerStates: updatedPlayers,
         throwsThisTurn: state.throwsThisTurn + 1,
         history: [...state.history, snapshot],
+        isUndoing: false,
       };
     }
 
@@ -129,6 +143,7 @@ function clockReducer(state: GameState, action: any): GameState {
       return {
         ...state.history[state.history.length - 1],
         history: state.history.slice(0, -1),
+        isUndoing: true,
       };
     }
 
@@ -190,6 +205,54 @@ export default function AroundTheClock() {
   const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   const allFinished = state.playerStates.every((p) => p.isFinished);
+  const { isFastBot, delay } = useBotDelay(state.isUndoing, 1200);
+  const activePlayer = state.playerStates[state.currentIndex];
+
+  const [historicalBaseline, setHistoricalBaseline] = useState<
+    number | undefined
+  >(undefined);
+  const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
+  useEffect(() => {
+    const fetchBaseline = async () => {
+      if (players) {
+        const humanNames = players.filter((p: string) => !isBot(p));
+        const baseline = await getPlayersHistoricalBaseline(
+          humanNames,
+          "Around the Clock",
+        );
+        setHistoricalBaseline(baseline);
+        setIsBaselineLoaded(true);
+      }
+    };
+    fetchBaseline();
+  }, [players]);
+
+  const botAvg = resolveBotAverage(
+    activePlayer.name,
+    state.playerStates,
+    "Around the Clock",
+    undefined,
+    historicalBaseline,
+  );
+
+  useBotTurn({
+    condition: isBaselineLoaded && !allFinished && !state.isUndoing,
+    botAvg,
+    delay,
+    historyLength: state.history.length,
+    calculate: () => {
+      const isBull = TARGETS[activePlayer.currentTargetIdx] === 25;
+      return simulateClockBotThrow(botAvg!, isBull);
+    },
+    execute: (hit) => handleThrow(hit),
+    dependencies: [
+      state.currentIndex,
+      state.throwsThisTurn,
+      isFastBot,
+      botAvg,
+      isBaselineLoaded,
+    ],
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -415,21 +478,29 @@ export default function AroundTheClock() {
       </ScrollView>
 
       {!allFinished && (
-        <TrainingKeyboard
+        <BotAwareKeyboard
           playerName={currentPlayer.name}
-          instructionText={(t(language, "hitLower") || "hit") + ":"}
-          targetValue={
-            TARGETS[currentPlayer.currentTargetIdx] === 25
-              ? bullTerm
-              : TARGETS[currentPlayer.currentTargetIdx].toString()
-          }
-          hitLabel={t(language, "hit")?.toUpperCase() || "HIT"}
-          missLabel={missTerm}
-          onHit={() => handleThrow(true)}
-          onMiss={() => handleThrow(false)}
           onUndo={() => dispatch({ type: "UNDO" })}
           theme={theme}
-        />
+          language={language}
+          botStyle={[styles.keyboard, { padding: 16 }]}
+        >
+          <TrainingKeyboard
+            playerName={currentPlayer.name}
+            instructionText={(t(language, "hitLower") || "hit") + ":"}
+            targetValue={
+              TARGETS[currentPlayer.currentTargetIdx] === 25
+                ? bullTerm
+                : TARGETS[currentPlayer.currentTargetIdx].toString()
+            }
+            hitLabel={t(language, "hit")?.toUpperCase() || "HIT"}
+            missLabel={missTerm}
+            onHit={() => handleThrow(true)}
+            onMiss={() => handleThrow(false)}
+            onUndo={() => dispatch({ type: "UNDO" })}
+            theme={theme}
+          />
+        </BotAwareKeyboard>
       )}
 
       <FinishModal
@@ -467,5 +538,10 @@ const getSpecificStyles = (theme: any) =>
       fontSize: 10,
       fontWeight: "800",
       color: theme.colors.primary,
+    },
+    keyboard: {
+      padding: 16,
+      backgroundColor: theme.colors.cardBorder,
+      paddingBottom: 30,
     },
   });
