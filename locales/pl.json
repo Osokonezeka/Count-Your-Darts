@@ -13,6 +13,13 @@
   "save": "Zapisz",
   "deletePlayer": "Usuń gracza",
   "delete": "Usuń",
+  "addBot": "Dodaj Bota",
+  "botDifficulty": "Średnia Bota",
+  "botLevel": "Poziom bota",
+  "adaptiveBot": "Bot Adaptacyjny",
+  "adaptive": "Adaptacyjny",
+  "botAverage": "Średnia",
+  "bot": "Bot",
   "mode": "Tryb",
   "points": "Punkty",
   "custom": "Własne",
@@ -309,5 +316,7 @@
   "inputModeScore": "Wynik",
   "inputModeBoard": "Tarcza",
   "boardZoomHint": "Uszczypnij / Przytrzymaj, aby przybliżyć i precyzyjnie celować 🔍",
-  "heatmap": "Mapa trafień"
+  "heatmap": "Mapa trafień",
+  "fastBot": "Szybki rzut bota",
+  "isThrowing": "rzuca..."
 }

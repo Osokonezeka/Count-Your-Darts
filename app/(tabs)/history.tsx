@@ -686,19 +686,36 @@ export default function History() {
 
     if (selectedMatch.mode === "Cricket") {
       return selectedMatch.players.map((p) => {
-        const closedCount = Object.values(p.marks || {}).filter(
-          (m: any) => m >= 3,
-        ).length;
-        const totalMarks = Object.values(p.marks || {}).reduce(
-          (a: any, b: any) => a + b,
-          0,
-        ) as number;
+        const closedCount =
+          p.totalClosedTargets !== undefined
+            ? p.totalClosedTargets
+            : p.marks
+              ? Object.values(p.marks).filter((m: any) => m >= 3).length
+              : p.closedTargets || 0;
+
+        const totalMarks =
+          p.totalMatchMarks !== undefined
+            ? p.totalMatchMarks
+            : p.totalMarks !== undefined
+              ? p.totalMarks
+              : (Object.values(p.marks || {}).reduce(
+                  (a: any, b: any) => a + b,
+                  0,
+                ) as number);
+        const totalDarts =
+          p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts || 0;
+        const score =
+          p.totalMatchScore !== undefined ? p.totalMatchScore : p.score;
+
         return {
           name: p.name,
-          score: p.score,
-          darts: p.darts || 0,
+          score: score,
+          darts: totalDarts,
           closed: closedCount,
-          mpr: p.darts > 0 ? ((totalMarks / p.darts) * 3).toFixed(2) : "0.00",
+          mpr:
+            totalDarts > 0
+              ? ((totalMarks / totalDarts) * 3).toFixed(2)
+              : "0.00",
         };
       });
     }
@@ -969,7 +986,7 @@ export default function History() {
 
         <View style={styles.settingsRow}>
           <Text style={styles.settingsText}>{settingsStr}</Text>
-          {!isSpecialMode && (
+          {(!isSpecialMode || isCricket) && (
             <Text style={styles.settingsTextBold}>
               {item.settings?.legs || 1} Leg / {item.settings?.sets || 1} Set
             </Text>
@@ -1012,13 +1029,20 @@ export default function History() {
                 </View>
                 <View style={styles.playerScoreInfo}>
                   {isSpecialMode ? (
-                    <Text style={styles.playerScore}>
-                      {item.mode === "Around the Clock" ||
-                      (item.mode === "Cricket" &&
-                        item.settings?.cricketMode === "no-score")
-                        ? `${p.darts || 0} darts`
-                        : `${p.score || 0} pkt`}
-                    </Text>
+                    <>
+                      {isCricket && (
+                        <Text style={styles.playerLegsSets}>
+                          L:{p.legs || 0} S:{p.sets || 0}
+                        </Text>
+                      )}
+                      <Text style={styles.playerScore}>
+                        {item.mode === "Around the Clock" ||
+                        (item.mode === "Cricket" &&
+                          item.settings?.cricketMode === "no-score")
+                          ? `${p.darts || 0} darts`
+                          : `${p.score || 0} pkt`}
+                      </Text>
+                    </>
                   ) : (
                     <>
                       <Text style={styles.playerLegsSets}>

@@ -29,6 +29,16 @@ import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryBu
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useGameModals } from "../../hooks/useGameModals";
 import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { useBotDelay } from "../../hooks/useBotDelay";
+import { useBotTurn } from "../../hooks/useBotTurn";
+import {
+  getBotDifficultyFromName,
+  simulateBotTurn,
+  breakdownScoreToDarts,
+  resolveBotAverage,
+} from "../../lib/bot";
+import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const MAX_DARTS = 100;
 
@@ -45,6 +55,7 @@ type PlayerState = {
   score: number;
   dartsCount: number;
   turnThrows: Throw[];
+  allTurns?: Throw[][];
   isFinished: boolean;
   rank?: number;
   s60: number;
@@ -59,6 +70,7 @@ type GameState = {
   throwsThisTurn: number;
   history: any[];
   speechEvent?: { text: string; id: number } | null;
+  isUndoing?: boolean;
 };
 
 const formatThrow = (t: Throw) => {
@@ -73,6 +85,7 @@ function scoringReducer(state: GameState, action: any): GameState {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
       const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
       const player = { ...updatedPlayers[state.currentIndex] };
@@ -100,6 +113,7 @@ function scoringReducer(state: GameState, action: any): GameState {
         if (player.dartsCount === MAX_DARTS) {
           player.isFinished = true;
         }
+        player.allTurns = [...(player.allTurns || []), player.turnThrows];
 
         newSpeechEvent = { text: turnSum.toString(), id: Date.now() };
       }
@@ -120,6 +134,7 @@ function scoringReducer(state: GameState, action: any): GameState {
             playerStates: updatedPlayers,
             history: [...state.history, snapshot],
             speechEvent: newSpeechEvent,
+            isUndoing: false,
           };
         }
 
@@ -136,6 +151,7 @@ function scoringReducer(state: GameState, action: any): GameState {
           throwsThisTurn: 0,
           history: [...state.history, snapshot],
           speechEvent: newSpeechEvent,
+          isUndoing: false,
         };
       }
 
@@ -145,12 +161,26 @@ function scoringReducer(state: GameState, action: any): GameState {
         throwsThisTurn: state.throwsThisTurn + 1,
         history: [...state.history, snapshot],
         speechEvent: null,
+        isUndoing: false,
       };
     }
 
+    case "ADD_DART_VISUAL": {
+      const { value, multiplier } = action.payload;
+      const updatedPlayers = [...state.playerStates];
+      const player = { ...updatedPlayers[state.currentIndex] };
+      player.turnThrows = [
+        ...(player.turnThrows || []),
+        { value, multiplier, darts: 1, isScoreInput: false },
+      ];
+      updatedPlayers[state.currentIndex] = player;
+      return { ...state, playerStates: updatedPlayers };
+    }
+
     case "ADD_TURN_SCORE": {
-      const { score } = action.payload;
+      const { score, individualDarts = null } = action.payload;
       const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
       const player = { ...updatedPlayers[state.currentIndex] };
@@ -161,9 +191,24 @@ function scoringReducer(state: GameState, action: any): GameState {
       const dartsToLog = Math.min(dartsRemainingInTurn, maxDartsLeft);
 
       player.dartsCount += dartsToLog;
-      player.turnThrows = [
-        { value: score, multiplier: 1, darts: dartsToLog, isScoreInput: true },
-      ];
+
+      if (individualDarts) {
+        player.turnThrows = individualDarts.map((d: any) => ({
+          value: d.value,
+          multiplier: d.multiplier,
+          darts: 1,
+          isScoreInput: false,
+        }));
+      } else {
+        player.turnThrows = [
+          {
+            value: score,
+            multiplier: 1,
+            darts: dartsToLog,
+            isScoreInput: true,
+          },
+        ];
+      }
 
       if (score >= 180) player.s180++;
       else if (score >= 140) player.s140++;
@@ -173,6 +218,8 @@ function scoringReducer(state: GameState, action: any): GameState {
       if (player.dartsCount >= MAX_DARTS) {
         player.isFinished = true;
       }
+
+      player.allTurns = [...(player.allTurns || []), player.turnThrows];
 
       const newSpeechEvent = { text: score.toString(), id: Date.now() };
 
@@ -189,6 +236,7 @@ function scoringReducer(state: GameState, action: any): GameState {
           playerStates: updatedPlayers,
           history: [...state.history, snapshot],
           speechEvent: newSpeechEvent,
+          isUndoing: false,
         };
       }
 
@@ -205,15 +253,21 @@ function scoringReducer(state: GameState, action: any): GameState {
         throwsThisTurn: 0,
         history: [...state.history, snapshot],
         speechEvent: newSpeechEvent,
+        isUndoing: false,
       };
     }
 
     case "UNDO": {
       if (state.history.length === 0) return state;
+      const prevState = state.history[state.history.length - 1];
+      if (prevState.throwsThisTurn === 0) {
+        prevState.playerStates[prevState.currentIndex].turnThrows = [];
+      }
       return {
-        ...state.history[state.history.length - 1],
+        ...prevState,
         history: state.history.slice(0, -1),
         speechEvent: null,
+        isUndoing: true,
       };
     }
 
@@ -221,10 +275,15 @@ function scoringReducer(state: GameState, action: any): GameState {
       if (state.throwsThisTurn === 0) return state;
       const turnStartIndex = state.history.length - state.throwsThisTurn;
       if (turnStartIndex < 0) return state;
+      const prevState = state.history[turnStartIndex];
+      if (prevState.throwsThisTurn === 0) {
+        prevState.playerStates[prevState.currentIndex].turnThrows = [];
+      }
       return {
-        ...state.history[turnStartIndex],
+        ...prevState,
         history: state.history.slice(0, turnStartIndex),
         speechEvent: null,
+        isUndoing: true,
       };
     }
 
@@ -271,6 +330,7 @@ export default function OneHundredDarts() {
             score: 0,
             dartsCount: 0,
             turnThrows: [],
+            allTurns: [],
             isFinished: false,
             s180: 0,
             s140: 0,
@@ -306,6 +366,76 @@ export default function OneHundredDarts() {
   }, [state.speechEvent]);
 
   const allDone = state.playerStates.every((p) => p.isFinished);
+  const { isFastBot, delay } = useBotDelay(state.isUndoing, 700);
+  const activePlayer = state.playerStates[state.currentIndex];
+
+  const [historicalBaseline, setHistoricalBaseline] = useState<
+    number | undefined
+  >(undefined);
+  const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
+  useEffect(() => {
+    const fetchBaseline = async () => {
+      if (players) {
+        const humanNames = players.filter((p: string) => !isBot(p));
+        const baseline = await getPlayersHistoricalBaseline(
+          humanNames,
+          "100 Darts",
+        );
+        setHistoricalBaseline(baseline);
+        setIsBaselineLoaded(true);
+      }
+    };
+    fetchBaseline();
+  }, [players]);
+
+  const botAvg = resolveBotAverage(
+    activePlayer.name,
+    state.playerStates,
+    "100 Darts",
+    undefined,
+    historicalBaseline,
+  );
+
+  useBotTurn({
+    condition:
+      isBaselineLoaded &&
+      !allDone &&
+      !state.isUndoing &&
+      state.throwsThisTurn === 0,
+    botAvg,
+    delay,
+    historyLength: state.history.length,
+    calculate: () => {
+      let botScore = simulateBotTurn(botAvg!, 9999);
+      let individualDarts = breakdownScoreToDarts(botScore, 3, false);
+      const maxDartsLeft = MAX_DARTS - activePlayer.dartsCount;
+      if (maxDartsLeft < 3) {
+        individualDarts = individualDarts.slice(0, maxDartsLeft);
+        botScore = individualDarts.reduce(
+          (sum: number, d: any) => sum + d.value * d.multiplier,
+          0,
+        );
+      }
+      return { botScore, individualDarts };
+    },
+    execute: async ({ botScore, individualDarts }) => {
+      for (let i = 0; i < individualDarts.length; i++) {
+        dispatch({ type: "ADD_DART_VISUAL", payload: individualDarts[i] });
+        await new Promise((res) => setTimeout(res, isFastBot ? 50 : 200));
+      }
+      dispatch({
+        type: "ADD_TURN_SCORE",
+        payload: { score: botScore, individualDarts },
+      });
+    },
+    dependencies: [
+      state.currentIndex,
+      state.throwsThisTurn,
+      isFastBot,
+      botAvg,
+      isBaselineLoaded,
+    ],
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -344,26 +474,41 @@ export default function OneHundredDarts() {
           : undefined,
         players: state.playerStates
           .map((p, idx) => {
-            const rawTurns = state.history
-              ? state.history.map((h) => h.playerStates[idx].turnThrows)
-              : [];
-            rawTurns.push(p.turnThrows);
-            const validTurns = rawTurns
-              .filter(
-                (turn, i, arr) =>
+            let validTurns = [];
+            if (p.allTurns) {
+              validTurns = [...p.allTurns];
+              if (
+                !p.isFinished &&
+                p.turnThrows &&
+                p.turnThrows.length > 0 &&
+                state.currentIndex === idx
+              ) {
+                validTurns.push(p.turnThrows);
+              }
+            } else {
+              const rawTurns = state.history
+                ? state.history.map((h) => h.playerStates[idx].turnThrows)
+                : [];
+              rawTurns.push(p.turnThrows);
+              validTurns = rawTurns.filter((turn, i, arr) => {
+                const nextTurn = arr[i + 1];
+                return (
                   turn &&
                   turn.length > 0 &&
-                  (!arr[i + 1] || arr[i + 1].length < turn.length),
-              )
-              .map((turn) =>
-                turn.map((t: any) => ({
-                  v: t.value,
-                  m: t.multiplier,
-                  d: t.darts,
-                  i: t.isScoreInput,
-                  c: t.coords,
-                })),
-              );
+                  (!nextTurn || nextTurn.length < turn.length)
+                );
+              });
+            }
+
+            const validTurnsFormatted = validTurns.map((turn) =>
+              turn.map((t: any) => ({
+                v: t.value,
+                m: t.multiplier,
+                d: t.darts,
+                i: t.isScoreInput,
+                c: t.coords,
+              })),
+            );
 
             return {
               name: p.name,
@@ -378,7 +523,7 @@ export default function OneHundredDarts() {
               s140: p.s140,
               s100: p.s100,
               s60: p.s60,
-              allTurns: validTurns,
+              allTurns: validTurnsFormatted,
             };
           })
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
@@ -464,6 +609,8 @@ export default function OneHundredDarts() {
 
   const handleUndo = () => {
     triggerHaptic("heavy");
+    setTypedScore("");
+    setMultiplier(1);
     dispatch({ type: "UNDO" });
   };
 
@@ -644,7 +791,13 @@ export default function OneHundredDarts() {
       </ScrollView>
 
       {!allDone && (
-        <View style={styles.keyboard}>
+        <BotAwareKeyboard
+          playerName={state.playerStates[state.currentIndex].name}
+          onUndo={handleUndo}
+          theme={theme}
+          language={language}
+          style={styles.keyboard}
+        >
           <InputModeSelector
             inputMode={inputMode}
             setInputMode={setInputMode}
@@ -689,7 +842,7 @@ export default function OneHundredDarts() {
               language={language}
             />
           )}
-        </View>
+        </BotAwareKeyboard>
       )}
 
       <FinishModal

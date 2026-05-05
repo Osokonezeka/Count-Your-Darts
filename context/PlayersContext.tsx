@@ -5,6 +5,7 @@ const PLAYERS_STORAGE_KEY = "@dart_players_db";
 
 type PlayersContextType = {
   players: string[];
+  isPlayersLoaded: boolean;
   addPlayer: (name: string) => void;
   removePlayer: (name: string) => void;
   updatePlayer: (oldName: string, newName: string) => void;
@@ -16,6 +17,7 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [players, setPlayers] = useState<string[]>([]);
+  const [isPlayersLoaded, setIsPlayersLoaded] = useState(false);
 
   useEffect(() => {
     const loadPlayers = async () => {
@@ -26,6 +28,8 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       } catch (error) {
         console.error("Błąd ładowania graczy:", error);
+      } finally {
+        setIsPlayersLoaded(true);
       }
     };
     loadPlayers();
@@ -83,7 +87,13 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <PlayersContext.Provider
-      value={{ players, addPlayer, removePlayer, updatePlayer }}
+      value={{
+        players,
+        isPlayersLoaded,
+        addPlayer,
+        removePlayer,
+        updatePlayer,
+      }}
     >
       {children}
     </PlayersContext.Provider>

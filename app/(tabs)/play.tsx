@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useLayoutEffect, useState } from "react";
-import { Dimensions, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import DraggableFlatList, {
   ScaleDecorator,
 } from "react-native-draggable-flatlist";
@@ -22,7 +22,9 @@ import { AnimatedVerticalSelect } from "../../components/common/AnimatedVertical
 import { AnimatedStepper } from "../../components/common/AnimatedStepper";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AddBotModal } from "../../components/modals/AddBotModal";
 import { t } from "../../lib/i18n";
+import { isBot } from "../../lib/statsUtils";
 
 const STORAGE_KEY_PLAYERS = "@last_selected_players";
 const STORAGE_KEY_CONFIG = "@last_game_config";
@@ -52,7 +54,8 @@ export default function Play() {
   const router = useRouter();
   const navigation = useNavigation();
 
-  const { players, addPlayer, removePlayer, updatePlayer } = usePlayers();
+  const { players, isPlayersLoaded, addPlayer, removePlayer, updatePlayer } =
+    usePlayers();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const styles = getStyles(theme);
@@ -61,6 +64,8 @@ export default function Play() {
   const [playerOrder, setPlayerOrder] = useState<string[]>([]);
   const [tempSelected, setTempSelected] = useState<string[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+
+  const [isBotModalVisible, setBotModalVisible] = useState(false);
 
   const [gameMode, setGameMode] = useState<"X01" | "Cricket" | "Training">(
     "X01",
@@ -176,7 +181,30 @@ export default function Play() {
     );
   };
 
+  const handleAddBot = (difficulty: number) => {
+    let baseName = "";
+    if (difficulty === 0) {
+      const adaptiveLabel = language === "pl" ? "Adaptacyjny" : "Adaptive";
+      baseName = `${t(language, "bot") || "Bot"} (${adaptiveLabel})`;
+    } else {
+      const level = (difficulty - 20) / 5;
+      baseName = `${t(language, "bot") || "Bot"} (Lvl ${level})`;
+    }
+
+    let finalName = baseName;
+    let counter = 1;
+    while (selectedPlayers.includes(finalName)) {
+      counter++;
+      finalName = `${baseName} #${counter}`;
+    }
+
+    setSelectedPlayers([...selectedPlayers, finalName]);
+    setBotModalVisible(false);
+  };
+
   useEffect(() => {
+    if (!isPlayersLoaded || isLoaded) return;
+
     const loadConfig = async () => {
       try {
         const savedConfig = await AsyncStorage.getItem(STORAGE_KEY_CONFIG);
@@ -197,7 +225,9 @@ export default function Play() {
         if (savedPlayers !== null) {
           const parsed = JSON.parse(savedPlayers);
           setSelectedPlayers(
-            parsed.filter((name: string) => players.includes(name)),
+            parsed.filter(
+              (name: string) => players.includes(name) || isBot(name),
+            ),
           );
         }
       } catch (e) {
@@ -208,7 +238,7 @@ export default function Play() {
       }
     };
     loadConfig();
-  }, [players]);
+  }, [players, isPlayersLoaded, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -466,6 +496,16 @@ export default function Play() {
                     </AnimatedPressable>
                   )}
                   <AnimatedPressable
+                    onPress={() => setBotModalVisible(true)}
+                    style={styles.iconBtn}
+                  >
+                    <Ionicons
+                      name="hardware-chip"
+                      size={24}
+                      color={theme.colors.primary}
+                    />
+                  </AnimatedPressable>
+                  <AnimatedPressable
                     onPress={() => {
                       if (allPlayersSelected) return;
                       if (players.length === 0) setManageVisible(true);
@@ -568,7 +608,7 @@ export default function Play() {
                         >
                           {index + 1}.{" "}
                         </Text>
-                        {item}
+                        {isBot(item as string) ? `🤖 ${item}` : item}
                       </Text>
                     </AnimatedPressable>
                     <AnimatedPressable
@@ -696,6 +736,16 @@ export default function Play() {
         onSave={handleSavePlayer}
         theme={theme}
         language={language}
+      />
+
+      <AddBotModal
+        visible={isBotModalVisible}
+        onClose={() => setBotModalVisible(false)}
+        onAdd={handleAddBot}
+        theme={theme}
+        language={language}
+        gameMode={gameMode}
+        trainingMode={trainingMode}
       />
 
       <CustomAlert

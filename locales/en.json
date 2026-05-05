@@ -13,6 +13,13 @@
   "save": "Save",
   "deletePlayer": "Delete player",
   "delete": "Delete",
+  "addBot": "Add Bot",
+  "botDifficulty": "Bot Average",
+  "botLevel": "Bot level",
+  "adaptiveBot": "Adaptive Bot",
+  "adaptive": "Adaptive",
+  "botAverage": "Average",
+  "bot": "Bot",
   "mode": "Mode",
   "points": "Points",
   "custom": "Custom",
@@ -309,5 +316,7 @@
   "inputModeScore": "Score",
   "inputModeBoard": "Board",
   "boardZoomHint": "Pinch / Hold to zoom in and aim precisely 🔍",
-  "heatmap": "Heatmap"
+  "heatmap": "Heatmap",
+  "fastBot": "Fast bot throw",
+  "isThrowing": "is throwing..."
 }

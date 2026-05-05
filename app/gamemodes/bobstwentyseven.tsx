@@ -25,6 +25,11 @@ import { useGameModals } from "../../hooks/useGameModals";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
 import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { useBotDelay } from "../../hooks/useBotDelay";
+import { useBotTurn } from "../../hooks/useBotTurn";
+import { simulateBobsBotThrow, resolveBotAverage } from "../../lib/bot";
+import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const TARGETS = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
@@ -49,6 +54,7 @@ type GameState = {
   history: any[];
   finishedCount: number;
   speechEvent?: { text: string; id: number } | null;
+  isUndoing?: boolean;
 };
 
 const formatTime = (seconds: number) => {
@@ -64,6 +70,7 @@ function bobsReducer(state: GameState, action: any): GameState {
     case "THROW": {
       const { hit } = action.payload;
       const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
       const player = { ...updatedPlayers[state.currentIndex] };
@@ -127,6 +134,7 @@ function bobsReducer(state: GameState, action: any): GameState {
             playerStates: updatedPlayers,
             history: [...state.history, snapshot],
             speechEvent: newSpeechEvent,
+            isUndoing: false,
           };
         }
 
@@ -147,6 +155,7 @@ function bobsReducer(state: GameState, action: any): GameState {
           throwsThisTurn: 0,
           history: [...state.history, snapshot],
           speechEvent: newSpeechEvent,
+          isUndoing: false,
         };
       }
 
@@ -157,6 +166,7 @@ function bobsReducer(state: GameState, action: any): GameState {
         throwsThisTurn: state.throwsThisTurn + 1,
         history: [...state.history, snapshot],
         speechEvent: null,
+        isUndoing: false,
       };
     }
 
@@ -166,6 +176,7 @@ function bobsReducer(state: GameState, action: any): GameState {
         ...state.history[state.history.length - 1],
         history: state.history.slice(0, -1),
         speechEvent: null,
+        isUndoing: true,
       };
     }
 
@@ -232,6 +243,54 @@ export default function BobsTwentySeven() {
 
   const allDone = state.playerStates.every((p) => p.isBust || p.isFinished);
   const isGameOver = allDone && state.playerStates.every((p) => p.isBust);
+  const { isFastBot, delay } = useBotDelay(state.isUndoing, 1200);
+  const activePlayer = state.playerStates[state.currentIndex];
+
+  const [historicalBaseline, setHistoricalBaseline] = useState<
+    number | undefined
+  >(undefined);
+  const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
+  useEffect(() => {
+    const fetchBaseline = async () => {
+      if (players) {
+        const humanNames = players.filter((p: string) => !isBot(p));
+        const baseline = await getPlayersHistoricalBaseline(
+          humanNames,
+          "Bob's 27",
+        );
+        setHistoricalBaseline(baseline);
+        setIsBaselineLoaded(true);
+      }
+    };
+    fetchBaseline();
+  }, [players]);
+
+  const botAvg = resolveBotAverage(
+    activePlayer.name,
+    state.playerStates,
+    "Bob's 27",
+    undefined,
+    historicalBaseline,
+  );
+
+  useBotTurn({
+    condition: isBaselineLoaded && !allDone && !state.isUndoing,
+    botAvg,
+    delay,
+    historyLength: state.history.length,
+    calculate: () => {
+      const isBull = TARGETS[activePlayer.currentTargetIdx] === 25;
+      return simulateBobsBotThrow(botAvg!, isBull);
+    },
+    execute: (hit) => handleThrow(hit),
+    dependencies: [
+      state.currentIndex,
+      state.throwsThisTurn,
+      isFastBot,
+      botAvg,
+      isBaselineLoaded,
+    ],
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -485,22 +544,30 @@ export default function BobsTwentySeven() {
       </ScrollView>
 
       {!allDone && (
-        <TrainingKeyboard
+        <BotAwareKeyboard
           playerName={currentPlayer.name}
-          instructionText={(t(language, "hitLower") || "hit") + ":"}
-          targetValue={
-            "D" +
-            (TARGETS[currentPlayer.currentTargetIdx] === 25
-              ? bullTerm
-              : TARGETS[currentPlayer.currentTargetIdx])
-          }
-          hitLabel="HIT DOUBLE"
-          missLabel={missTerm}
-          onHit={() => handleThrow(true)}
-          onMiss={() => handleThrow(false)}
           onUndo={() => dispatch({ type: "UNDO" })}
           theme={theme}
-        />
+          language={language}
+          botStyle={[styles.keyboard, { padding: 16 }]}
+        >
+          <TrainingKeyboard
+            playerName={currentPlayer.name}
+            instructionText={(t(language, "hitLower") || "hit") + ":"}
+            targetValue={
+              "D" +
+              (TARGETS[currentPlayer.currentTargetIdx] === 25
+                ? bullTerm
+                : TARGETS[currentPlayer.currentTargetIdx])
+            }
+            hitLabel="HIT DOUBLE"
+            missLabel={missTerm}
+            onHit={() => handleThrow(true)}
+            onMiss={() => handleThrow(false)}
+            onUndo={() => dispatch({ type: "UNDO" })}
+            theme={theme}
+          />
+        </BotAwareKeyboard>
       )}
 
       <FinishModal
@@ -562,4 +629,9 @@ const getSpecificStyles = (theme: any) =>
       gap: 8,
     },
     statusTextEnd: { fontSize: 16, fontWeight: "900", letterSpacing: 1 },
+    keyboard: {
+      padding: 16,
+      backgroundColor: theme.colors.cardBorder,
+      paddingBottom: 30,
+    },
   });

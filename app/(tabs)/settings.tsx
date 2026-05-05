@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -47,6 +48,18 @@ export default function Settings() {
   const { isSpeechEnabled, toggleSpeech } = useSpeech();
 
   const [isLangModalVisible, setLangModalVisible] = useState(false);
+  const [isFastBotEnabled, setIsFastBotEnabled] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem("@fast_bot_enabled").then((val) =>
+      setIsFastBotEnabled(val === "true"),
+    );
+  }, []);
+
+  const toggleFastBot = async (val: boolean) => {
+    setIsFastBotEnabled(val);
+    await AsyncStorage.setItem("@fast_bot_enabled", val ? "true" : "false");
+  };
   const animValue = useRef(new Animated.Value(0)).current;
 
   const openModal = () => {
@@ -301,6 +314,31 @@ export default function Settings() {
               />
             </View>
           )}
+
+          <View style={styles.settingRow}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons
+                name="flash-outline"
+                size={22}
+                color={theme.colors.textMuted}
+                style={{ marginRight: 10 }}
+              />
+              <Text style={styles.settingLabel}>
+                {t(language, "fastBot") || "Fast bot throw"}
+              </Text>
+            </View>
+            <Switch
+              value={isFastBotEnabled}
+              onValueChange={toggleFastBot}
+              trackColor={{
+                false: theme.colors.cardBorder,
+                true: theme.colors.primaryLight,
+              }}
+              thumbColor={
+                isFastBotEnabled ? theme.colors.primary : theme.colors.textLight
+              }
+            />
+          </View>
         </View>
 
         <View style={styles.infoFooter}>
@@ -448,13 +486,6 @@ const getStyles = (theme: any) =>
       fontSize: 16,
       fontWeight: "600",
       color: theme.colors.textMain,
-    },
-    settingDescription: {
-      fontSize: 13,
-      color: theme.colors.textLight,
-      marginTop: 4,
-      paddingRight: 20,
-      paddingLeft: 32,
     },
 
     infoFooter: { alignItems: "center", marginTop: 20 },
