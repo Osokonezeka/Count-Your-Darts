@@ -255,6 +255,7 @@
   "player2": "Player 2",
   "teamOverlapTitle": "Player Conflict",
   "teamOverlapMsg": "One of the players is already in another selected team.",
+  "teamAlreadyExists": "A team with these players already exists.",
   "selectTeamsTitle": "Select teams",
   "tournamentLoadError": "Error loading tournament data.",
   "matchStatsTitle": "Match Statistics",
