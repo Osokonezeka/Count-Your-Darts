@@ -255,6 +255,7 @@
   "player2": "Gracz 2",
   "teamOverlapTitle": "Konflikt graczy",
   "teamOverlapMsg": "Jeden z graczy znajduje się już w innej wybranej drużynie.",
+  "teamAlreadyExists": "Drużyna z tymi graczami już istnieje.",
   "selectTeamsTitle": "Wybierz drużyny",
   "tournamentLoadError": "Błąd ładowania danych turnieju.",
   "matchStatsTitle": "Statystyki Meczu",

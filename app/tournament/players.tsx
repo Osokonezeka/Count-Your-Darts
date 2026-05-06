@@ -33,7 +33,6 @@ import CustomAlert from "../../components/modals/CustomAlert";
 import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
 import { PlayerModal } from "../../components/modals/PlayerModal";
 import { useLanguage } from "../../context/LanguageContext";
-import { usePlayers } from "../../context/PlayersContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
@@ -100,7 +99,6 @@ export default function TournamentPlayersScreen() {
   const { theme } = useTheme();
   const { language } = useLanguage();
   const router = useRouter();
-  const { players, addPlayer, removePlayer, updatePlayer } = usePlayers();
   const styles = useMemo(
     () => ({
       ...getSharedTournamentStyles(theme),
@@ -151,6 +149,7 @@ export default function TournamentPlayersScreen() {
 
   const [isBackModalVisible, setBackModalVisible] = useState(false);
   const [duplicateErrorVisible, setDuplicateErrorVisible] = useState(false);
+  const [duplicateTeamErrorVisible, setDuplicateTeamErrorVisible] = useState(false);
   const [overlapAlertVisible, setOverlapAlertVisible] = useState(false);
   const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
 
@@ -177,28 +176,6 @@ export default function TournamentPlayersScreen() {
     };
     loadDb();
   }, []);
-
-  useEffect(() => {
-    if (!isDbLoaded) return;
-    setTournamentPlayersDb((prev) => {
-      let updated = [...prev];
-      let changed = false;
-      players.forEach((pName) => {
-        if (!updated.some((p) => !p.isTeam && p.name === pName)) {
-          updated.push({
-            id: Date.now().toString() + Math.random().toString(),
-            name: pName,
-            isTeam: false,
-          });
-          changed = true;
-        }
-      });
-      if (changed) {
-        saveToDb(updated);
-      }
-      return updated;
-    });
-  }, [players, isDbLoaded]);
 
   useEffect(() => {
     setVisibleCount(25);
@@ -306,7 +283,6 @@ export default function TournamentPlayersScreen() {
       updatedDb = tournamentPlayersDb.map((p) =>
         p.id === editingPlayer.id ? { ...p, name: trimmed } : p,
       );
-      updatePlayer(editingPlayer.name, trimmed);
     } else {
       const newPlayer: Player = { id: Date.now().toString(), name: trimmed };
       updatedDb = [...tournamentPlayersDb, newPlayer];
@@ -319,7 +295,6 @@ export default function TournamentPlayersScreen() {
         );
       }
       setPlayerSearchQuery("");
-      addPlayer(trimmed);
     }
 
     setTournamentPlayersDb(updatedDb);
@@ -337,6 +312,19 @@ export default function TournamentPlayersScreen() {
     if (teamMembers.length !== 2) return;
     const p1 = teamMembers[0];
     const p2 = teamMembers[1];
+
+    const identicalTeamExists = tournamentPlayersDb.some(
+      (p) =>
+        (editingPlayer ? p.id !== editingPlayer.id : true) &&
+        p.isTeam &&
+        p.members &&
+        p.members.includes(p1) &&
+        p.members.includes(p2),
+    );
+    if (identicalTeamExists) {
+      setDuplicateTeamErrorVisible(true);
+      return;
+    }
 
     const tName = teamNameInput.trim() || `${p1} & ${p2}`;
 
@@ -401,9 +389,6 @@ export default function TournamentPlayersScreen() {
         setTimeout(() => setOverlapAlertVisible(true), 0);
       }
       setPlayerSearchQuery("");
-
-      addPlayer(p1);
-      addPlayer(p2);
     }
 
     setTournamentPlayersDb(updatedDb);
@@ -510,9 +495,6 @@ export default function TournamentPlayersScreen() {
       );
     }
 
-    if (!playerToDelete.isTeam) {
-      removePlayer(playerToDelete.name);
-    }
     setPlayerToDelete(null);
   };
 
@@ -979,6 +961,23 @@ export default function TournamentPlayersScreen() {
                               onPress={() => {
                                 setTeamMembers((prev) => [...prev, newName]);
                                 setTeamSearchQuery("");
+                            setTournamentPlayersDb((prevDb) => {
+                              const exists = prevDb.some(
+                                (p) =>
+                                  !p.isTeam &&
+                                  p.name.toLowerCase() === newName.toLowerCase(),
+                              );
+                              if (!exists) {
+                                const newPlayer: Player = {
+                                  id: Date.now().toString() + Math.random().toString().substring(2, 8),
+                                  name: newName,
+                                };
+                                const updatedDb = [...prevDb, newPlayer];
+                                saveToDb(updatedDb);
+                                return updatedDb;
+                              }
+                              return prevDb;
+                            });
                               }}
                             >
                               <Text style={styles.availablePlayerTextHighlight}>
@@ -1092,6 +1091,23 @@ export default function TournamentPlayersScreen() {
             text: t(language, "ok") || "OK",
             style: "default",
             onPress: () => setDuplicateErrorVisible(false),
+          },
+        ]}
+      />
+
+      <CustomAlert
+        visible={duplicateTeamErrorVisible}
+        title={t(language, "error") || "Error"}
+        message={
+          t(language, "teamAlreadyExists") ||
+          "A team with these players already exists."
+        }
+        onRequestClose={() => setDuplicateTeamErrorVisible(false)}
+        buttons={[
+          {
+            text: t(language, "ok") || "OK",
+            style: "default",
+            onPress: () => setDuplicateTeamErrorVisible(false),
           },
         ]}
       />
