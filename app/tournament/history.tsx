@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -11,13 +11,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import CustomAlert from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { t } from "../../lib/i18n";
-import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
-import { Tournament, Match } from "../../lib/statsUtils";
+import { Match, Tournament } from "../../lib/statsUtils";
 
 export default function TournamentHistoryScreen() {
   const { theme } = useTheme();
@@ -31,16 +31,6 @@ export default function TournamentHistoryScreen() {
   );
   const insets = useSafeAreaInsets();
   const router = useRouter();
-
-  const formatLabels: Record<string, string> = {
-    single_knockout: t(language, "singleKnockout") || "Single Knockout",
-    double_knockout: t(language, "doubleKnockout") || "Double Knockout",
-    round_robin: t(language, "roundRobin") || "Round Robin",
-    groups_and_knockout:
-      t(language, "groupsAndKnockout") || "Groups + Knockout",
-    groups_and_double_knockout:
-      t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
-  };
 
   const [history, setHistory] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,11 +56,11 @@ export default function TournamentHistoryScreen() {
     }
   };
 
-  const confirmDelete = (id: string) => {
+  const confirmDelete = useCallback((id: string) => {
     setDeleteAlert({ visible: true, id });
-  };
+  }, []);
 
-  const deleteHistoryItem = async () => {
+  const deleteHistoryItem = useCallback(async () => {
     try {
       const updatedHistory = history.filter(
         (item) => item.id !== deleteAlert.id,
@@ -84,169 +74,182 @@ export default function TournamentHistoryScreen() {
       console.error(e);
     }
     setDeleteAlert({ visible: false, id: "" });
-  };
+  }, [history, deleteAlert.id]);
 
-  const renderItem = ({ item }: { item: Tournament }) => {
-    const date = new Date(item.finishedAt || "").toLocaleDateString(
-      language === "pl" ? "pl-PL" : "en-US",
-      {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      },
-    );
+  const renderItem = useCallback(
+    ({ item }: { item: Tournament }) => {
+      const date = new Date(item.finishedAt || "").toLocaleDateString(
+        language === "pl" ? "pl-PL" : "en-US",
+        {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+      );
 
-    let winnerName = t(language, "unknown") || "Unknown";
-    let secondPlaceName = "";
+      const formatLabels: Record<string, string> = {
+        single_knockout: t(language, "singleKnockout") || "Single Knockout",
+        double_knockout: t(language, "doubleKnockout") || "Double Knockout",
+        round_robin: t(language, "roundRobin") || "Round Robin",
+        groups_and_knockout:
+          t(language, "groupsAndKnockout") || "Groups + Knockout",
+        groups_and_double_knockout:
+          t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
+      };
 
-    if (item.settings?.format === "round_robin") {
-      const stats: Record<
-        string,
-        { won: number; legsFor: number; legsAgainst: number }
-      > = {};
-      item.players?.forEach((p) => {
-        stats[p.name] = { won: 0, legsFor: 0, legsAgainst: 0 };
-      });
-      item.bracket?.forEach((m: Match) => {
-        if (m.isBye || !m.winner || !m.player1 || !m.player2) return;
-        if (m.winner.id === m.player1.id) stats[m.player1.name].won++;
-        else stats[m.player2.name].won++;
-        if (m.score) {
-          if ((item.settings?.targetSets || 1) > 1) {
-            stats[m.player1.name].legsFor += m.score.p1Sets || 0;
-            stats[m.player1.name].legsAgainst += m.score.p2Sets || 0;
-            stats[m.player2.name].legsFor += m.score.p2Sets || 0;
-            stats[m.player2.name].legsAgainst += m.score.p1Sets || 0;
-          } else {
-            stats[m.player1.name].legsFor += m.score.p1Legs || 0;
-            stats[m.player1.name].legsAgainst += m.score.p2Legs || 0;
-            stats[m.player2.name].legsFor += m.score.p2Legs || 0;
-            stats[m.player2.name].legsAgainst += m.score.p1Legs || 0;
+      let winnerName = t(language, "unknown") || "Unknown";
+      let secondPlaceName = "";
+
+      if (item.settings?.format === "round_robin") {
+        const stats: Record<
+          string,
+          { won: number; legsFor: number; legsAgainst: number }
+        > = {};
+        item.players?.forEach((p) => {
+          stats[p.name] = { won: 0, legsFor: 0, legsAgainst: 0 };
+        });
+        item.bracket?.forEach((m: Match) => {
+          if (m.isBye || !m.winner || !m.player1 || !m.player2) return;
+          if (m.winner.id === m.player1.id) stats[m.player1.name].won++;
+          else stats[m.player2.name].won++;
+          if (m.score) {
+            if ((item.settings?.targetSets || 1) > 1) {
+              stats[m.player1.name].legsFor += m.score.p1Sets || 0;
+              stats[m.player1.name].legsAgainst += m.score.p2Sets || 0;
+              stats[m.player2.name].legsFor += m.score.p2Sets || 0;
+              stats[m.player2.name].legsAgainst += m.score.p1Sets || 0;
+            } else {
+              stats[m.player1.name].legsFor += m.score.p1Legs || 0;
+              stats[m.player1.name].legsAgainst += m.score.p2Legs || 0;
+              stats[m.player2.name].legsFor += m.score.p2Legs || 0;
+              stats[m.player2.name].legsAgainst += m.score.p1Legs || 0;
+            }
+          }
+        });
+        const sorted = Object.keys(stats).sort((a, b) => {
+          if (stats[b].won !== stats[a].won) return stats[b].won - stats[a].won;
+          const diffA = stats[a].legsFor - stats[a].legsAgainst;
+          const diffB = stats[b].legsFor - stats[b].legsAgainst;
+          return diffB - diffA;
+        });
+        if (sorted.length > 0) winnerName = sorted[0];
+        if (sorted.length > 1) secondPlaceName = sorted[1];
+      } else {
+        const koMatches = item.bracket?.filter(
+          (b) => b.phase === "knockout" || !b.phase,
+        );
+        if (koMatches && koMatches.length > 0) {
+          const totalR = Math.max(...koMatches.map((b: Match) => b.round || 0));
+          const finalMatch = koMatches.find(
+            (m) => m.round === totalR && !m.isThirdPlace,
+          );
+          if (finalMatch && finalMatch.winner) {
+            winnerName = finalMatch.winner.name;
+            secondPlaceName =
+              (finalMatch.player1?.id === finalMatch.winner.id
+                ? finalMatch.player2?.name
+                : finalMatch.player1?.name) || "";
           }
         }
-      });
-      const sorted = Object.keys(stats).sort((a, b) => {
-        if (stats[b].won !== stats[a].won) return stats[b].won - stats[a].won;
-        const diffA = stats[a].legsFor - stats[a].legsAgainst;
-        const diffB = stats[b].legsFor - stats[b].legsAgainst;
-        return diffB - diffA;
-      });
-      if (sorted.length > 0) winnerName = sorted[0];
-      if (sorted.length > 1) secondPlaceName = sorted[1];
-    } else {
-      const koMatches = item.bracket?.filter(
-        (b) => b.phase === "knockout" || !b.phase,
-      );
-      if (koMatches && koMatches.length > 0) {
-        const totalR = Math.max(...koMatches.map((b: Match) => b.round || 0));
-        const finalMatch = koMatches.find(
-          (m) => m.round === totalR && !m.isThirdPlace,
-        );
-        if (finalMatch && finalMatch.winner) {
-          winnerName = finalMatch.winner.name;
-          secondPlaceName =
-            (finalMatch.player1?.id === finalMatch.winner.id
-              ? finalMatch.player2?.name
-              : finalMatch.player1?.name) || "";
-        }
       }
-    }
 
-    const formatName = item.settings?.format
-      ? formatLabels[item.settings.format]
-      : "";
-    const pts = item.settings?.startingPoints || item.settings?.points || 501;
-    const sets = item.settings?.targetSets || item.settings?.sets || 1;
-    const legs = item.settings?.targetLegs || item.settings?.legs || 1;
-    const isTeam = item.settings?.teamSize === "team";
+      const formatName = item.settings?.format
+        ? formatLabels[item.settings.format]
+        : "";
+      const pts = item.settings?.startingPoints || item.settings?.points || 501;
+      const sets = item.settings?.targetSets || item.settings?.sets || 1;
+      const legs = item.settings?.targetLegs || item.settings?.legs || 1;
+      const isTeam = item.settings?.teamSize === "team";
 
-    return (
-      <TouchableOpacity
-        style={styles.historyCard}
-        onPress={() =>
-          router.push({
-            pathname: "/tournament/bracket",
-            params: {
-              tournamentData: JSON.stringify(item.settings),
-              playersData: JSON.stringify(item.players),
-              bracketData: JSON.stringify(item.bracket),
-              isHistoryView: "true",
-            },
-          })
-        }
-      >
-        <View style={styles.cardHeader}>
-          <Text style={styles.dateText}>{date}</Text>
-          <TouchableOpacity onPress={() => confirmDelete(item.id)}>
-            <Ionicons
-              name="trash-outline"
-              size={20}
-              color={theme.colors.danger}
-            />
-          </TouchableOpacity>
-        </View>
+      return (
+        <TouchableOpacity
+          style={styles.historyCard}
+          onPress={() =>
+            router.push({
+              pathname: "/tournament/bracket",
+              params: {
+                tournamentData: JSON.stringify(item.settings),
+                playersData: JSON.stringify(item.players),
+                bracketData: JSON.stringify(item.bracket),
+                isHistoryView: "true",
+              },
+            })
+          }
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.dateText}>{date}</Text>
+            <TouchableOpacity onPress={() => confirmDelete(item.id)}>
+              <Ionicons
+                name="trash-outline"
+                size={20}
+                color={theme.colors.danger}
+              />
+            </TouchableOpacity>
+          </View>
 
-        <Text style={styles.tournamentName}>
-          {String(item.settings?.name || "")}
-        </Text>
+          <Text style={styles.tournamentName}>
+            {String(item.settings?.name || "")}
+          </Text>
 
-        <View style={styles.tagsContainer}>
-          {formatName && (
+          <View style={styles.tagsContainer}>
+            {formatName && (
+              <View style={styles.tag}>
+                <Ionicons
+                  name="git-network-outline"
+                  size={12}
+                  color={theme.colors.textMuted}
+                />
+                <Text style={styles.tagText}>{formatName}</Text>
+              </View>
+            )}
             <View style={styles.tag}>
               <Ionicons
-                name="git-network-outline"
+                name="options-outline"
                 size={12}
                 color={theme.colors.textMuted}
               />
-              <Text style={styles.tagText}>{formatName}</Text>
+              <Text style={styles.tagText}>
+                {sets}S / {legs}L / {pts}
+              </Text>
             </View>
-          )}
-          <View style={styles.tag}>
-            <Ionicons
-              name="options-outline"
-              size={12}
-              color={theme.colors.textMuted}
-            />
-            <Text style={styles.tagText}>
-              {sets}S / {legs}L / {pts}
-            </Text>
+            <View style={styles.tag}>
+              <Ionicons
+                name={isTeam ? "people" : "person"}
+                size={12}
+                color={theme.colors.textMuted}
+              />
+              <Text style={styles.tagText}>{isTeam ? "2v2" : "1v1"}</Text>
+            </View>
+            <View style={styles.tag}>
+              <Ionicons name="list" size={12} color={theme.colors.textMuted} />
+              <Text style={styles.tagText}>
+                {item.players?.length || 0}{" "}
+                {isTeam
+                  ? t(language, "teamsCount") || "teams"
+                  : t(language, "playersShort") || "players"}
+              </Text>
+            </View>
           </View>
-          <View style={styles.tag}>
-            <Ionicons
-              name={isTeam ? "people" : "person"}
-              size={12}
-              color={theme.colors.textMuted}
-            />
-            <Text style={styles.tagText}>{isTeam ? "2v2" : "1v1"}</Text>
-          </View>
-          <View style={styles.tag}>
-            <Ionicons name="list" size={12} color={theme.colors.textMuted} />
-            <Text style={styles.tagText}>
-              {item.players?.length || 0}{" "}
-              {isTeam
-                ? t(language, "teamsCount") || "teams"
-                : t(language, "playersShort") || "players"}
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.podiumContainer}>
-          <View style={styles.podiumRow}>
-            <Ionicons name="trophy" size={16} color={theme.colors.warning} />
-            <Text style={styles.winnerText}>{winnerName}</Text>
-          </View>
-          {!!secondPlaceName && (
-            <View style={[styles.podiumRow, { marginTop: 6 }]}>
-              <Ionicons name="medal" size={14} color="#C0C0C0" />
-              <Text style={styles.secondPlaceText}>{secondPlaceName}</Text>
+          <View style={styles.podiumContainer}>
+            <View style={styles.podiumRow}>
+              <Ionicons name="trophy" size={16} color={theme.colors.warning} />
+              <Text style={styles.winnerText}>{winnerName}</Text>
             </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
+            {!!secondPlaceName && (
+              <View style={[styles.podiumRow, { marginTop: 6 }]}>
+                <Ionicons name="medal" size={14} color="#C0C0C0" />
+                <Text style={styles.secondPlaceText}>{secondPlaceName}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [language, theme, router, confirmDelete],
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

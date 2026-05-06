@@ -153,8 +153,97 @@ export const isBot = (name: string): boolean => {
 export const parseDateString = (dateStr: string): Date => {
   if (!dateStr) return new Date(0);
 
+  const match = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4}),\s(\d{2}):(\d{2})$/);
+  if (match) {
+    const [, day, month, year, hour, minute] = match;
+    return new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+    );
+  }
+
   const parsed = dayjs(dateStr);
   return parsed.isValid() ? parsed.toDate() : new Date(0);
+};
+
+const calculatePlayerMatchStats = (
+  playerId: string | undefined,
+  isP1: boolean,
+  att: number,
+  history: LegLog[],
+) => {
+  let totalScore = 0,
+    totalTurns = 0,
+    f9S = 0,
+    f9T = 0,
+    c60 = 0,
+    c80 = 0,
+    c100 = 0,
+    c120 = 0,
+    c140 = 0,
+    c170 = 0,
+    c180 = 0,
+    hF = 0,
+    f100 = 0,
+    bL = 9999,
+    wL = 0,
+    lW = 0;
+
+  history.forEach((leg) => {
+    const thr = isP1 ? leg.p1Throws || [] : leg.p2Throws || [];
+    if (leg.winnerId === playerId) lW++;
+    thr.forEach((t: string, idx: number) => {
+      const val = t === "BUST" ? 0 : parseInt(t);
+      totalScore += val;
+      totalTurns++;
+      if (idx < 3) {
+        f9S += val;
+        f9T++;
+      }
+      if (val >= 60 && val < 80) c60++;
+      else if (val >= 80 && val < 100) c80++;
+      else if (val >= 100 && val < 120) c100++;
+      else if (val >= 120 && val < 140) c120++;
+      else if (val >= 140 && val < 170) c140++;
+      else if (val >= 170 && val < 180) c170++;
+      else if (val === 180) c180++;
+    });
+    if (thr.length > 0) {
+      const darts = thr.length * 3;
+      if (darts < bL) bL = darts;
+      if (darts > wL) wL = darts;
+    }
+    if (leg.winnerId === playerId && thr.length > 0) {
+      const last = parseInt(thr[thr.length - 1]);
+      if (last > hF) hF = last;
+      if (last >= 100) f100++;
+    }
+  });
+
+  const coPct = att > 0 ? ((lW / att) * 100).toFixed(1) : "0.0";
+  const totalDarts = totalTurns * 3;
+
+  return {
+    lW,
+    avg: totalTurns > 0 ? (totalScore / totalTurns).toFixed(2) : "0.00",
+    f9: f9T > 0 ? (f9S / f9T).toFixed(2) : "0.00",
+    c60,
+    c80,
+    c100,
+    c120,
+    c140,
+    c170,
+    c180,
+    hF,
+    f100,
+    bL: bL === 9999 ? "-" : bL,
+    wL: wL === 0 ? "-" : wL,
+    checkout: `${coPct}% (${lW}/${att})`,
+    totalDarts,
+  };
 };
 
 export const generateMatchStats = (
@@ -163,87 +252,16 @@ export const generateMatchStats = (
   p1Att: number,
   p2Att: number,
 ): MatchStatItem[] => {
-  const calc = (playerId: string | undefined, isP1: boolean, att: number) => {
-    let totalScore = 0,
-      totalTurns = 0,
-      f9S = 0,
-      f9T = 0,
-      c60 = 0,
-      c80 = 0,
-      c100 = 0,
-      c120 = 0,
-      c140 = 0,
-      c170 = 0,
-      c180 = 0,
-      hF = 0,
-      f100 = 0,
-      bL = 9999,
-      wL = 0,
-      lW = 0;
-
-    history.forEach((leg) => {
-      const thr = isP1 ? leg.p1Throws || [] : leg.p2Throws || [];
-      if (leg.winnerId === playerId) lW++;
-      thr.forEach((t: string, idx: number) => {
-        const val = t === "BUST" ? 0 : parseInt(t);
-        totalScore += val;
-        totalTurns++;
-        if (idx < 3) {
-          f9S += val;
-          f9T++;
-        }
-        if (val >= 60 && val < 80) c60++;
-        else if (val >= 80 && val < 100) c80++;
-        else if (val >= 100 && val < 120) c100++;
-        else if (val >= 120 && val < 140) c120++;
-        else if (val >= 140 && val < 170) c140++;
-        else if (val >= 170 && val < 180) c170++;
-        else if (val === 180) c180++;
-      });
-      if (thr.length > 0) {
-        const darts = thr.length * 3;
-        if (darts < bL) bL = darts;
-        if (darts > wL) wL = darts;
-      }
-      if (leg.winnerId === playerId && thr.length > 0) {
-        const last = parseInt(thr[thr.length - 1]);
-        if (last > hF) hF = last;
-        if (last >= 100) f100++;
-      }
-    });
-
-    const coPct = att > 0 ? ((lW / att) * 100).toFixed(1) : "0.0";
-    const totalDarts = totalTurns * 3;
-
-    return {
-      lW,
-      avg: totalTurns > 0 ? (totalScore / totalTurns).toFixed(2) : "0.00",
-      f9: f9T > 0 ? (f9S / f9T).toFixed(2) : "0.00",
-      c60,
-      c80,
-      c100,
-      c120,
-      c140,
-      c170,
-      c180,
-      hF,
-      f100,
-      bL: bL === 9999 ? "-" : bL,
-      wL: wL === 0 ? "-" : wL,
-      checkout: `${coPct}% (${lW}/${att})`,
-      totalDarts,
-    };
-  };
-
-  const s1 = calc(
+  const s1 = calculatePlayerMatchStats(
     match.player1?.id || (match.players && match.players[0]?.id) || "",
     true,
     p1Att,
+    history,
   );
   const s2 = match.player2
-    ? calc(match.player2.id, false, p2Att)
+    ? calculatePlayerMatchStats(match.player2.id, false, p2Att, history)
     : match.players && match.players.length > 1
-      ? calc(match.players[1].id, false, p2Att)
+      ? calculatePlayerMatchStats(match.players[1].id, false, p2Att, history)
       : null;
 
   const rawStats: MatchStatItem[] = [
@@ -298,11 +316,137 @@ const formatPlayerMap = (
     }));
 };
 
+const createEmptyAggregatedStats = (name: string): AggregatedStats => {
+  const stats: AggregatedStats = {
+    name,
+    mPlayed: 0,
+    mWon: 0,
+    lWon: 0,
+    totalPoints: 0,
+    totalDarts: 0,
+    first9Points: 0,
+    first9Count: 0,
+    checkoutDarts: 0,
+    checkoutHits: 0,
+    s180: 0,
+    s140: 0,
+    s100: 0,
+    s60: 0,
+    tPlayed: 0,
+    t1st: 0,
+    t2nd: 0,
+    hits: {},
+    coords: [],
+  };
+  [...Array(20)].forEach((_, i) => (stats.hits[i + 1] = { S: 0, D: 0, T: 0 }));
+  stats.hits[25] = { S: 0, D: 0, T: 0 };
+  stats.hits[0] = { S: 0, D: 0, T: 0 };
+  return stats;
+};
+
+const hasBuggyCompressedTurns = (p: PlayerMatchStats): boolean => {
+  if (!p.allTurns || p.totalMatchDarts === undefined) return false;
+
+  const turns = p.allTurns;
+  const sumOfLengths = turns.reduce(
+    (acc: number, t: Turn) => acc + t.length,
+    0,
+  );
+  return (
+    p.totalMatchDarts > sumOfLengths &&
+    !turns.some((t: Turn) =>
+      t.some(
+        (d: TurnDart) =>
+          typeof d === "object" && d !== null && d.d !== undefined,
+      ),
+    )
+  );
+};
+
+const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
+  if (!p.allTurns) return;
+
+  const turns = p.allTurns;
+  const isBuggyCompressed = hasBuggyCompressedTurns(p);
+
+  turns.forEach((turn: Turn, index: number) => {
+    const turnSum = turn.reduce(
+      (a: number, b: TurnDart) =>
+        a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
+      0,
+    );
+
+    let turnDarts = turn.reduce(
+      (a: number, b: TurnDart) =>
+        a +
+        (typeof b === "number"
+          ? 1
+          : typeof b === "object" && b !== null && b.d !== undefined
+            ? b.d
+            : 1),
+      0,
+    );
+    if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
+      turnDarts =
+        index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
+    }
+
+    s.totalPoints += turnSum;
+    s.totalDarts += turnDarts;
+    if (index < 3) {
+      s.first9Points += turnSum;
+      s.first9Count += turnDarts;
+    }
+
+    if (turnSum >= 180) s.s180++;
+    else if (turnSum >= 140) s.s140++;
+    else if (turnSum >= 100) s.s100++;
+    else if (turnSum >= 60) s.s60++;
+
+    turn.forEach((dart: TurnDart) => {
+      const isScoreInput =
+        (typeof dart === "object" && dart !== null && dart.i === true) ||
+        isBuggyCompressed;
+
+      if (isScoreInput) return;
+      if (typeof dart === "object" && dart !== null && dart.c)
+        s.coords.push(dart.c);
+
+      if (typeof dart === "object" && dart !== null && dart.v !== undefined) {
+        const target = dart.v;
+        const mult = dart.m;
+        if (s.hits && typeof s.hits === "object" && s.hits[target]) {
+          if (mult === 1) s.hits[target].S++;
+          if (mult === 2) s.hits[target].D++;
+          if (mult === 3) s.hits[target].T++;
+        }
+      }
+    });
+  });
+};
+
+const processStringThrows = (s: AggregatedStats, throws: string[]) => {
+  throws.forEach((tStr, idx) => {
+    const val = tStr === "BUST" ? 0 : parseInt(tStr);
+    s.totalPoints += val;
+    s.totalDarts += 3;
+    if (idx < 3) {
+      s.first9Points += val;
+      s.first9Count += 3;
+    }
+    if (val >= 180) s.s180++;
+    else if (val >= 140) s.s140++;
+    else if (val >= 100) s.s100++;
+    else if (val >= 60) s.s60++;
+  });
+};
+
 const processX01MatchesIncremental = (
   matches: Match[],
   existingMap: Record<string, AggregatedStats> = {},
 ): Record<string, AggregatedStats> => {
   const playerMap: Record<string, AggregatedStats> = cloneDeep(existingMap);
+
   matches.forEach((match) => {
     if (match.mode !== "X01") return;
     if (!match.players) return;
@@ -313,112 +457,18 @@ const processX01MatchesIncremental = (
         (b.legs || 0) - (a.legs || 0) ||
         (a.score || 0) - (b.score || 0),
     )[0];
+
     match.players.forEach((p) => {
       if (!playerMap[p.name]) {
-        playerMap[p.name] = {
-          name: p.name,
-          mPlayed: 0,
-          mWon: 0,
-          lWon: 0,
-          totalPoints: 0,
-          totalDarts: 0,
-          first9Points: 0,
-          first9Count: 0,
-          checkoutDarts: 0,
-          checkoutHits: 0,
-          s180: 0,
-          s140: 0,
-          s100: 0,
-          s60: 0,
-          tPlayed: 0,
-          t1st: 0,
-          t2nd: 0,
-          hits: {},
-          coords: [],
-        };
-        [...Array(20)].forEach(
-          (_, i) => (playerMap[p.name].hits[i + 1] = { S: 0, D: 0, T: 0 }),
-        );
-        playerMap[p.name].hits[25] = { S: 0, D: 0, T: 0 };
-        playerMap[p.name].hits[0] = { S: 0, D: 0, T: 0 };
+        playerMap[p.name] = createEmptyAggregatedStats(p.name);
       }
       const s = playerMap[p.name];
       s.mPlayed += 1;
       if (winner && p.name === winner.name) s.mWon += 1;
       s.checkoutDarts += p.checkoutDarts || 0;
       s.checkoutHits += p.checkoutHits || 0;
-      if (p.allTurns) {
-        const turns = p.allTurns;
-        const sumOfLengths = turns.reduce(
-          (acc: number, t: Turn) => acc + t.length,
-          0,
-        );
-        const isBuggyCompressed =
-          p.totalMatchDarts &&
-          p.totalMatchDarts > sumOfLengths &&
-          !turns.some((t: Turn) =>
-            t.some(
-              (d: TurnDart) =>
-                typeof d === "object" && d !== null && d.d !== undefined,
-            ),
-          );
 
-        turns.forEach((turn: Turn, index: number) => {
-          const turnSum = turn.reduce(
-            (a: number, b: TurnDart) =>
-              a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
-            0,
-          );
-
-          let turnDarts = turn.reduce(
-            (a: number, b: TurnDart) =>
-              a +
-              (typeof b === "number"
-                ? 1
-                : typeof b === "object" && b !== null && b.d !== undefined
-                  ? b.d
-                  : 1),
-            0,
-          );
-          if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
-            turnDarts =
-              index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
-          }
-
-          s.totalPoints += turnSum;
-          s.totalDarts += turnDarts;
-          if (index < 3) {
-            s.first9Points += turnSum;
-            s.first9Count += turnDarts;
-          }
-          if (turnSum >= 180) s.s180++;
-          else if (turnSum >= 140) s.s140++;
-          else if (turnSum >= 100) s.s100++;
-          else if (turnSum >= 60) s.s60++;
-          turn.forEach((dart: TurnDart) => {
-            const isScoreInput =
-              (typeof dart === "object" && dart !== null && dart.i === true) ||
-              isBuggyCompressed;
-            if (isScoreInput) return;
-            if (typeof dart === "object" && dart !== null && dart.c)
-              s.coords.push(dart.c);
-
-            if (
-              typeof dart === "object" &&
-              dart !== null &&
-              dart.v !== undefined
-            ) {
-              const target = dart.v;
-              const mult = dart.m;
-              if (s.hits && typeof s.hits === "object" && s.hits[target]) {
-                if (mult === 1) s.hits[target].S++;
-                if (mult === 2) s.hits[target].D++;
-                if (mult === 3) s.hits[target].T++;
-              }
-            }
-          });
-        });
-      }
+      processPlayerTurns(s, p);
     });
   });
   return playerMap;
@@ -518,105 +568,94 @@ const formatTournamentPlayerMap = (
     }));
 };
 
+const getTournamentPlacements = (
+  tourney: Tournament,
+): { firstPlace: string | null; secondPlace: string | null } => {
+  let firstPlace: string | null = null;
+  let secondPlace: string | null = null;
+
+  if (tourney.settings?.format === "round_robin") {
+    const rrStats: Record<
+      string,
+      { won: number; legsFor: number; legsAgainst: number }
+    > = {};
+    tourney.players?.forEach((p) => {
+      rrStats[p.name] = { won: 0, legsFor: 0, legsAgainst: 0 };
+    });
+    tourney.bracket?.forEach((m) => {
+      if (m.isBye || !m.winner || !m.player1 || !m.player2) return;
+      if (m.winner.id === m.player1.id) {
+        if (rrStats[m.player1.name]) rrStats[m.player1.name].won++;
+      } else {
+        if (rrStats[m.player2.name]) rrStats[m.player2.name].won++;
+      }
+      if (m.score) {
+        if ((tourney.settings?.targetSets || 1) > 1) {
+          if (rrStats[m.player1.name]) {
+            rrStats[m.player1.name].legsFor += m.score.p1Sets || 0;
+            rrStats[m.player1.name].legsAgainst += m.score.p2Sets || 0;
+          }
+          if (rrStats[m.player2.name]) {
+            rrStats[m.player2.name].legsFor += m.score.p2Sets || 0;
+            rrStats[m.player2.name].legsAgainst += m.score.p1Sets || 0;
+          }
+        } else {
+          if (rrStats[m.player1.name]) {
+            rrStats[m.player1.name].legsFor += m.score.p1Legs || 0;
+            rrStats[m.player1.name].legsAgainst += m.score.p2Legs || 0;
+          }
+          if (rrStats[m.player2.name]) {
+            rrStats[m.player2.name].legsFor += m.score.p2Legs || 0;
+            rrStats[m.player2.name].legsAgainst += m.score.p1Legs || 0;
+          }
+        }
+      }
+    });
+    const sorted = Object.keys(rrStats).sort((a, b) => {
+      if (rrStats[b].won !== rrStats[a].won)
+        return rrStats[b].won - rrStats[a].won;
+      const diffA = rrStats[a].legsFor - rrStats[a].legsAgainst;
+      const diffB = rrStats[b].legsFor - rrStats[b].legsAgainst;
+      return diffB - diffA;
+    });
+    if (sorted.length > 0) firstPlace = sorted[0];
+    if (sorted.length > 1) secondPlace = sorted[1];
+  } else {
+    const koMatches = tourney.bracket?.filter(
+      (b) => b.phase === "knockout" || !b.phase,
+    );
+    if (koMatches && koMatches.length > 0) {
+      const totalR = Math.max(...koMatches.map((b) => b.round || 0));
+      const finalMatch = koMatches.find(
+        (m) => m.round === totalR && !m.isThirdPlace,
+      );
+      if (finalMatch && finalMatch.winner) {
+        firstPlace = finalMatch.winner.name;
+        secondPlace =
+          (finalMatch.winner.id === finalMatch.player1?.id
+            ? finalMatch.player2?.name
+            : finalMatch.player1?.name) || null;
+      }
+    }
+  }
+
+  return { firstPlace, secondPlace };
+};
+
 const processTournamentMatchesIncremental = (
   tourneys: Tournament[],
   existingMap: Record<string, AggregatedStats> = {},
 ): Record<string, AggregatedStats> => {
   const playerMap: Record<string, AggregatedStats> = cloneDeep(existingMap);
-  tourneys.forEach((tourney) => {
-    let firstPlace: string | null = null;
-    let secondPlace: string | null = null;
 
-    if (tourney.settings?.format === "round_robin") {
-      const rrStats: Record<
-        string,
-        { won: number; legsFor: number; legsAgainst: number }
-      > = {};
-      tourney.players?.forEach((p) => {
-        rrStats[p.name] = { won: 0, legsFor: 0, legsAgainst: 0 };
-      });
-      tourney.bracket?.forEach((m) => {
-        if (m.isBye || !m.winner || !m.player1 || !m.player2) return;
-        if (m.winner.id === m.player1.id) {
-          if (rrStats[m.player1.name]) rrStats[m.player1.name].won++;
-        } else {
-          if (rrStats[m.player2.name]) rrStats[m.player2.name].won++;
-        }
-        if (m.score) {
-          if ((tourney.settings?.targetSets || 1) > 1) {
-            if (rrStats[m.player1.name]) {
-              rrStats[m.player1.name].legsFor += m.score.p1Sets || 0;
-              rrStats[m.player1.name].legsAgainst += m.score.p2Sets || 0;
-            }
-            if (rrStats[m.player2.name]) {
-              rrStats[m.player2.name].legsFor += m.score.p2Sets || 0;
-              rrStats[m.player2.name].legsAgainst += m.score.p1Sets || 0;
-            }
-          } else {
-            if (rrStats[m.player1.name]) {
-              rrStats[m.player1.name].legsFor += m.score.p1Legs || 0;
-              rrStats[m.player1.name].legsAgainst += m.score.p2Legs || 0;
-            }
-            if (rrStats[m.player2.name]) {
-              rrStats[m.player2.name].legsFor += m.score.p2Legs || 0;
-              rrStats[m.player2.name].legsAgainst += m.score.p1Legs || 0;
-            }
-          }
-        }
-      });
-      const sorted = Object.keys(rrStats).sort((a, b) => {
-        if (rrStats[b].won !== rrStats[a].won)
-          return rrStats[b].won - rrStats[a].won;
-        const diffA = rrStats[a].legsFor - rrStats[a].legsAgainst;
-        const diffB = rrStats[b].legsFor - rrStats[b].legsAgainst;
-        return diffB - diffA;
-      });
-      if (sorted.length > 0) firstPlace = sorted[0];
-      if (sorted.length > 1) secondPlace = sorted[1];
-    } else {
-      const koMatches = tourney.bracket?.filter(
-        (b) => b.phase === "knockout" || !b.phase,
-      );
-      if (koMatches && koMatches.length > 0) {
-        const totalR = Math.max(...koMatches.map((b) => b.round || 0));
-        const finalMatch = koMatches.find(
-          (m) => m.round === totalR && !m.isThirdPlace,
-        );
-        if (finalMatch && finalMatch.winner) {
-          firstPlace = finalMatch.winner.name;
-          secondPlace =
-            (finalMatch.winner.id === finalMatch.player1?.id
-              ? finalMatch.player2?.name
-              : finalMatch.player1?.name) || null;
-        }
-      }
+  const initPlayer = (name: string) => {
+    if (!playerMap[name]) {
+      playerMap[name] = createEmptyAggregatedStats(name);
     }
+  };
 
-    const initPlayer = (name: string) => {
-      if (!playerMap[name]) {
-        playerMap[name] = {
-          name,
-          mPlayed: 0,
-          mWon: 0,
-          lWon: 0,
-          totalPoints: 0,
-          totalDarts: 0,
-          first9Points: 0,
-          first9Count: 0,
-          s60: 0,
-          s100: 0,
-          s140: 0,
-          s180: 0,
-          checkoutHits: 0,
-          checkoutDarts: 0,
-          tPlayed: 0,
-          t1st: 0,
-          t2nd: 0,
-          hits: {},
-          coords: [],
-        };
-      }
-    };
+  tourneys.forEach((tourney) => {
+    const { firstPlace, secondPlace } = getTournamentPlacements(tourney);
 
     const participants = tourney.players?.map((p) => p.name) || [];
     participants.forEach((pName: string) => {
@@ -671,24 +710,9 @@ const processTournamentMatchesIncremental = (
           else if (p2Name && leg.winnerId === match.player2?.id)
             playerMap[p2Name].lWon++;
 
-          const processThrows = (throws: string[], name: string) => {
-            throws.forEach((tStr, idx) => {
-              const val = tStr === "BUST" ? 0 : parseInt(tStr);
-              playerMap[name].totalPoints += val;
-              playerMap[name].totalDarts += 3;
-              if (idx < 3) {
-                playerMap[name].first9Points += val;
-                playerMap[name].first9Count += 3;
-              }
-              if (val >= 180) playerMap[name].s180++;
-              else if (val >= 140) playerMap[name].s140++;
-              else if (val >= 100) playerMap[name].s100++;
-              else if (val >= 60) playerMap[name].s60++;
-            });
-          };
-
-          processThrows(leg.p1Throws || [], p1Name);
-          if (p2Name) processThrows(leg.p2Throws || [], p2Name);
+          processStringThrows(playerMap[p1Name], leg.p1Throws || []);
+          if (p2Name)
+            processStringThrows(playerMap[p2Name], leg.p2Throws || []);
         });
       }
     });
@@ -792,6 +816,38 @@ export const calculateTournamentStatistics = (
   return formatTournamentPlayerMap(playerMap, appliedNames);
 };
 
+const getPlayerX01MatchTrend = (match: Match, playerName: string) => {
+  const p = match.players?.find((player) => player.name === playerName);
+  if (!p || !p.allTurns) return null;
+
+  const turns = p.allTurns;
+  const isBuggyCompressed = hasBuggyCompressedTurns(p);
+  let pts = 0;
+  let darts = 0;
+
+  turns.forEach((turn: Turn) => {
+    pts += turn.reduce(
+      (a: number, b: TurnDart) =>
+        a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
+      0,
+    );
+    darts += isBuggyCompressed
+      ? 3
+      : turn.reduce(
+          (a: number, b: TurnDart) =>
+            a +
+            (typeof b === "number"
+              ? 1
+              : typeof b === "object" && b !== null && b.d !== undefined
+                ? b.d
+                : 1),
+          0,
+        );
+  });
+
+  return { pts, darts };
+};
+
 export const calculateTrendData = (
   history: Match[],
   appliedNames: string[],
@@ -819,51 +875,14 @@ export const calculateTrendData = (
     const last10 = playerMatches.slice(-10);
 
     last10.forEach((match) => {
-      const p = match.players?.find((player) => player.name === playerName);
-      if (p && p.allTurns) {
-        const turns = p.allTurns;
-        let pts = 0;
-        let darts = 0;
-        const sumOfLengths = turns.reduce(
-          (acc: number, t: Turn) => acc + t.length,
-          0,
-        );
-        const isBuggyCompressed =
-          p.totalMatchDarts &&
-          p.totalMatchDarts > sumOfLengths &&
-          !turns.some((t: Turn) =>
-            t.some(
-              (d: TurnDart) =>
-                typeof d === "object" && d !== null && d.d !== undefined,
-            ),
-          );
-        turns.forEach((turn: Turn) => {
-          pts += turn.reduce(
-            (a: number, b: TurnDart) =>
-              a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
-            0,
-          );
-          darts += isBuggyCompressed
-            ? 3
-            : turn.reduce(
-                (a: number, b: TurnDart) =>
-                  a +
-                  (typeof b === "number"
-                    ? 1
-                    : typeof b === "object" && b !== null && b.d !== undefined
-                      ? b.d
-                      : 1),
-                0,
-              );
-        });
-        if (darts > 0) {
-          dataPoints.push(Number(((pts / darts) * 3).toFixed(1)));
-          const d = parseDateString(match.date || "");
-          if (d.getTime() !== 0) {
-            labels.push(dayjs(d).format("DD.MM"));
-          } else {
-            labels.push((match.date || "").substring(0, 5));
-          }
+      const trend = getPlayerX01MatchTrend(match, playerName);
+      if (trend && trend.darts > 0) {
+        dataPoints.push(Number(((trend.pts / trend.darts) * 3).toFixed(1)));
+        const d = parseDateString(match.date || "");
+        if (d.getTime() !== 0) {
+          labels.push(dayjs(d).format("DD.MM"));
+        } else {
+          labels.push((match.date || "").substring(0, 5));
         }
       }
     });
@@ -871,6 +890,27 @@ export const calculateTrendData = (
       dataByPlayer[playerName] = { labels, datasets: [{ data: dataPoints }] };
   });
   return dataByPlayer;
+};
+
+const getTournamentPlayerTrend = (tourney: Tournament, playerName: string) => {
+  let tPoints = 0;
+  let tTurns = 0;
+  tourney.bracket?.forEach((match) => {
+    if (match.isBye || !match.winner || !match.logs) return;
+    const isP1 = match.player1?.name === playerName;
+    const isP2 = match.player2?.name === playerName;
+    if (!isP1 && !isP2) return;
+    match.logs.forEach((leg: LegLog) => {
+      const throws = isP1 ? leg.p1Throws : leg.p2Throws;
+      if (throws) {
+        throws.forEach((tStr) => {
+          tPoints += tStr === "BUST" ? 0 : parseInt(tStr);
+          tTurns++;
+        });
+      }
+    });
+  });
+  return { tPoints, tTurns };
 };
 
 export const calculateTournamentTrendData = (
@@ -905,22 +945,7 @@ export const calculateTournamentTrendData = (
     const last10 = playerTourneys.slice(-10);
 
     last10.forEach((tourney) => {
-      let tPoints = 0;
-      let tTurns = 0;
-      tourney.bracket?.forEach((match) => {
-        if (match.isBye || !match.winner || !match.logs) return;
-        const isP1 = match.player1?.name === playerName;
-        const isP2 = match.player2?.name === playerName;
-        if (!isP1 && !isP2) return;
-        match.logs.forEach((leg: LegLog) => {
-          const throws = isP1 ? leg.p1Throws : leg.p2Throws;
-          if (throws)
-            throws.forEach((tStr) => {
-              tPoints += tStr === "BUST" ? 0 : parseInt(tStr);
-              tTurns++;
-            });
-        });
-      });
+      const { tPoints, tTurns } = getTournamentPlayerTrend(tourney, playerName);
       if (tTurns > 0) {
         dataPoints.push(Number((tPoints / tTurns).toFixed(1)));
         const d = new Date(tourney.finishedAt || "");
@@ -931,6 +956,71 @@ export const calculateTournamentTrendData = (
       dataByPlayer[playerName] = { labels, datasets: [{ data: dataPoints }] };
   });
   return dataByPlayer;
+};
+
+const accumulateX01Baseline = (p: PlayerMatchStats, match: Match) => {
+  let pts = 0;
+  let darts = 0;
+  if (p.allTurns) {
+    const turns = p.allTurns;
+    const isBuggyCompressed = hasBuggyCompressedTurns(p);
+
+    turns.forEach((turn: Turn, index: number) => {
+      pts += turn.reduce(
+        (a: number, b: TurnDart) =>
+          a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
+        0,
+      );
+      let turnDarts = turn.reduce(
+        (a: number, b: TurnDart) =>
+          a +
+          (typeof b === "number"
+            ? 1
+            : typeof b === "object" && b !== null && b.d !== undefined
+              ? b.d
+              : 1),
+        0,
+      );
+      if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
+        turnDarts =
+          index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
+      }
+      darts += turnDarts;
+    });
+  } else if (p.totalMatchDarts) {
+    const startPts = match.settings?.startPoints || 501;
+    const scored =
+      p.totalMatchScore !== undefined
+        ? p.totalMatchScore
+        : Math.max(0, startPts - (p.score || 0));
+    pts += scored;
+    darts += p.totalMatchDarts;
+  }
+  return { pts, darts };
+};
+
+const accumulateCricketBaseline = (p: PlayerMatchStats) => {
+  const marks =
+    p.totalMatchMarks !== undefined
+      ? p.totalMatchMarks
+      : p.totalMarks ||
+        (p.marks
+          ? Object.values(p.marks).reduce((a: number, b: number) => a + b, 0)
+          : 0);
+  const darts =
+    p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts || 0;
+  return { marks, darts };
+};
+
+const accumulateClockBaseline = (p: PlayerMatchStats) => {
+  const hits =
+    p.hits !== undefined && typeof p.hits === "number"
+      ? p.hits
+      : p.accuracy
+        ? (parseFloat(p.accuracy) / 100) * (p.darts || 0)
+        : 0;
+  const darts = p.darts || 0;
+  return { hits, darts };
 };
 
 export const getPlayersHistoricalBaseline = async (
@@ -957,53 +1047,9 @@ export const getPlayersHistoricalBaseline = async (
         if (!p) return;
 
         if (mode === "X01") {
-          if (p.allTurns) {
-            const turns = p.allTurns;
-            const sumOfLengths = turns.reduce(
-              (acc: number, t: Turn) => acc + t.length,
-              0,
-            );
-            const isBuggyCompressed =
-              p.totalMatchDarts &&
-              p.totalMatchDarts > sumOfLengths &&
-              !turns.some((t: Turn) =>
-                t.some(
-                  (d: TurnDart) =>
-                    typeof d === "object" && d !== null && d.d !== undefined,
-                ),
-              );
-            turns.forEach((turn: Turn, index: number) => {
-              totalPts += turn.reduce(
-                (a: number, b: TurnDart) =>
-                  a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
-                0,
-              );
-              let turnDarts = turn.reduce(
-                (a: number, b: TurnDart) =>
-                  a +
-                  (typeof b === "number"
-                    ? 1
-                    : typeof b === "object" && b !== null && b.d !== undefined
-                      ? b.d
-                      : 1),
-                0,
-              );
-              if (isBuggyCompressed && p.totalMatchDarts !== undefined)
-                turnDarts =
-                  index === turns.length - 1
-                    ? p.totalMatchDarts - index * 3
-                    : 3;
-              totalDarts += turnDarts;
-            });
-          } else if (p.totalMatchDarts) {
-            const startPts = match.settings?.startPoints || 501;
-            const scored =
-              p.totalMatchScore !== undefined
-                ? p.totalMatchScore
-                : Math.max(0, startPts - (p.score || 0));
-            totalPts += scored;
-            totalDarts += p.totalMatchDarts;
-          }
+          const { pts, darts } = accumulateX01Baseline(p, match);
+          totalPts += pts;
+          totalDarts += darts;
         } else if (mode === "100 Darts") {
           totalPts += p.score || 0;
           totalDarts += p.darts || p.dartsCount || 0;
@@ -1011,26 +1057,13 @@ export const getPlayersHistoricalBaseline = async (
           totalPts += p.score || 0;
           totalDarts += 1;
         } else if (mode === "Cricket") {
-          totalMarks +=
-            p.totalMatchMarks !== undefined
-              ? p.totalMatchMarks
-              : p.totalMarks ||
-                (p.marks
-                  ? Object.values(p.marks).reduce(
-                      (a: number, b: number) => a + b,
-                      0,
-                    )
-                  : 0);
-          totalDarts +=
-            p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts || 0;
+          const { marks, darts } = accumulateCricketBaseline(p);
+          totalMarks += marks;
+          totalDarts += darts;
         } else if (mode === "Around the Clock") {
-          totalHits +=
-            p.hits !== undefined && typeof p.hits === "number"
-              ? p.hits
-              : p.accuracy
-                ? (parseFloat(p.accuracy) / 100) * (p.darts || 0)
-                : 0;
-          totalDarts += p.darts || 0;
+          const { hits, darts } = accumulateClockBaseline(p);
+          totalHits += hits;
+          totalDarts += darts;
         }
       });
 

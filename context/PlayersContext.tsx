@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const PLAYERS_STORAGE_KEY = "@dart_players_db";
 
@@ -35,68 +42,61 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
     loadPlayers();
   }, []);
 
-  const addPlayer = async (name: string) => {
-    const trimmedName = name.trim();
-    if (!trimmedName || players.includes(trimmedName)) return;
-
-    const newPlayers = [...players, trimmedName];
-    setPlayers(newPlayers);
-    try {
-      await AsyncStorage.setItem(
+  const addPlayer = useCallback((name: string) => {
+    setPlayers((prev) => {
+      const trimmedName = name.trim();
+      if (!trimmedName || prev.includes(trimmedName)) return prev;
+      const newPlayers = [...prev, trimmedName];
+      AsyncStorage.setItem(
         PLAYERS_STORAGE_KEY,
         JSON.stringify(newPlayers),
-      );
-    } catch (error) {
-      console.error("Błąd zapisu gracza:", error);
-    }
-  };
+      ).catch((e) => console.error("Błąd zapisu gracza:", e));
+      return newPlayers;
+    });
+  }, []);
 
-  const removePlayer = async (name: string) => {
-    const newPlayers = players.filter((p) => p !== name);
-    setPlayers(newPlayers);
-    try {
-      await AsyncStorage.setItem(
+  const removePlayer = useCallback((name: string) => {
+    setPlayers((prev) => {
+      const newPlayers = prev.filter((p) => p !== name);
+      AsyncStorage.setItem(
         PLAYERS_STORAGE_KEY,
         JSON.stringify(newPlayers),
-      );
-    } catch (error) {
-      console.error("Błąd usuwania gracza:", error);
-    }
-  };
+      ).catch((e) => console.error("Błąd usuwania gracza:", e));
+      return newPlayers;
+    });
+  }, []);
 
-  const updatePlayer = async (oldName: string, newName: string) => {
-    const trimmedNewName = newName.trim();
-    if (
-      !trimmedNewName ||
-      players.includes(trimmedNewName) ||
-      oldName === trimmedNewName
-    )
-      return;
-
-    const newPlayers = players.map((p) => (p === oldName ? trimmedNewName : p));
-    setPlayers(newPlayers);
-    try {
-      await AsyncStorage.setItem(
+  const updatePlayer = useCallback((oldName: string, newName: string) => {
+    setPlayers((prev) => {
+      const trimmedNewName = newName.trim();
+      if (
+        !trimmedNewName ||
+        prev.includes(trimmedNewName) ||
+        oldName === trimmedNewName
+      )
+        return prev;
+      const newPlayers = prev.map((p) => (p === oldName ? trimmedNewName : p));
+      AsyncStorage.setItem(
         PLAYERS_STORAGE_KEY,
         JSON.stringify(newPlayers),
-      );
-    } catch (error) {
-      console.error("Błąd aktualizacji gracza:", error);
-    }
-  };
+      ).catch((e) => console.error("Błąd aktualizacji gracza:", e));
+      return newPlayers;
+    });
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      players,
+      isPlayersLoaded,
+      addPlayer,
+      removePlayer,
+      updatePlayer,
+    }),
+    [players, isPlayersLoaded, addPlayer, removePlayer, updatePlayer],
+  );
 
   return (
-    <PlayersContext.Provider
-      value={{
-        players,
-        isPlayersLoaded,
-        addPlayer,
-        removePlayer,
-        updatePlayer,
-      }}
-    >
-      {children}
-    </PlayersContext.Provider>
+    <PlayersContext.Provider value={value}>{children}</PlayersContext.Provider>
   );
 };
 

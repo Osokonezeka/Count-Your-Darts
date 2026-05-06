@@ -1,18 +1,16 @@
-import React, { useState, useCallback, memo } from "react";
-import {
-  View,
-  Dimensions,
-  StyleSheet,
-  TouchableOpacity,
-  Text,
-  GestureResponderEvent,
-} from "react-native";
-import Svg, { Path, Circle, G, Text as SvgText } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
+import React, { memo, useCallback, useState } from "react";
+import {
+  Dimensions,
+  GestureResponderEvent,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Svg, { Circle, G, Path, Text as SvgText } from "react-native-svg";
 import { t } from "../../lib/i18n";
-import { useHaptics } from "../../context/HapticsContext";
-import * as Haptics from "expo-haptics";
 
 const SECTORS = [
   20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
@@ -176,22 +174,9 @@ export function InteractiveDartboard({
   const [pinpoint, setPinpoint] = useState<{ x: number; y: number } | null>(
     null,
   );
-  const { isHapticsEnabled, intensity } = useHaptics();
-
-  const triggerHaptic = () => {
-    if (isHapticsEnabled) {
-      let hapticStyle = Haptics.ImpactFeedbackStyle.Medium;
-      if (intensity === "light")
-        hapticStyle = Haptics.ImpactFeedbackStyle.Light;
-      if (intensity === "heavy")
-        hapticStyle = Haptics.ImpactFeedbackStyle.Heavy;
-      Haptics.impactAsync(hapticStyle);
-    }
-  };
 
   const handlePress = useCallback(
     (e: GestureResponderEvent, value: number, multiplier: number) => {
-      triggerHaptic();
       let coords = undefined;
       if (e && e.nativeEvent && e.nativeEvent.locationX !== undefined) {
         const locX = e.nativeEvent.locationX;
@@ -201,11 +186,10 @@ export function InteractiveDartboard({
       }
       onThrow(value, multiplier, coords);
     },
-    [cx, cy, onThrow, isHapticsEnabled, intensity],
+    [cx, cy, onThrow],
   );
 
   const handleUndoPress = () => {
-    triggerHaptic();
     setPinpoint(null);
     onUndo();
   };

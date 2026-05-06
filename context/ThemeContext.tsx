@@ -1,8 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -41,23 +43,31 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     loadTheme();
   }, []);
 
-  const setThemeMode = async (mode: ThemeMode) => {
-    const currentResolved =
-      themeMode === "auto" ? systemColorScheme || "light" : themeMode;
-    setPrevBgColor(
-      currentResolved === "dark" ? darkTheme.background : lightTheme.background,
-    );
+  const setThemeMode = useCallback(
+    async (mode: ThemeMode) => {
+      const currentResolved =
+        themeMode === "auto" ? systemColorScheme || "light" : themeMode;
+      setPrevBgColor(
+        currentResolved === "dark"
+          ? darkTheme.background
+          : lightTheme.background,
+      );
 
-    setThemeState(mode);
-    await AsyncStorage.setItem(THEME_KEY, mode);
-  };
+      setThemeState(mode);
+      await AsyncStorage.setItem(THEME_KEY, mode);
+    },
+    [themeMode, systemColorScheme],
+  );
 
   const resolvedTheme =
     themeMode === "auto" ? systemColorScheme || "light" : themeMode;
-  const theme = {
-    colors: resolvedTheme === "dark" ? darkTheme : lightTheme,
-    sizes,
-  };
+  const theme = useMemo(
+    () => ({
+      colors: resolvedTheme === "dark" ? darkTheme : lightTheme,
+      sizes,
+    }),
+    [resolvedTheme],
+  );
 
   useEffect(() => {
     fadeAnim.setValue(1);
@@ -71,8 +81,13 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, [resolvedTheme]);
 
+  const contextValue = useMemo(
+    () => ({ themeMode, theme, setThemeMode }),
+    [themeMode, theme, setThemeMode],
+  );
+
   return (
-    <ThemeContext.Provider value={{ themeMode, theme, setThemeMode }}>
+    <ThemeContext.Provider value={contextValue}>
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
         {children}
 

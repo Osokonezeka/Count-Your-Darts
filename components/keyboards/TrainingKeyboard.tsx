@@ -1,6 +1,7 @@
-import React from "react";
-import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { AnimatedPressable } from "../common/AnimatedPressable";
 
 export interface TrainingKeyboardProps {
   playerName: string;
@@ -38,25 +39,25 @@ export function TrainingKeyboard({
         </Text>
       </View>
       <View style={styles.keyRow}>
-        <TouchableOpacity onPress={onMiss} style={styles.keyAction}>
+        <AnimatedPressable onPress={onMiss} style={styles.keyAction}>
           <Text style={styles.keyTextAction}>{missLabel}</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={onHit}
           style={[styles.keyAction, styles.keyHit]}
         >
           <Text style={[styles.keyTextAction, { color: "#fff" }]}>
             {hitLabel}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={onUndo}
           style={[styles.keyAction, styles.undoKey]}
         >
           <Ionicons name="arrow-undo" size={28} color={theme.colors.danger} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </View>
   );

@@ -7,7 +7,6 @@ type UseBotTurnProps<T> = {
   historyLength: number;
   calculate: () => T;
   execute: (result: T) => void | Promise<void>;
-  dependencies?: unknown[];
 };
 
 export function useBotTurn<T>({
@@ -17,7 +16,6 @@ export function useBotTurn<T>({
   historyLength,
   calculate,
   execute,
-  dependencies = [],
 }: UseBotTurnProps<T>) {
   const botCache = useRef<Record<number, T>>({});
   const calculateRef = useRef(calculate);
@@ -48,5 +46,5 @@ export function useBotTurn<T>({
       isActiveEffect = false;
       clearTimeout(timer);
     };
-  }, [condition, botAvg, delay, historyLength, ...dependencies]);
+  }, [condition, botAvg, delay, historyLength]);
 }

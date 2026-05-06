@@ -15,13 +15,14 @@ import {
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
+import { TournamentSettings } from "../../lib/statsUtils";
+import { AnimatedPressable } from "../common/AnimatedPressable";
 import CustomAlert from "../modals/CustomAlert";
 import {
-  MatchCard,
   SharedMatch as Match,
+  MatchCard,
   SharedPlayer as Player,
 } from "./MatchCard";
-import { TournamentSettings } from "../../lib/statsUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -841,13 +842,12 @@ export default function GroupsAndKnockout({
                     let A = 2;
                     const isAdvancing = idx < A;
                     return (
-                      <TouchableOpacity
+                      <AnimatedPressable
                         key={s.player.id}
                         style={[
                           styles.tableRow,
                           isAdvancing && styles.advancingRow,
                         ]}
-                        activeOpacity={0.7}
                         onPress={() => {
                           const pMatches = matches.filter(
                             (m) =>
@@ -900,7 +900,7 @@ export default function GroupsAndKnockout({
                         <Text style={[styles.tableCellData, styles.cellPoints]}>
                           {s.points}
                         </Text>
-                      </TouchableOpacity>
+                      </AnimatedPressable>
                     );
                   })}
                 </View>
@@ -1179,6 +1179,8 @@ export default function GroupsAndKnockout({
         visible={!!selectedPlayerMatches}
         transparent
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setSelectedPlayerMatches(null)}
       >
         <View style={styles.modalOverlay}>
@@ -1192,7 +1194,7 @@ export default function GroupsAndKnockout({
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {selectedPlayerMatches?.player.name}
               </Text>
-              <TouchableOpacity
+              <AnimatedPressable
                 onPress={() => setSelectedPlayerMatches(null)}
                 style={styles.closeModalBtn}
               >
@@ -1201,7 +1203,7 @@ export default function GroupsAndKnockout({
                   size={24}
                   color={theme.colors.textMuted}
                 />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
             <ScrollView
               style={{ maxHeight: Dimensions.get("window").height * 0.7 }}

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import cloneDeep from "lodash/cloneDeep";
 import React, {
@@ -31,6 +32,7 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import { resolveBotAverage, simulateBobsBotThrow } from "../../lib/bot";
+import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -62,12 +64,46 @@ type GameState = {
 
 type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
 
-const formatTime = (seconds: number) => {
-  const m = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
-  const s = (seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
+const handleTurnOver = (
+  state: GameState,
+  updatedPlayers: PlayerState[],
+  snapshot: GameState,
+  speechEvent: any = null,
+): GameState => {
+  const allDone = updatedPlayers.every((p) => p.isBust || p.isFinished);
+  if (allDone) {
+    const finishers = updatedPlayers
+      .map((p, idx) => ({ ...p, originalIdx: idx }))
+      .sort((a, b) => b.score - a.score || a.darts - b.darts);
+
+    finishers.forEach((f, rankIdx) => {
+      updatedPlayers[f.originalIdx].rank = rankIdx + 1;
+    });
+    return {
+      ...state,
+      playerStates: updatedPlayers,
+      history: [...state.history, snapshot],
+      speechEvent,
+      isUndoing: false,
+    };
+  }
+
+  let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
+  while (updatedPlayers[nextIdx].isBust || updatedPlayers[nextIdx].isFinished) {
+    nextIdx = (nextIdx + 1) % state.playerStates.length;
+  }
+
+  updatedPlayers[nextIdx].turnThrows = [];
+
+  return {
+    ...state,
+    playerStates: updatedPlayers,
+    currentIndex: nextIdx,
+    throwsThisTurn: 0,
+    history: [...state.history, snapshot],
+    speechEvent,
+    isUndoing: false,
+  };
 };
 
 function bobsReducer(state: GameState, action: Action): GameState {
@@ -124,44 +160,7 @@ function bobsReducer(state: GameState, action: Action): GameState {
         }
 
         updatedPlayers[state.currentIndex] = player;
-
-        const allDone = updatedPlayers.every((p) => p.isBust || p.isFinished);
-        if (allDone) {
-          const finishers = updatedPlayers
-            .map((p, idx) => ({ ...p, originalIdx: idx }))
-            .sort((a, b) => b.score - a.score || a.darts - b.darts);
-
-          finishers.forEach((f, rankIdx) => {
-            updatedPlayers[f.originalIdx].rank = rankIdx + 1;
-          });
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        }
-
-        let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-        while (
-          updatedPlayers[nextIdx].isBust ||
-          updatedPlayers[nextIdx].isFinished
-        ) {
-          nextIdx = (nextIdx + 1) % state.playerStates.length;
-        }
-
-        updatedPlayers[nextIdx].turnThrows = [];
-
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          currentIndex: nextIdx,
-          throwsThisTurn: 0,
-          history: [...state.history, snapshot],
-          speechEvent: newSpeechEvent,
-          isUndoing: false,
-        };
+        return handleTurnOver(state, updatedPlayers, snapshot, newSpeechEvent);
       }
 
       updatedPlayers[state.currentIndex] = player;
@@ -292,13 +291,6 @@ export default function BobsTwentySeven() {
       return simulateBobsBotThrow(botAvg!, isBull);
     },
     execute: (hit) => handleThrow(hit),
-    dependencies: [
-      state.currentIndex,
-      state.throwsThisTurn,
-      isFastBot,
-      botAvg,
-      isBaselineLoaded,
-    ],
   });
 
   useLayoutEffect(() => {
@@ -321,8 +313,7 @@ export default function BobsTwentySeven() {
   const saveBobsStats = async (navigateAway: boolean = true) => {
     try {
       if (navigateAway) isExiting.current = true;
-      const now = new Date();
-      const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
 
       const isUnfinished = !allDone;
       const historyItem = {
@@ -597,7 +588,7 @@ export default function BobsTwentySeven() {
         </View>
       </FinishModal>
 
-      <GameAlerts />
+      {GameAlerts}
     </SafeAreaView>
   );
 }

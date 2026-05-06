@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useMemo, useState } from "react";
 
 export type Settings = {
   inRule: "straight" | "double" | "master";
@@ -34,13 +34,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
     cricketMode: "standard",
   });
 
-  return (
-    <GameContext.Provider
-      value={{ players, setPlayers, settings, setSettings }}
-    >
-      {children}
-    </GameContext.Provider>
+  const value = useMemo(
+    () => ({ players, setPlayers, settings, setSettings }),
+    [players, settings],
   );
+
+  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 };
 
 export const useGame = () => {

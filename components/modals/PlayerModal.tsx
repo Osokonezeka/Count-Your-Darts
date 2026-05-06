@@ -1,16 +1,16 @@
 import React from "react";
 import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { t } from "../../lib/i18n";
+import { AnimatedPressable } from "../common/AnimatedPressable";
 
 export interface PlayerModalProps {
   visible: boolean;
@@ -41,6 +41,8 @@ export function PlayerModal({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -64,16 +66,19 @@ export function PlayerModal({
               returnKeyType="done"
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalBtnCancel} onPress={onClose}>
+              <AnimatedPressable
+                style={styles.modalBtnCancel}
+                onPress={onClose}
+              >
                 <Text style={styles.modalBtnCancelText}>
                   {t(language, "cancel") || "Cancel"}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalBtnAdd} onPress={onSave}>
+              </AnimatedPressable>
+              <AnimatedPressable style={styles.modalBtnAdd} onPress={onSave}>
                 <Text style={styles.modalBtnAddText}>
                   {t(language, "save") || "Save"}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         </Pressable>

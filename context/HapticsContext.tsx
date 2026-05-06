@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const HAPTICS_KEY = "@settings_haptics";
 const HAPTICS_INTENSITY_KEY = "@settings_haptics_intensity";
@@ -43,7 +50,7 @@ export const HapticsProvider = ({
     loadSettings();
   }, []);
 
-  const toggleHaptics = async () => {
+  const toggleHaptics = useCallback(async () => {
     try {
       const newValue = !isHapticsEnabled;
       setIsHapticsEnabled(newValue);
@@ -55,9 +62,9 @@ export const HapticsProvider = ({
     } catch (error) {
       console.error("Błąd podczas zapisywania włącznika haptyki:", error);
     }
-  };
+  }, [isHapticsEnabled]);
 
-  const setIntensity = async (level: HapticIntensity) => {
+  const setIntensity = useCallback(async (level: HapticIntensity) => {
     try {
       setIntensityState(level);
       await AsyncStorage.setItem(HAPTICS_INTENSITY_KEY, level);
@@ -72,44 +79,48 @@ export const HapticsProvider = ({
     } catch (error) {
       console.error("Błąd podczas zapisywania intensywności haptyki:", error);
     }
-  };
+  }, []);
 
-  const triggerHaptic = (type: "tap" | "heavy" | "success") => {
-    if (!isHapticsEnabled) return;
+  const triggerHaptic = useCallback(
+    (type: "tap" | "heavy" | "success") => {
+      if (!isHapticsEnabled) return;
 
-    try {
-      switch (type) {
-        case "tap":
-          const style =
-            intensity === "light"
-              ? Haptics.ImpactFeedbackStyle.Light
-              : intensity === "medium"
-                ? Haptics.ImpactFeedbackStyle.Medium
-                : Haptics.ImpactFeedbackStyle.Heavy;
-          Haptics.impactAsync(style);
-          break;
-        case "heavy":
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          break;
-        case "success":
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          break;
-      }
-    } catch (error) {}
-  };
+      try {
+        switch (type) {
+          case "tap":
+            const style =
+              intensity === "light"
+                ? Haptics.ImpactFeedbackStyle.Light
+                : intensity === "medium"
+                  ? Haptics.ImpactFeedbackStyle.Medium
+                  : Haptics.ImpactFeedbackStyle.Heavy;
+            Haptics.impactAsync(style);
+            break;
+          case "heavy":
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            break;
+          case "success":
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            break;
+        }
+      } catch (error) {}
+    },
+    [isHapticsEnabled, intensity],
+  );
+
+  const value = useMemo(
+    () => ({
+      isHapticsEnabled,
+      toggleHaptics,
+      intensity,
+      setIntensity,
+      triggerHaptic,
+    }),
+    [isHapticsEnabled, toggleHaptics, intensity, setIntensity, triggerHaptic],
+  );
 
   return (
-    <HapticsContext.Provider
-      value={{
-        isHapticsEnabled,
-        toggleHaptics,
-        intensity,
-        setIntensity,
-        triggerHaptic,
-      }}
-    >
-      {children}
-    </HapticsContext.Provider>
+    <HapticsContext.Provider value={value}>{children}</HapticsContext.Provider>
   );
 };
 

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -32,12 +33,14 @@ import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
+import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import {
   getCricketBotTarget,
   resolveBotAverage,
   simulateCricketBotThrow,
 } from "../../lib/bot";
+import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -97,14 +100,6 @@ const getMarkSymbol = (count: number) => {
   if (count === 1) return "/";
   if (count === 2) return "X";
   return "⦻";
-};
-
-const formatTime = (seconds: number) => {
-  const m = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
-  const s = (seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
 };
 
 function cricketReducer(
@@ -436,89 +431,62 @@ export default function Cricket() {
   }, [state.legWinner, state.setWinner]);
 
   const { GameAlerts, showExitConfirm } = useGameModals(language);
-  const botCache = useRef<
-    Record<number, { hit: boolean; hitMult: number; missedVal: number }>
-  >({});
+  const activePlayer = state.playerStates[state.currentIndex];
 
-  useEffect(() => {
-    if (
-      !isBaselineLoaded ||
-      state.matchWinner ||
-      state.legWinner ||
-      state.setWinner
-    )
-      return;
-
-    const activePlayer = state.playerStates[state.currentIndex];
-    if (!activePlayer) return;
-    const botAvg = resolveBotAverage(
-      activePlayer.name,
-      state.playerStates,
-      "Cricket",
-      state.settings,
-      historicalBaseline,
-    );
-
-    if (botAvg !== null) {
-      const timer = setTimeout(() => {
-        const botMarks = activePlayer.marks;
-        const botScore = activePlayer.score;
-
-        let bestOpponentScore = -1;
-        let opponentMarks: Record<number, number> = {};
-
-        state.playerStates.forEach((p) => {
-          if (p.name !== activePlayer.name) {
-            if (p.score >= bestOpponentScore) {
-              bestOpponentScore = p.score;
-              opponentMarks = p.marks;
-            }
-          }
-        });
-
-        const target = getCricketBotTarget(
-          botAvg,
-          botMarks,
-          opponentMarks,
-          botScore,
-          Math.max(0, bestOpponentScore),
-          currentMode,
-        );
-
-        const historyLen = state.history.length;
-        let hit: boolean, hitMult: number, missedVal: number;
-
-        if (botCache.current[historyLen]) {
-          const cached = botCache.current[historyLen];
-          hit = cached.hit;
-          hitMult = cached.hitMult;
-          missedVal = cached.missedVal || 0;
-        } else {
-          const result = simulateCricketBotThrow(botAvg, target);
-          hit = result.hit;
-          hitMult = result.multiplier;
-          missedVal = result.missedValue || 0;
-          botCache.current[historyLen] = { hit, hitMult, missedVal };
-        }
-
-        if (hit) {
-          handleThrow(target, target === 25 && hitMult === 3 ? 2 : hitMult);
-        } else {
-          handleThrow(missedVal, 1);
-        }
-      }, delay);
-
-      return () => clearTimeout(timer);
-    }
-  }, [
-    state.currentIndex,
-    state.throwsThisTurn,
-    state.matchWinner,
-    isFastBot,
-    state.isUndoing,
+  const botAvg = resolveBotAverage(
+    activePlayer?.name || "",
+    state.playerStates,
+    "Cricket",
+    state.settings,
     historicalBaseline,
-    isBaselineLoaded,
-  ]);
+  );
+
+  useBotTurn({
+    condition:
+      isBaselineLoaded &&
+      !state.matchWinner &&
+      !state.legWinner &&
+      !state.setWinner &&
+      !state.isUndoing &&
+      !!activePlayer,
+    botAvg,
+    delay,
+    historyLength: state.history.length,
+    calculate: () => {
+      const botMarks = activePlayer.marks;
+      const botScore = activePlayer.score;
+
+      let bestOpponentScore = -1;
+      let opponentMarks: Record<number, number> = {};
+
+      state.playerStates.forEach((p) => {
+        if (p.name !== activePlayer.name) {
+          if (p.score >= bestOpponentScore) {
+            bestOpponentScore = p.score;
+            opponentMarks = p.marks;
+          }
+        }
+      });
+
+      const target = getCricketBotTarget(
+        botAvg!,
+        botMarks,
+        opponentMarks,
+        botScore,
+        Math.max(0, bestOpponentScore),
+        currentMode,
+      );
+
+      return { target, ...simulateCricketBotThrow(botAvg!, target) };
+    },
+    execute: ({ target, hit, multiplier, missedValue }) => {
+      if (hit) {
+        handleThrow(target, target === 25 && multiplier === 3 ? 2 : multiplier);
+      } else {
+        handleThrow(missedValue || 0, 1);
+      }
+    },
+  });
 
   useEffect(() => {
     if (state.speechEvent) {
@@ -576,8 +544,7 @@ export default function Cricket() {
   const saveCricketHistory = async (navigateAway: boolean = true) => {
     try {
       if (navigateAway) isExiting.current = true;
-      const now = new Date();
-      const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
 
       const isUnfinished = !state.matchWinner;
 
@@ -700,8 +667,6 @@ export default function Cricket() {
     setMultiplier(1);
     dispatch({ type: "UNDO" });
   };
-
-  const activePlayer = state.playerStates[state.currentIndex];
 
   const isModalVisible =
     !!state.matchWinner || !!state.setWinner || !!state.legWinner;
@@ -1007,7 +972,7 @@ export default function Cricket() {
         </View>
       </FinishModal>
 
-      <GameAlerts />
+      {GameAlerts}
     </SafeAreaView>
   );
 }

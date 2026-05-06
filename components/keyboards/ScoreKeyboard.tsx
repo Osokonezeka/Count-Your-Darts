@@ -1,9 +1,14 @@
-import React from "react";
-import { View, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { AnimatedPressable } from "../common/AnimatedPressable";
-import { useHaptics } from "../../context/HapticsContext";
-import * as Haptics from "expo-haptics";
+
+const SCORE_ROWS = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  ["DEL", "0", "ENTER"],
+];
 
 export interface ScoreKeyboardProps {
   onKeyPress: (key: string) => void;
@@ -25,27 +30,10 @@ export function ScoreKeyboard({
   hideWrapperBorder,
 }: ScoreKeyboardProps) {
   const styles = getStyles(theme);
-  const { isHapticsEnabled, intensity } = useHaptics();
-
-  const triggerHaptic = () => {
-    if (isHapticsEnabled) {
-      let hapticStyle = Haptics.ImpactFeedbackStyle.Medium;
-      if (intensity === "light")
-        hapticStyle = Haptics.ImpactFeedbackStyle.Light;
-      if (intensity === "heavy")
-        hapticStyle = Haptics.ImpactFeedbackStyle.Heavy;
-      Haptics.impactAsync(hapticStyle);
-    }
-  };
 
   return (
     <View style={[!hideWrapperBorder && styles.wrapper, style]}>
-      {[
-        ["1", "2", "3"],
-        ["4", "5", "6"],
-        ["7", "8", "9"],
-        ["DEL", "0", "ENTER"],
-      ].map((row, rI) => (
+      {SCORE_ROWS.map((row, rI) => (
         <View key={rI} style={{ flexDirection: "row" }}>
           {row.map((key) => (
             <AnimatedPressable
@@ -57,7 +45,6 @@ export function ScoreKeyboard({
                 key === "DEL" && styles.kbDel,
               ]}
               onPress={() => {
-                triggerHaptic();
                 if (key === "ENTER") onSubmit();
                 else if (key === "DEL") onDelete();
                 else onKeyPress(key);

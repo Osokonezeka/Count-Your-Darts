@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import cloneDeep from "lodash/cloneDeep";
 import React, {
@@ -102,6 +103,44 @@ type Action =
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
 
+const handleTurnOver = (
+  state: GameState,
+  updatedPlayers: PlayerState[],
+  snapshot: GameState,
+  speechEvent: any = null,
+): GameState => {
+  const allDone = updatedPlayers.every((p) => p.isFinished);
+  if (allDone) {
+    const finishers = [...updatedPlayers].sort((a, b) => b.score - a.score);
+    updatedPlayers.forEach((p) => {
+      p.rank = finishers.findIndex((f) => f.name === p.name) + 1;
+    });
+    return {
+      ...state,
+      playerStates: updatedPlayers,
+      history: [...state.history, snapshot],
+      speechEvent,
+      isUndoing: false,
+    };
+  }
+
+  let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
+  while (updatedPlayers[nextIdx].isFinished) {
+    nextIdx = (nextIdx + 1) % state.playerStates.length;
+  }
+  updatedPlayers[nextIdx].turnThrows = [];
+
+  return {
+    ...state,
+    playerStates: updatedPlayers,
+    currentIndex: nextIdx,
+    throwsThisTurn: 0,
+    history: [...state.history, snapshot],
+    speechEvent,
+    isUndoing: false,
+  };
+};
+
 function scoringReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "ADD_THROW": {
@@ -143,48 +182,8 @@ function scoringReducer(state: GameState, action: Action): GameState {
       updatedPlayers[state.currentIndex] = player;
 
       if (isTurnOver) {
-        const allDone = updatedPlayers.every((p) => p.isFinished);
-        if (allDone) {
-          const finishers = [...updatedPlayers].sort(
-            (a, b) => b.score - a.score,
-          );
-          updatedPlayers.forEach((p) => {
-            p.rank = finishers.findIndex((f) => f.name === p.name) + 1;
-          });
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        }
-
-        let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-        while (updatedPlayers[nextIdx].isFinished) {
-          nextIdx = (nextIdx + 1) % state.playerStates.length;
-        }
-        updatedPlayers[nextIdx].turnThrows = [];
-
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          currentIndex: nextIdx,
-          throwsThisTurn: 0,
-          history: [...state.history, snapshot],
-          speechEvent: newSpeechEvent,
-          isUndoing: false,
-        };
+        return handleTurnOver(state, updatedPlayers, snapshot, newSpeechEvent);
       }
-
-      return {
-        ...state,
-        playerStates: updatedPlayers,
-        throwsThisTurn: state.throwsThisTurn + 1,
-        history: [...state.history, snapshot],
-        speechEvent: null,
-        isUndoing: false,
-      };
     }
 
     case "ADD_DART_VISUAL": {
@@ -249,36 +248,7 @@ function scoringReducer(state: GameState, action: Action): GameState {
 
       updatedPlayers[state.currentIndex] = player;
 
-      const allDone = updatedPlayers.every((p) => p.isFinished);
-      if (allDone) {
-        const finishers = [...updatedPlayers].sort((a, b) => b.score - a.score);
-        updatedPlayers.forEach((p) => {
-          p.rank = finishers.findIndex((f) => f.name === p.name) + 1;
-        });
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          history: [...state.history, snapshot],
-          speechEvent: newSpeechEvent,
-          isUndoing: false,
-        };
-      }
-
-      let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-      while (updatedPlayers[nextIdx].isFinished) {
-        nextIdx = (nextIdx + 1) % state.playerStates.length;
-      }
-      updatedPlayers[nextIdx].turnThrows = [];
-
-      return {
-        ...state,
-        playerStates: updatedPlayers,
-        currentIndex: nextIdx,
-        throwsThisTurn: 0,
-        history: [...state.history, snapshot],
-        speechEvent: newSpeechEvent,
-        isUndoing: false,
-      };
+      return handleTurnOver(state, updatedPlayers, snapshot, newSpeechEvent);
     }
 
     case "UNDO": {
@@ -457,13 +427,6 @@ export default function OneHundredDarts() {
         payload: { score: botScore, individualDarts },
       });
     },
-    dependencies: [
-      state.currentIndex,
-      state.throwsThisTurn,
-      isFastBot,
-      botAvg,
-      isBaselineLoaded,
-    ],
   });
 
   useLayoutEffect(() => {
@@ -480,8 +443,7 @@ export default function OneHundredDarts() {
   const saveScoringStats = async (navigateAway: boolean = true) => {
     try {
       if (navigateAway) isExiting.current = true;
-      const now = new Date();
-      const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
 
       const isUnfinished = !allDone;
       const historyItem = {
@@ -883,7 +845,7 @@ export default function OneHundredDarts() {
         </View>
       </FinishModal>
 
-      <GameAlerts />
+      {GameAlerts}
     </SafeAreaView>
   );
 }

@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useRef } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   View,
-  PanResponder,
-  Switch,
 } from "react-native";
-import { AnimatedPressable } from "../common/AnimatedPressable";
-import { t } from "../../lib/i18n";
 import { getBotCheckoutChance } from "../../lib/bot";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { t } from "../../lib/i18n";
+import { AnimatedPressable } from "../common/AnimatedPressable";
 
 interface CustomSliderProps {
   value: number;
@@ -130,6 +130,29 @@ export interface AddBotModalProps {
   trainingMode: string;
 }
 
+const getBotValueText = (
+  difficulty: number,
+  isCricketMode: boolean,
+  isHitPercentMode: boolean,
+  isBobs27Mode: boolean,
+) => {
+  if (isCricketMode) {
+    if (difficulty === 120) return "5.5+";
+    const mpr = 2.55 * (difficulty / 120) * (0.85 * (difficulty / 120) + 1);
+    return `~${mpr.toFixed(1)}`;
+  }
+  if (isHitPercentMode) {
+    if (difficulty === 120) {
+      return isBobs27Mode ? "60%+" : "95%+";
+    }
+    const pct = isBobs27Mode
+      ? getBotCheckoutChance(difficulty) * 0.7
+      : (difficulty / 120) * 90;
+    return `~${Math.round(pct)}%`;
+  }
+  return difficulty === 120 ? "120+" : `~${difficulty}`;
+};
+
 export const AddBotModal = ({
   visible,
   onClose,
@@ -241,19 +264,12 @@ export const AddBotModal = ({
                           : t(language, "botAverage") || "Average"}
                     </Text>
                     <Text style={styles.sliderValueText}>
-                      {isCricketMode
-                        ? difficulty === 120
-                          ? "5.5+"
-                          : `~${(2.55 * (difficulty / 120) * (0.85 * (difficulty / 120) + 1)).toFixed(1)}`
-                        : isHitPercentMode
-                          ? difficulty === 120
-                            ? isBobs27Mode
-                              ? "60%+"
-                              : "95%+"
-                            : `~${Math.round(isBobs27Mode ? getBotCheckoutChance(difficulty) * 0.7 : (difficulty / 120) * 90)}%`
-                          : difficulty === 120
-                            ? "120+"
-                            : `~${difficulty}`}
+                      {getBotValueText(
+                        difficulty,
+                        isCricketMode,
+                        isHitPercentMode,
+                        isBobs27Mode,
+                      )}
                     </Text>
                   </View>
                 </View>

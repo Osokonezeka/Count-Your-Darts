@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, View, Text, StyleSheet } from "react-native";
+import { Modal, StyleSheet, Text, View } from "react-native";
 
 export interface FinishModalProps {
   visible: boolean;
@@ -23,7 +23,13 @@ export function FinishModal({
   const styles = getStyles(theme);
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View

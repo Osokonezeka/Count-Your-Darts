@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
@@ -224,18 +225,15 @@ const MatchStatCard = React.memo(
       });
     }, [stats, sortConfig, item.id]);
 
-    const SortableHeader = ({
-      label,
-      colKey,
+    const renderSortableHeader = (
+      label: string,
+      colKey: string,
       isName = false,
-    }: {
-      label: string;
-      colKey: string;
-      isName?: boolean;
-    }) => {
+    ) => {
       const isActive = sortConfig?.col === colKey;
       return (
         <Pressable
+          key={colKey}
           style={isName ? styles.colNameWrap : styles.colWrap}
           onPress={() => handleSort(colKey)}
         >
@@ -269,19 +267,19 @@ const MatchStatCard = React.memo(
               {item.id === "performance" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader
-                      label={t(language, "firstNine") || "First 9"}
-                      colKey="first9"
-                    />
-                    <SortableHeader
-                      label={t(language, "average") || "Average"}
-                      colKey="avg"
-                    />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "firstNine") || "First 9",
+                      "first9",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "average") || "Average",
+                      "avg",
+                    )}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -310,19 +308,19 @@ const MatchStatCard = React.memo(
               {item.id === "checkouts" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader
-                      label={t(language, "gameDarts") || "Game darts"}
-                      colKey="checkoutDarts"
-                    />
-                    <SortableHeader
-                      label={t(language, "hitPercent") || "Hit %"}
-                      colKey="checkoutPct"
-                    />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "gameDarts") || "Game darts",
+                      "checkoutDarts",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "hitPercent") || "Hit %",
+                      "checkoutPct",
+                    )}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -345,15 +343,15 @@ const MatchStatCard = React.memo(
               {item.id === "scoring" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader label="60+" colKey="s60" />
-                    <SortableHeader label="100+" colKey="s100" />
-                    <SortableHeader label="140+" colKey="s140" />
-                    <SortableHeader label="180" colKey="s180" />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("60+", "s60")}
+                    {renderSortableHeader("100+", "s100")}
+                    {renderSortableHeader("140+", "s140")}
+                    {renderSortableHeader("180", "s180")}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -427,15 +425,15 @@ const MatchStatCard = React.memo(
                                   {t(language, "target") || "Target"}
                                 </Text>
                               </View>
-                              <SortableHeader
-                                label={t(language, "single") || "Single"}
-                                colKey="S"
-                              />
-                              <SortableHeader
-                                label={t(language, "double") || "Double"}
-                                colKey="D"
-                              />
-                              <SortableHeader label={tripleTerm} colKey="T" />
+                              {renderSortableHeader(
+                                t(language, "single") || "Single",
+                                "S",
+                              )}
+                              {renderSortableHeader(
+                                t(language, "double") || "Double",
+                                "D",
+                              )}
+                              {renderSortableHeader(tripleTerm, "T")}
                             </View>
                             {targets.map((target: number) => {
                               const h = s.hits?.[target];
@@ -506,24 +504,24 @@ const MatchStatCard = React.memo(
               {item.id === "cricket_summary" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader
-                      label={t(language, "points") || "Points"}
-                      colKey="score"
-                    />
-                    <SortableHeader
-                      label={t(language, "darts") || "Darts"}
-                      colKey="darts"
-                    />
-                    <SortableHeader
-                      label={t(language, "closed") || "Closed"}
-                      colKey="closed"
-                    />
-                    <SortableHeader label="MPR" colKey="mpr" />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "points") || "Points",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "darts") || "Darts",
+                      "darts",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "closed") || "Closed",
+                      "closed",
+                    )}
+                    {renderSortableHeader("MPR", "mpr")}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -550,19 +548,19 @@ const MatchStatCard = React.memo(
               {item.id === "aroundtheclock_summary" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader
-                      label={t(language, "darts") || "Darts"}
-                      colKey="darts"
-                    />
-                    <SortableHeader
-                      label={t(language, "accuracy") || "Accuracy"}
-                      colKey="avg"
-                    />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "darts") || "Darts",
+                      "darts",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "accuracy") || "Accuracy",
+                      "avg",
+                    )}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -583,19 +581,19 @@ const MatchStatCard = React.memo(
               {item.id === "bob27_summary" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader
-                      label={t(language, "score") || "Score"}
-                      colKey="score"
-                    />
-                    <SortableHeader
-                      label={t(language, "status") || "Status"}
-                      colKey="status"
-                    />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "score") || "Score",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "status") || "Status",
+                      "status",
+                    )}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -624,20 +622,20 @@ const MatchStatCard = React.memo(
               {item.id === "hundreddarts_summary" && (
                 <>
                   <View style={styles.rowHeader}>
-                    <SortableHeader
-                      label={t(language, "player") || "Player"}
-                      colKey="name"
-                      isName
-                    />
-                    <SortableHeader
-                      label={t(language, "score") || "Score"}
-                      colKey="score"
-                    />
-                    <SortableHeader
-                      label={t(language, "average") || "Average"}
-                      colKey="avg"
-                    />
-                    <SortableHeader label="140+" colKey="s140" />
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "score") || "Score",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "average") || "Average",
+                      "avg",
+                    )}
+                    {renderSortableHeader("140+", "s140")}
                   </View>
                   {sortedStats.map((s: ParsedMatchStat) => (
                     <View key={s.name} style={styles.row}>
@@ -1428,6 +1426,8 @@ export default function History() {
         visible={!!selectedMatch}
         animationType="slide"
         presentationStyle="pageSheet"
+        statusBarTranslucent
+        navigationBarTranslucent
       >
         <SafeAreaView
           style={{ flex: 1, backgroundColor: theme.colors.background }}
@@ -1447,7 +1447,7 @@ export default function History() {
               style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
             >
               {selectedMatch?.isUnfinished && (
-                <Pressable
+                <AnimatedPressable
                   onPress={() => {
                     setSelectedMatch(null);
 
@@ -1477,9 +1477,9 @@ export default function History() {
                   <Text style={styles.resumeBtnText}>
                     {t(language, "resume") || "Resume"}
                   </Text>
-                </Pressable>
+                </AnimatedPressable>
               )}
-              <Pressable
+              <AnimatedPressable
                 onPress={() => setSelectedMatch(null)}
                 style={styles.modalCloseBtn}
               >
@@ -1488,7 +1488,7 @@ export default function History() {
                   size={24}
                   color={theme.colors.textMain}
                 />
-              </Pressable>
+              </AnimatedPressable>
             </View>
           </View>
           <ScrollView
