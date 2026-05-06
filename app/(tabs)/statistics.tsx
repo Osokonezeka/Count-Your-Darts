@@ -12,31 +12,31 @@ import React, {
 } from "react";
 import { FlatList, Modal, Pressable, Text, View } from "react-native";
 
+import dayjs from "dayjs";
 import DraggableFlatList, {
   RenderItemParams,
 } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ViewShot from "react-native-view-shot";
-import dayjs from "dayjs";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
+import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
+import {
+  ShareCard,
+  StatCard,
+  TrendCard,
+} from "../../components/statistics/StatisticsComponents";
+import { getStatisticsStyles } from "../../components/statistics/StatisticsStyles";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
-import { getStatisticsStyles } from "../../components/statistics/StatisticsStyles";
 import {
-  ShareCard,
-  TrendCard,
-  StatCard,
-} from "../../components/statistics/StatisticsComponents";
-import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
-import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
-import {
-  getOverallStatisticsAsync,
+  AggregatedStats,
   calculateTrendData,
+  getOverallStatisticsAsync,
   isBot,
   Match,
-  AggregatedStats,
 } from "../../lib/statsUtils";
 
 const HISTORY_KEY = "@dart_match_history";
@@ -371,7 +371,13 @@ export default function Statistics() {
         language={language}
       />
 
-      <Modal visible={showShareModal} transparent animationType="fade">
+      <Modal
+        visible={showShareModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+      >
         <Pressable
           style={styles.modalOverlay}
           onPress={() => setShowShareModal(false)}
@@ -398,7 +404,7 @@ export default function Statistics() {
               data={stats.map((s: AggregatedStats) => s.name)}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
-                <Pressable
+                <AnimatedPressable
                   style={styles.filterRow}
                   onPress={() => handleShareAction(item)}
                 >
@@ -408,7 +414,7 @@ export default function Statistics() {
                     size={24}
                     color={theme.colors.primary}
                   />
-                </Pressable>
+                </AnimatedPressable>
               )}
               ListEmptyComponent={
                 <Text style={styles.emptyText}>
@@ -417,7 +423,7 @@ export default function Statistics() {
                 </Text>
               }
             />
-            <Pressable
+            <AnimatedPressable
               style={[
                 styles.closeBtn,
                 { backgroundColor: theme.colors.cardBorder },
@@ -429,7 +435,7 @@ export default function Statistics() {
               >
                 {t(language, "cancel") || "Cancel"}
               </Text>
-            </Pressable>
+            </AnimatedPressable>
           </View>
         </Pressable>
       </Modal>

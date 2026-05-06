@@ -11,23 +11,24 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import CustomAlert from "../../components/modals/CustomAlert";
+import DoubleKnockout from "../../components/tournament/DoubleKnockout";
 import GroupsAndKnockout from "../../components/tournament/GroupsAndKnockout";
+import { SharedMatch } from "../../components/tournament/MatchCard";
 import RoundRobin from "../../components/tournament/RoundRobin";
 import SingleKnockout from "../../components/tournament/SingleKnockout";
-import DoubleKnockout from "../../components/tournament/DoubleKnockout";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
-import { useMatchStore } from "../../store/useMatchStore";
-import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import {
   Match,
   MatchStatItem,
   PlayerMatchStats,
   TournamentSettings,
 } from "../../lib/statsUtils";
-import { SharedMatch } from "../../components/tournament/MatchCard";
+import { useMatchStore } from "../../store/useMatchStore";
 
 export default function TournamentBracketScreen() {
   const { theme } = useTheme();
@@ -370,6 +371,8 @@ export default function TournamentBracketScreen() {
         visible={isStatsModalVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setStatsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -385,7 +388,7 @@ export default function TournamentBracketScreen() {
                 <Text style={styles.modalTitle}>
                   {t(language, "matchStatsTitle") || "Match Statistics"}
                 </Text>
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={() => setStatsModalVisible(false)}
                   style={styles.closeModalBtn}
                 >
@@ -394,7 +397,7 @@ export default function TournamentBracketScreen() {
                     size={24}
                     color={theme.colors.textMuted}
                   />
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
 
               <View style={styles.playersTitleRow}>
@@ -461,7 +464,7 @@ export default function TournamentBracketScreen() {
               </ScrollView>
 
               {selectedMatch.logs && selectedMatch.logs.length > 0 ? (
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.showLogsBtn}
                   onPress={() => {
                     setStatsModalVisible(false);
@@ -478,7 +481,7 @@ export default function TournamentBracketScreen() {
                   <Text style={styles.showLogsBtnText}>
                     {t(language, "showPlayedLegs") || "Show played legs"}
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               ) : (
                 <Text style={styles.disclaimerText}>
                   {t(language, "statsDisclaimer") ||

@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useLanguage } from "../../context/LanguageContext";
 import { t } from "../../lib/i18n";
 import { MatchStatItem, TournamentSettings } from "../../lib/statsUtils";
+import { AnimatedPressable } from "../common/AnimatedPressable";
 
 export type SharedPlayer = { id: string; name: string };
 
@@ -61,19 +62,18 @@ export const MatchCard = React.memo(
     const showCheckmarks = match.phase !== "group";
 
     return (
-      <TouchableOpacity
+      <AnimatedPressable
         style={[
           styles.matchCard,
           match.isBye && styles.byeCard,
           match.isThirdPlace && styles.thirdPlaceCard,
         ]}
-        activeOpacity={isClickable ? 0.8 : 1}
         onPress={
           isClickable && onMatchPress ? () => onMatchPress(match) : undefined
         }
       >
         {isMatchInProgress && !hasWinner && !isReadOnly && onResetMatch && (
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.resetMatchBtn}
             onPress={() => onResetMatch(match.id)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -83,7 +83,7 @@ export const MatchCard = React.memo(
               size={20}
               color={theme.colors.danger || "#dc3545"}
             />
-          </TouchableOpacity>
+          </AnimatedPressable>
         )}
 
         {match.isThirdPlace && (
@@ -201,23 +201,21 @@ export const MatchCard = React.memo(
 
         <View style={styles.actionContainer}>
           {!match.isBye && hasWinner ? (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.statsButton}
-              activeOpacity={0.8}
               onPress={() => onMatchPress && onMatchPress(match)}
             >
               <Ionicons name="stats-chart" size={16} color="#fff" />
               <Text style={styles.playButtonText}>
                 {t(language, "stats") || "Statistics"}
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : !isReadOnly && !match.isBye && !isWaiting ? (
-            <TouchableOpacity
+            <AnimatedPressable
               style={[
                 styles.playButton,
                 isMatchInProgress && styles.resumeButton,
               ]}
-              activeOpacity={0.8}
               onPress={() => onPlay(match)}
             >
               <Ionicons
@@ -230,14 +228,14 @@ export const MatchCard = React.memo(
                   ? t(language, "resume") || "Resume"
                   : t(language, "start") || "Play"}
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : match.isBye ? (
             <Text style={styles.infoText}>
               {t(language, "byePlayer") || "Bye"}
             </Text>
           ) : null}
         </View>
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   },
 );

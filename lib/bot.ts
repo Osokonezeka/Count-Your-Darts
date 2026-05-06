@@ -1,5 +1,184 @@
 import { getCheckoutInfo } from "./checkouts";
-import { translations, availableLanguages } from "./i18n";
+import { availableLanguages, translations } from "./i18n";
+
+const ALL_DARTS: { v: number; m: number }[] = [];
+for (let i = 20; i >= 1; i--) {
+  ALL_DARTS.push({ v: i, m: 3 }, { v: i, m: 2 }, { v: i, m: 1 });
+}
+ALL_DARTS.push({ v: 25, m: 2 }, { v: 25, m: 1 }, { v: 0, m: 1 });
+ALL_DARTS.sort((a, b) => {
+  const valA = a.v * a.m;
+  const valB = b.v * b.m;
+  if (valA !== valB) return valB - valA;
+  return a.m - b.m;
+});
+
+const DOUBLE_NEIGHBORS: Record<number, number[]> = {
+  20: [1, 5],
+  19: [3, 7],
+  18: [1, 4],
+  17: [2, 3],
+  16: [8, 7],
+  15: [10, 2],
+  14: [9, 11],
+  13: [6, 4],
+  12: [9, 5],
+  11: [14, 8],
+  10: [15, 6],
+  9: [12, 14],
+  8: [11, 16],
+  7: [16, 19],
+  6: [10, 13],
+  5: [20, 12],
+  4: [18, 13],
+  3: [19, 17],
+  2: [17, 15],
+  1: [20, 18],
+};
+
+const CRICKET_NEIGHBORS: Record<number, number[]> = {
+  20: [1, 5],
+  19: [3, 7],
+  18: [1, 4],
+  17: [2, 3],
+  16: [8, 7],
+  15: [10, 2],
+  25: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+};
+
+const IMPOSSIBLE_SCORES = [163, 166, 169, 172, 173, 175, 176, 178, 179];
+const BOGEY_NUMBERS = [169, 168, 166, 165, 163, 162, 159];
+
+const adjustScoreForSmartLeave = (
+  score: number,
+  remainingPoints: number,
+  targetAverage: number,
+): number => {
+  const currentLeave = remainingPoints - score;
+  if (currentLeave > 200) return score;
+
+  const isSmartSetup = Math.random() < targetAverage / 110;
+  let bestScore = score;
+  let minDiff = 999;
+
+  if (isSmartSetup) {
+    const goodLeaves = [
+      16, 24, 32, 36, 40, 50, 56, 60, 64, 72, 80, 84, 96, 100, 121, 132, 170,
+    ];
+    for (const gl of goodLeaves) {
+      const reqScore = remainingPoints - gl;
+      if (
+        reqScore > 0 &&
+        reqScore <= 180 &&
+        !IMPOSSIBLE_SCORES.includes(reqScore)
+      ) {
+        const diff = Math.abs(reqScore - score);
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestScore = reqScore;
+        }
+      }
+    }
+    if (minDiff <= 30) return bestScore;
+  } else {
+    const mistakeChance = 1 - targetAverage / 120;
+    if (Math.random() < mistakeChance) {
+      const badLeaves = [
+        169, 168, 166, 165, 163, 162, 159, 39, 38, 37, 35, 34, 33, 31, 30, 28,
+        26, 22, 18, 15, 14, 10, 6,
+      ];
+      for (const bl of badLeaves) {
+        const reqScore = remainingPoints - bl;
+        if (
+          reqScore > 0 &&
+          reqScore <= 180 &&
+          !IMPOSSIBLE_SCORES.includes(reqScore)
+        ) {
+          const diff = Math.abs(reqScore - score);
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestScore = reqScore;
+          }
+        }
+      }
+      if (minDiff <= 25) return bestScore;
+    }
+  }
+  return score;
+};
+
+const getSetupMissCombo = (
+  originalScore: number,
+  score: number,
+  activeDartsCount: number,
+  prefixMisses: { value: number; multiplier: number }[],
+  dartsCount: number,
+): { value: number; multiplier: number }[] | null => {
+  const checkoutStr = getCheckoutInfo(originalScore);
+  if (!checkoutStr) return null;
+
+  const parts = checkoutStr.split(" ");
+  const lastPart = parts[parts.length - 1];
+  if (activeDartsCount < parts.length) return null;
+
+  let setupScore = 0;
+  let setupDarts: { value: number; multiplier: number }[] = [];
+  for (let i = 0; i < parts.length - 1; i++) {
+    const p = parts[i];
+    if (p === "BULL") {
+      setupScore += 50;
+      setupDarts.push({ value: 25, multiplier: 2 });
+    } else if (p === "25") {
+      setupScore += 25;
+      setupDarts.push({ value: 25, multiplier: 1 });
+    } else if (p.startsWith("T")) {
+      const val = parseInt(p.slice(1));
+      setupScore += val * 3;
+      setupDarts.push({ value: val, multiplier: 3 });
+    } else if (p.startsWith("D")) {
+      const val = parseInt(p.slice(1));
+      setupScore += val * 2;
+      setupDarts.push({ value: val, multiplier: 2 });
+    } else {
+      const val = parseInt(p);
+      setupScore += val;
+      setupDarts.push({ value: val, multiplier: 1 });
+    }
+  }
+
+  let missedDart: { value: number; multiplier: number } | null = null;
+  if (lastPart.startsWith("D")) {
+    const targetDouble = parseInt(lastPart.slice(1));
+    if (score === setupScore + targetDouble) {
+      missedDart = { value: targetDouble, multiplier: 1 };
+    } else if (score === setupScore) {
+      missedDart = { value: 0, multiplier: 1 };
+    } else {
+      const targetNeighbors = DOUBLE_NEIGHBORS[targetDouble] || [];
+      for (const n of targetNeighbors) {
+        if (score === setupScore + n) {
+          missedDart = { value: n, multiplier: 1 };
+          break;
+        }
+      }
+    }
+  } else if (lastPart === "BULL") {
+    if (score === setupScore + 25) {
+      missedDart = { value: 25, multiplier: 1 };
+    } else if (score === setupScore) {
+      missedDart = { value: 0, multiplier: 1 };
+    }
+  }
+
+  if (missedDart) {
+    const result = [...prefixMisses, ...setupDarts, missedDart];
+    while (result.length < dartsCount) {
+      result.push({ value: 0, multiplier: 1 });
+    }
+    return result;
+  }
+  return null;
+};
 
 export const breakdownScoreToDarts = (
   score: number,
@@ -98,94 +277,14 @@ export const breakdownScoreToDarts = (
     originalScore > 0 &&
     outRule !== "straight"
   ) {
-    const checkoutStr = getCheckoutInfo(originalScore);
-    if (checkoutStr) {
-      const parts = checkoutStr.split(" ");
-      const lastPart = parts[parts.length - 1];
-
-      if (activeDartsCount >= parts.length) {
-        let setupScore = 0;
-        let setupDarts: { value: number; multiplier: number }[] = [];
-        for (let i = 0; i < parts.length - 1; i++) {
-          const p = parts[i];
-          if (p === "BULL") {
-            setupScore += 50;
-            setupDarts.push({ value: 25, multiplier: 2 });
-          } else if (p === "25") {
-            setupScore += 25;
-            setupDarts.push({ value: 25, multiplier: 1 });
-          } else if (p.startsWith("T")) {
-            const val = parseInt(p.slice(1));
-            setupScore += val * 3;
-            setupDarts.push({ value: val, multiplier: 3 });
-          } else if (p.startsWith("D")) {
-            const val = parseInt(p.slice(1));
-            setupScore += val * 2;
-            setupDarts.push({ value: val, multiplier: 2 });
-          } else {
-            const val = parseInt(p);
-            setupScore += val;
-            setupDarts.push({ value: val, multiplier: 1 });
-          }
-        }
-
-        let missedDart: { value: number; multiplier: number } | null = null;
-
-        if (lastPart.startsWith("D")) {
-          const targetDouble = parseInt(lastPart.slice(1));
-
-          if (score === setupScore + targetDouble) {
-            missedDart = { value: targetDouble, multiplier: 1 };
-          } else if (score === setupScore) {
-            missedDart = { value: 0, multiplier: 1 };
-          } else {
-            const neighbors: Record<number, number[]> = {
-              20: [1, 5],
-              19: [3, 7],
-              18: [1, 4],
-              17: [2, 3],
-              16: [8, 7],
-              15: [10, 2],
-              14: [9, 11],
-              13: [6, 4],
-              12: [9, 5],
-              11: [14, 8],
-              10: [15, 6],
-              9: [12, 14],
-              8: [11, 16],
-              7: [16, 19],
-              6: [10, 13],
-              5: [20, 12],
-              4: [18, 13],
-              3: [19, 17],
-              2: [17, 15],
-              1: [20, 18],
-            };
-            const targetNeighbors = neighbors[targetDouble] || [];
-            for (const n of targetNeighbors) {
-              if (score === setupScore + n) {
-                missedDart = { value: n, multiplier: 1 };
-                break;
-              }
-            }
-          }
-        } else if (lastPart === "BULL") {
-          if (score === setupScore + 25) {
-            missedDart = { value: 25, multiplier: 1 };
-          } else if (score === setupScore) {
-            missedDart = { value: 0, multiplier: 1 };
-          }
-        }
-
-        if (missedDart) {
-          const result = [...prefixMisses, ...setupDarts, missedDart];
-          while (result.length < dartsCount) {
-            result.push({ value: 0, multiplier: 1 });
-          }
-          return result;
-        }
-      }
-    }
+    const combo = getSetupMissCombo(
+      originalScore,
+      score,
+      activeDartsCount,
+      prefixMisses,
+      dartsCount,
+    );
+    if (combo) return combo;
   }
 
   if (
@@ -248,19 +347,6 @@ export const breakdownScoreToDarts = (
         { value: 1, multiplier: 1 },
       ];
   }
-
-  const ALL_DARTS: { v: number; m: number }[] = [];
-  for (let i = 20; i >= 1; i--) {
-    ALL_DARTS.push({ v: i, m: 3 }, { v: i, m: 2 }, { v: i, m: 1 });
-  }
-  ALL_DARTS.push({ v: 25, m: 2 }, { v: 25, m: 1 }, { v: 0, m: 1 });
-
-  ALL_DARTS.sort((a, b) => {
-    const valA = a.v * a.m;
-    const valB = b.v * b.m;
-    if (valA !== valB) return valB - valA;
-    return a.m - b.m;
-  });
 
   const findCombo = (
     target: number,
@@ -375,6 +461,120 @@ export interface BotMatchSettings {
   [key: string]: string | number | boolean | undefined;
 }
 
+const getSmoothedAverage = (
+  anchor: number,
+  current: number,
+  maxDarts: number,
+): number => {
+  const anchorWeight = 6;
+  return (
+    (anchor * anchorWeight + current * maxDarts) / (anchorWeight + maxDarts)
+  );
+};
+
+const clampBotAverage = (avg: number): number =>
+  Math.max(20, Math.min(120, Math.round(avg)));
+
+const resolveX01BotAverage = (
+  humans: BotPlayerState[],
+  startPoints: number,
+  baseline?: number,
+) => {
+  let maxDarts = 0;
+  let highestPPA = 0;
+  humans.forEach((h) => {
+    const darts = h.totalMatchDarts || h.darts || 0;
+    if (darts > maxDarts) maxDarts = darts;
+    if (darts > 0) {
+      const score =
+        h.totalMatchScore !== undefined
+          ? h.totalMatchScore
+          : startPoints - (h.score || 0);
+      const ppa = (score / darts) * 3;
+      if (ppa > highestPPA) highestPPA = ppa;
+    }
+  });
+  const anchor = baseline ?? 45;
+  return clampBotAverage(getSmoothedAverage(anchor, highestPPA, maxDarts) + 2);
+};
+
+const resolve100DartsBotAverage = (
+  humans: BotPlayerState[],
+  baseline?: number,
+) => {
+  let maxDarts = 0;
+  let highestPPA = 0;
+  humans.forEach((h) => {
+    const darts = h.dartsCount !== undefined ? h.dartsCount : h.darts || 0;
+    if (darts > maxDarts) maxDarts = darts;
+    if (darts > 0) {
+      const ppa = ((h.score || 0) / darts) * 3;
+      if (ppa > highestPPA) highestPPA = ppa;
+    }
+  });
+  const anchor = baseline ?? 45;
+  return clampBotAverage(getSmoothedAverage(anchor, highestPPA, maxDarts) + 2);
+};
+
+const resolveCricketBotAverage = (
+  humans: BotPlayerState[],
+  baseline?: number,
+) => {
+  let maxDarts = 0;
+  let highestMPR = 0;
+  humans.forEach((h) => {
+    const darts = h.darts || 0;
+    if (darts > maxDarts) maxDarts = darts;
+    if (darts > 0) {
+      const marks = Object.values(h.marks || {}).reduce(
+        (a: number, b: number) => a + b,
+        0,
+      ) as number;
+      const mpr = (marks / darts) * 3;
+      if (mpr > highestMPR) highestMPR = mpr;
+    }
+  });
+  const anchor = baseline ?? 1.2;
+  const smoothedMPR = getSmoothedAverage(anchor, highestMPR, maxDarts);
+  return clampBotAverage(smoothedMPR * 22 + 18);
+};
+
+const resolveClockBotAverage = (
+  humans: BotPlayerState[],
+  baseline?: number,
+) => {
+  let maxDarts = 0;
+  let highestAcc = 0;
+  humans.forEach((h) => {
+    const darts = h.darts || 0;
+    if (darts > maxDarts) maxDarts = darts;
+    if (darts > 0) {
+      const acc = (h.hits || 0) / darts;
+      if (acc > highestAcc) highestAcc = acc;
+    }
+  });
+  const anchor = baseline ?? 0.25;
+  const smoothedAcc = getSmoothedAverage(anchor, highestAcc, maxDarts);
+  return clampBotAverage((smoothedAcc / 0.9) * 120 + 5);
+};
+
+const resolveBobsBotAverage = (humans: BotPlayerState[], baseline?: number) => {
+  let maxDarts = 0;
+  let highestScore = -999;
+  humans.forEach((h) => {
+    const darts = h.darts || 0;
+    if (darts > maxDarts) maxDarts = darts;
+    if ((h.score || 0) > highestScore) highestScore = h.score || 0;
+  });
+
+  let currentAvg = 40;
+  if (highestScore > 27) currentAvg = 45 + highestScore / 10;
+
+  const anchor =
+    baseline !== undefined && baseline > 27 ? 45 + baseline / 10 : 40;
+  return clampBotAverage(getSmoothedAverage(anchor, currentAvg, maxDarts));
+};
+
 export const resolveBotAverage = (
   botName: string,
   playerStates: BotPlayerState[],
@@ -391,105 +591,24 @@ export const resolveBotAverage = (
   );
   if (humans.length === 0) return 45;
 
-  let highestPPA = 0;
-  let highestMPR = 0;
-  let highestAcc = 0;
-  let highestScore = -999;
-
-  let maxDarts = 0;
-  const anchorWeight = 6;
-
-  if (mode === "X01") {
-    const startPoints = settings?.startPoints || 501;
-    humans.forEach((h) => {
-      const darts = h.totalMatchDarts || h.darts || 0;
-      if (darts > maxDarts) maxDarts = darts;
-      if (darts > 0) {
-        const score =
-          h.totalMatchScore !== undefined
-            ? h.totalMatchScore
-            : startPoints - (h.score || 0);
-        const ppa = (score / darts) * 3;
-        if (ppa > highestPPA) highestPPA = ppa;
-      }
-    });
-
-    const anchor = historicalBaseline !== undefined ? historicalBaseline : 45;
-    const smoothedPPA =
-      (anchor * anchorWeight + highestPPA * maxDarts) /
-      (anchorWeight + maxDarts);
-    return Math.max(20, Math.min(120, Math.round(smoothedPPA + 2)));
-  } else if (mode === "100 Darts") {
-    humans.forEach((h) => {
-      const darts = h.dartsCount !== undefined ? h.dartsCount : h.darts || 0;
-      if (darts > maxDarts) maxDarts = darts;
-      if (darts > 0) {
-        const ppa = ((h.score || 0) / darts) * 3;
-        if (ppa > highestPPA) highestPPA = ppa;
-      }
-    });
-
-    const anchor = historicalBaseline !== undefined ? historicalBaseline : 45;
-    const smoothedPPA =
-      (anchor * anchorWeight + highestPPA * maxDarts) /
-      (anchorWeight + maxDarts);
-    return Math.max(20, Math.min(120, Math.round(smoothedPPA + 2)));
-  } else if (mode === "Cricket") {
-    humans.forEach((h) => {
-      const darts = h.darts || 0;
-      if (darts > maxDarts) maxDarts = darts;
-      if (darts > 0) {
-        const marks = Object.values(h.marks || {}).reduce(
-          (a: number, b: number) => a + b,
-          0,
-        ) as number;
-        const mpr = (marks / darts) * 3;
-        if (mpr > highestMPR) highestMPR = mpr;
-      }
-    });
-
-    const anchor = historicalBaseline !== undefined ? historicalBaseline : 1.2;
-    const smoothedMPR =
-      (anchor * anchorWeight + highestMPR * maxDarts) /
-      (anchorWeight + maxDarts);
-    const convertedAvg = smoothedMPR * 22 + 18;
-    return Math.max(20, Math.min(120, Math.round(convertedAvg)));
-  } else if (mode === "Around the Clock") {
-    humans.forEach((h) => {
-      const darts = h.darts || 0;
-      if (darts > maxDarts) maxDarts = darts;
-      if (darts > 0) {
-        const acc = (h.hits || 0) / darts;
-        if (acc > highestAcc) highestAcc = acc;
-      }
-    });
-
-    const anchor = historicalBaseline !== undefined ? historicalBaseline : 0.25;
-    const smoothedAcc =
-      (anchor * anchorWeight + highestAcc * maxDarts) /
-      (anchorWeight + maxDarts);
-    const convertedAvg = (smoothedAcc / 0.9) * 120 + 5;
-    return Math.max(20, Math.min(120, Math.round(convertedAvg)));
-  } else if (mode === "Bob's 27") {
-    humans.forEach((h) => {
-      const darts = h.darts || 0;
-      if (darts > maxDarts) maxDarts = darts;
-      if ((h.score || 0) > highestScore) highestScore = h.score || 0;
-    });
-
-    let currentAvg = 40;
-    if (highestScore > 27) currentAvg = 45 + highestScore / 10;
-
-    let anchorAvg = 45;
-    if (historicalBaseline !== undefined)
-      anchorAvg = historicalBaseline > 27 ? 45 + historicalBaseline / 10 : 40;
-    const smoothedAvg =
-      (anchorAvg * anchorWeight + currentAvg * maxDarts) /
-      (anchorWeight + maxDarts);
-    return Math.max(20, Math.min(120, Math.round(smoothedAvg)));
+  switch (mode) {
+    case "X01":
+      return resolveX01BotAverage(
+        humans,
+        settings?.startPoints || 501,
+        historicalBaseline,
+      );
+    case "100 Darts":
+      return resolve100DartsBotAverage(humans, historicalBaseline);
+    case "Cricket":
+      return resolveCricketBotAverage(humans, historicalBaseline);
+    case "Around the Clock":
+      return resolveClockBotAverage(humans, historicalBaseline);
+    case "Bob's 27":
+      return resolveBobsBotAverage(humans, historicalBaseline);
+    default:
+      return 45;
   }
-
-  return 45;
 };
 
 export const getBotCheckoutChance = (targetAverage: number): number => {
@@ -527,9 +646,8 @@ export const simulateBotTurn = (
     if (outRule === "straight") {
       isSetup = remainingPoints <= 180;
     } else {
-      const bogeyNumbers = [169, 168, 166, 165, 163, 162, 159];
       isSetup =
-        remainingPoints <= 170 && !bogeyNumbers.includes(remainingPoints);
+        remainingPoints <= 170 && !BOGEY_NUMBERS.includes(remainingPoints);
     }
 
     if (isSetup) {
@@ -546,9 +664,8 @@ export const simulateBotTurn = (
   }
 
   if (outRule !== "straight") {
-    const bogeyNumbers = [169, 168, 166, 165, 163, 162, 159];
     const isSetup =
-      remainingPoints <= 170 && !bogeyNumbers.includes(remainingPoints);
+      remainingPoints <= 170 && !BOGEY_NUMBERS.includes(remainingPoints);
 
     if (isSetup) {
       let dartsNeeded = 1;
@@ -611,8 +728,7 @@ export const simulateBotTurn = (
     if (minDiff <= 8) score = closest;
   }
 
-  const impossibleScores = [163, 166, 169, 172, 173, 175, 176, 178, 179];
-  if (impossibleScores.includes(score)) {
+  if (IMPOSSIBLE_SCORES.includes(score)) {
     score -= 1;
   }
 
@@ -621,60 +737,7 @@ export const simulateBotTurn = (
     remainingPoints > 40 &&
     score < remainingPoints
   ) {
-    const currentLeave = remainingPoints - score;
-
-    if (currentLeave <= 200) {
-      const isSmartSetup = Math.random() < targetAverage / 110;
-
-      if (isSmartSetup) {
-        const goodLeaves = [
-          16, 24, 32, 36, 40, 50, 56, 60, 64, 72, 80, 84, 96, 100, 121, 132,
-          170,
-        ];
-        let bestScore = score;
-        let minDiff = 999;
-        for (const gl of goodLeaves) {
-          const reqScore = remainingPoints - gl;
-          if (
-            reqScore > 0 &&
-            reqScore <= 180 &&
-            !impossibleScores.includes(reqScore)
-          ) {
-            const diff = Math.abs(reqScore - score);
-            if (diff < minDiff) {
-              minDiff = diff;
-              bestScore = reqScore;
-            }
-          }
-        }
-        if (minDiff <= 30) score = bestScore;
-      } else {
-        const mistakeChance = 1 - targetAverage / 120;
-        if (Math.random() < mistakeChance) {
-          const badLeaves = [
-            169, 168, 166, 165, 163, 162, 159, 39, 38, 37, 35, 34, 33, 31, 30,
-            28, 26, 22, 18, 15, 14, 10, 6,
-          ];
-          let bestScore = score;
-          let minDiff = 999;
-          for (const bl of badLeaves) {
-            const reqScore = remainingPoints - bl;
-            if (
-              reqScore > 0 &&
-              reqScore <= 180 &&
-              !impossibleScores.includes(reqScore)
-            ) {
-              const diff = Math.abs(reqScore - score);
-              if (diff < minDiff) {
-                minDiff = diff;
-                bestScore = reqScore;
-              }
-            }
-          }
-          if (minDiff <= 25) score = bestScore;
-        }
-      }
-    }
+    score = adjustScoreForSmartLeave(score, remainingPoints, targetAverage);
   }
 
   if (!hasOpened && inRule !== "straight" && score < 2) score = 2;
@@ -683,58 +746,7 @@ export const simulateBotTurn = (
     if (score >= remainingPoints - 1) return 0;
 
     if (remainingPoints > 50 && score < remainingPoints) {
-      const currentLeave = remainingPoints - score;
-      if (currentLeave <= 200) {
-        const isSmartSetup = Math.random() < targetAverage / 110;
-        if (isSmartSetup) {
-          const goodLeaves = [
-            16, 24, 32, 36, 40, 50, 56, 60, 64, 72, 80, 84, 96, 100, 121, 132,
-            170,
-          ];
-          let bestScore = score;
-          let minDiff = 999;
-          for (const gl of goodLeaves) {
-            const reqScore = remainingPoints - gl;
-            if (
-              reqScore > 0 &&
-              reqScore <= 180 &&
-              !impossibleScores.includes(reqScore)
-            ) {
-              const diff = Math.abs(reqScore - score);
-              if (diff < minDiff) {
-                minDiff = diff;
-                bestScore = reqScore;
-              }
-            }
-          }
-          if (minDiff <= 30) score = bestScore;
-        } else {
-          const mistakeChance = 1 - targetAverage / 120;
-          if (Math.random() < mistakeChance) {
-            const badLeaves = [
-              169, 168, 166, 165, 163, 162, 159, 39, 38, 37, 35, 34, 33, 31, 30,
-              28, 26, 22, 18, 15, 14, 10, 6,
-            ];
-            let bestScore = score;
-            let minDiff = 999;
-            for (const bl of badLeaves) {
-              const reqScore = remainingPoints - bl;
-              if (
-                reqScore > 0 &&
-                reqScore <= 180 &&
-                !impossibleScores.includes(reqScore)
-              ) {
-                const diff = Math.abs(reqScore - score);
-                if (diff < minDiff) {
-                  minDiff = diff;
-                  bestScore = reqScore;
-                }
-              }
-            }
-            if (minDiff <= 25) score = bestScore;
-          }
-        }
-      }
+      score = adjustScoreForSmartLeave(score, remainingPoints, targetAverage);
     }
   } else {
     if (score >= remainingPoints) return remainingPoints;
@@ -821,18 +833,7 @@ export const simulateCricketBotThrow = (
   target: number,
 ): { hit: boolean; multiplier: number; missedValue?: number } => {
   const getMissedValue = (t: number) => {
-    const NEIGHBORS: Record<number, number[]> = {
-      20: [1, 5],
-      19: [3, 7],
-      18: [1, 4],
-      17: [2, 3],
-      16: [8, 7],
-      15: [10, 2],
-      25: [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-      ],
-    };
-    const neighbors = NEIGHBORS[t] || [0];
+    const neighbors = CRICKET_NEIGHBORS[t] || [0];
     if (targetAverage < 40 && Math.random() < 0.15) return 0;
     return neighbors[Math.floor(Math.random() * neighbors.length)];
   };
@@ -869,7 +870,6 @@ export const calculateX01BotTurnDetails = (
   outRule: "straight" | "double" | "master",
   throwsThisTurn: number = 0,
 ) => {
-  const BOGEY_NUMBERS = [169, 168, 166, 165, 163, 162, 159];
   const botScore = simulateBotTurn(
     botAvg,
     currentScore,

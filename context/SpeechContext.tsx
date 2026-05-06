@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useLanguage } from "./LanguageContext";
 
 const SPEECH_KEY = "@settings_speech";
@@ -29,7 +36,7 @@ export const SpeechProvider = ({ children }: { children: React.ReactNode }) => {
     loadSettings();
   }, []);
 
-  const toggleSpeech = async () => {
+  const toggleSpeech = useCallback(async () => {
     try {
       const newValue = !isSpeechEnabled;
       setIsSpeechEnabled(newValue);
@@ -47,23 +54,31 @@ export const SpeechProvider = ({ children }: { children: React.ReactNode }) => {
       } else {
         Speech.stop();
       }
-    } catch (error) {}
-  };
+    } catch (error) {
+      console.error(error);
+    }
+  }, [isSpeechEnabled, language]);
 
-  const speak = (text: string) => {
-    if (!isSpeechEnabled) return;
-    Speech.stop();
-    Speech.speak(text.toString(), {
-      language: language === "pl" ? "pl-PL" : "en-US",
-      pitch: 1.0,
-      rate: 1.0,
-    });
-  };
+  const speak = useCallback(
+    (text: string) => {
+      if (!isSpeechEnabled) return;
+      Speech.stop();
+      Speech.speak(text.toString(), {
+        language: language === "pl" ? "pl-PL" : "en-US",
+        pitch: 1.0,
+        rate: 1.0,
+      });
+    },
+    [isSpeechEnabled, language],
+  );
+
+  const value = useMemo(
+    () => ({ isSpeechEnabled, toggleSpeech, speak }),
+    [isSpeechEnabled, toggleSpeech, speak],
+  );
 
   return (
-    <SpeechContext.Provider value={{ isSpeechEnabled, toggleSpeech, speak }}>
-      {children}
-    </SpeechContext.Provider>
+    <SpeechContext.Provider value={value}>{children}</SpeechContext.Provider>
   );
 };
 

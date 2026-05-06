@@ -1,21 +1,21 @@
-import { useState, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { debounce } from "lodash";
-import { IMPOSSIBLE_SCORES, BOGEY_NUMBERS } from "../lib/gameUtils";
+import { useEffect, useMemo, useState } from "react";
+import { useSpeech } from "../context/SpeechContext";
+import {
+  calculateX01BotTurnDetails,
+  getBotDifficultyFromName,
+} from "../lib/bot";
+import { BOGEY_NUMBERS, IMPOSSIBLE_SCORES } from "../lib/gameUtils";
 import {
   generateMatchStats,
-  Match,
   LegLog,
+  Match,
   PlayerMatchStats,
 } from "../lib/statsUtils";
 import { useMatchStore } from "../store/useMatchStore";
-import { useSpeech } from "../context/SpeechContext";
 import { useBotDelay } from "./useBotDelay";
 import { useBotTurn } from "./useBotTurn";
-import {
-  getBotDifficultyFromName,
-  calculateX01BotTurnDetails,
-} from "../lib/bot";
 
 type X01Settings = {
   startingPoints: number;
@@ -212,7 +212,6 @@ export function useX01Match(
     execute: ({ botScore, newLeft, isBust, dartsAtDouble }) => {
       processTurn(isP1, botScore, newLeft, isBust, dartsAtDouble);
     },
-    dependencies: [activePlayerId, winner, showDoublePrompt, isFastBot],
   });
 
   const handleKeyPress = (val: string) => {

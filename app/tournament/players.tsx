@@ -974,7 +974,7 @@ export default function TournamentPlayersScreen() {
                         if (item.startsWith("__ADD__")) {
                           const newName = item.replace("__ADD__", "");
                           return (
-                            <TouchableOpacity
+                            <AnimatedPressable
                               style={styles.availablePlayerRow}
                               onPress={() => {
                                 setTeamMembers((prev) => [...prev, newName]);
@@ -990,11 +990,11 @@ export default function TournamentPlayersScreen() {
                                 size={22}
                                 color={theme.colors.primary}
                               />
-                            </TouchableOpacity>
+                            </AnimatedPressable>
                           );
                         }
                         return (
-                          <TouchableOpacity
+                          <AnimatedPressable
                             style={styles.availablePlayerRow}
                             onPress={() => {
                               setTeamMembers((prev) => [...prev, item]);
@@ -1009,7 +1009,7 @@ export default function TournamentPlayersScreen() {
                               size={22}
                               color={theme.colors.textMuted}
                             />
-                          </TouchableOpacity>
+                          </AnimatedPressable>
                         );
                       }}
                     />
@@ -1018,15 +1018,15 @@ export default function TournamentPlayersScreen() {
               )}
 
               <View style={styles.modalActionsInline}>
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.modalBtnCancelInline}
                   onPress={closeTeamModal}
                 >
                   <Text style={styles.modalBtnCancelTextInline}>
                     {t(language, "cancel") || "Cancel"}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </AnimatedPressable>
+                <AnimatedPressable
                   style={[
                     styles.modalBtnAddInline,
                     teamMembers.length !== 2 && { opacity: 0.5 },
@@ -1041,7 +1041,7 @@ export default function TournamentPlayersScreen() {
                   <Text style={styles.modalBtnAddTextInline}>
                     {t(language, "save") || "Save"}
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
           </Pressable>

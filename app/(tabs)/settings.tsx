@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -14,14 +15,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
-import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { availableLanguages, t } from "../../lib/i18n";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -378,6 +379,8 @@ export default function Settings() {
         transparent
         animationType="none"
         onRequestClose={() => closeModal()}
+        statusBarTranslucent
+        navigationBarTranslucent
       >
         <View style={styles.modalOverlay}>
           <Animated.View
@@ -410,7 +413,7 @@ export default function Settings() {
             {availableLanguages.map((lang) => {
               const isSelected = language === lang;
               return (
-                <Pressable
+                <AnimatedPressable
                   key={lang}
                   style={[
                     styles.langOption,
@@ -435,7 +438,7 @@ export default function Settings() {
                       color={theme.colors.primary}
                     />
                   )}
-                </Pressable>
+                </AnimatedPressable>
               );
             })}
           </Animated.View>
@@ -448,17 +451,19 @@ export default function Settings() {
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { padding: 16, paddingTop: 20, paddingBottom: 40 },
+    scrollContent: { padding: 16, paddingBottom: 40 },
     card: {
       backgroundColor: theme.colors.card,
       borderRadius: 16,
-      padding: 16,
+      padding: 20,
       marginBottom: 16,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
       elevation: 2,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 3,
     },
     cardHeader: {
       flexDirection: "row",
@@ -466,33 +471,26 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       marginBottom: 16,
     },
     iconWrapper: {
-      width: 32,
-      height: 32,
-      backgroundColor: theme.colors.primaryLight,
-      borderRadius: 8,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.15)",
       justifyContent: "center",
       alignItems: "center",
       marginRight: 12,
     },
     sectionTitle: {
-      fontSize: 17,
-      fontWeight: "700",
+      fontSize: 18,
+      fontWeight: "800",
       color: theme.colors.textMain,
-    },
-    subLabel: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: theme.colors.textMuted,
-      marginBottom: 6,
-      marginLeft: 4,
-      textTransform: "uppercase",
     },
     dropdownTrigger: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       backgroundColor: theme.colors.background,
-      padding: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: theme.colors.cardBorder,
@@ -502,51 +500,63 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       fontWeight: "600",
       color: theme.colors.textMain,
     },
-
+    subLabel: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: theme.colors.textMuted,
+      marginBottom: 8,
+      textTransform: "uppercase",
+    },
     settingRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingVertical: 6,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.background,
     },
     settingLabel: {
       fontSize: 16,
       fontWeight: "600",
       color: theme.colors.textMain,
     },
-
-    infoFooter: { alignItems: "center", marginTop: 20 },
-    versionText: {
-      color: theme.colors.textLight,
-      fontSize: 13,
-      fontWeight: "500",
+    infoFooter: {
+      alignItems: "center",
+      marginTop: 20,
+      marginBottom: 40,
     },
-
-    modalOverlay: { flex: 1, justifyContent: "flex-end" },
-    backdrop: { backgroundColor: "#000" },
+    versionText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.colors.textLight,
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    backdrop: {
+      backgroundColor: "#000",
+    },
     sheetContent: {
       backgroundColor: theme.colors.card,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      padding: 20,
+      padding: 24,
       paddingBottom: 40,
-      maxHeight: "80%",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: -3 },
-      shadowOpacity: 0.1,
-      shadowRadius: 10,
-      elevation: 20,
     },
-    sheetHeader: { alignItems: "center", marginBottom: 20 },
+    sheetHeader: {
+      alignItems: "center",
+      marginBottom: 20,
+    },
     sheetHandle: {
       width: 40,
       height: 5,
       backgroundColor: theme.colors.cardBorder,
       borderRadius: 3,
-      marginBottom: 12,
+      marginBottom: 16,
     },
     sheetTitle: {
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: "800",
       color: theme.colors.textMain,
     },
@@ -555,15 +565,24 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       justifyContent: "space-between",
       alignItems: "center",
       paddingVertical: 16,
-      paddingHorizontal: 12,
-      borderRadius: 12,
+      paddingHorizontal: 20,
+      borderRadius: 16,
       marginBottom: 8,
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
     },
-    langOptionActive: { backgroundColor: theme.colors.primaryLight },
+    langOptionActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.05)",
+    },
     langOptionText: {
       fontSize: 16,
-      color: theme.colors.textMuted,
-      fontWeight: "500",
+      fontWeight: "600",
+      color: theme.colors.textMain,
     },
-    langOptionTextActive: { color: theme.colors.textMain, fontWeight: "700" },
+    langOptionTextActive: {
+      color: theme.colors.primary,
+      fontWeight: "800",
+    },
   });

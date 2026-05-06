@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -408,7 +409,7 @@ export default function TournamentMatchScreen() {
           <Text style={styles.winTitle}>
             {winner} {t(language, "wins") || "Wins!"}
           </Text>
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.winBtn}
             onPress={() => {
               isExiting.current = true;
@@ -418,11 +419,17 @@ export default function TournamentMatchScreen() {
             <Text style={styles.winBtnTxt}>
               {t(language, "close") || "Close"}
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       )}
 
-      <Modal visible={showDoublePrompt} transparent animationType="fade">
+      <Modal
+        visible={showDoublePrompt}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
@@ -464,7 +471,7 @@ export default function TournamentMatchScreen() {
                       </Text>
                       <View style={styles.doublePromptActions}>
                         {winOpts.map((num) => (
-                          <TouchableOpacity
+                          <AnimatedPressable
                             key={`win-${num}`}
                             style={[
                               styles.doubleBtn,
@@ -485,7 +492,7 @@ export default function TournamentMatchScreen() {
                             }}
                           >
                             <Text style={styles.doubleBtnTxt}>{num}</Text>
-                          </TouchableOpacity>
+                          </AnimatedPressable>
                         ))}
                       </View>
 
@@ -502,7 +509,7 @@ export default function TournamentMatchScreen() {
                       </Text>
                       <View style={styles.doublePromptActions}>
                         {bustOpts.map((num) => (
-                          <TouchableOpacity
+                          <AnimatedPressable
                             key={`bust-${num}`}
                             style={[
                               styles.doubleBtn,
@@ -523,7 +530,7 @@ export default function TournamentMatchScreen() {
                             }}
                           >
                             <Text style={styles.doubleBtnTxt}>{num}</Text>
-                          </TouchableOpacity>
+                          </AnimatedPressable>
                         ))}
                       </View>
                     </View>
@@ -532,7 +539,7 @@ export default function TournamentMatchScreen() {
 
                 let opts = Array.from({ length: maxDarts + 1 }, (_, i) => i);
                 return opts.map((num) => (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={num}
                     style={styles.doubleBtn}
                     onPress={() => {
@@ -547,7 +554,7 @@ export default function TournamentMatchScreen() {
                     }}
                   >
                     <Text style={styles.doubleBtnTxt}>{num}</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 ));
               })()}
             </View>
@@ -570,7 +577,7 @@ export default function TournamentMatchScreen() {
         />
       </View>
 
-      <GameAlerts />
+      {GameAlerts}
     </View>
   );
 }

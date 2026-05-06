@@ -1,26 +1,30 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  Pressable,
   Dimensions,
+  Pressable,
+  Text,
   useColorScheme,
+  View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { LineChart } from "react-native-chart-kit";
 import { ScaleDecorator } from "react-native-draggable-flatlist";
 import Svg, {
   Circle,
-  Line,
   Defs,
+  G,
+  Line,
   RadialGradient,
   Stop,
-  G,
 } from "react-native-svg";
-import { getStatisticsStyles } from "./StatisticsStyles";
-import { t } from "../../lib/i18n";
 import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
 import { AggregatedStats } from "../../lib/statsUtils";
+import { getStatisticsStyles } from "./StatisticsStyles";
+
+const DEFAULT_TARGETS = [
+  20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 25, 0,
+];
 
 interface ShareStatBoxProps {
   label: string;
@@ -418,41 +422,43 @@ export const HeatmapBoard = ({
     };
   });
 
-  const gridSize = 40;
-  const cellSize = size / gridSize;
-  const grid = new Map<string, number>();
-  let maxCount = 0;
+  const heatmapDots = useMemo(() => {
+    const gridSize = 40;
+    const cellSize = size / gridSize;
+    const grid = new Map<string, number>();
+    let maxCount = 0;
 
-  if (coords && Array.isArray(coords)) {
-    coords.forEach((c) => {
-      const gridX = Math.floor(((c.x + 1) / 2) * gridSize);
-      const gridY = Math.floor(((c.y + 1) / 2) * gridSize);
+    if (coords && Array.isArray(coords)) {
+      coords.forEach((c) => {
+        const gridX = Math.floor(((c.x + 1) / 2) * gridSize);
+        const gridY = Math.floor(((c.y + 1) / 2) * gridSize);
 
-      const safeX = Math.max(0, Math.min(gridSize - 1, gridX));
-      const safeY = Math.max(0, Math.min(gridSize - 1, gridY));
+        const safeX = Math.max(0, Math.min(gridSize - 1, gridX));
+        const safeY = Math.max(0, Math.min(gridSize - 1, gridY));
 
-      const key = `${safeX},${safeY}`;
-      const count = (grid.get(key) || 0) + 1;
-      grid.set(key, count);
-      if (count > maxCount) maxCount = count;
+        const key = `${safeX},${safeY}`;
+        const count = (grid.get(key) || 0) + 1;
+        grid.set(key, count);
+        if (count > maxCount) maxCount = count;
+      });
+    }
+
+    return Array.from(grid.entries()).map(([key, count]) => {
+      const [gx, gy] = key.split(",").map(Number);
+      const opacity = maxCount > 0 ? 0.1 + 0.7 * (count / maxCount) : 0;
+
+      return (
+        <Circle
+          key={key}
+          cx={gx * cellSize + cellSize / 2}
+          cy={gy * cellSize + cellSize / 2}
+          r={cellSize * 0.7}
+          fill="url(#heatGrad)"
+          opacity={opacity}
+        />
+      );
     });
-  }
-
-  const heatmapDots = Array.from(grid.entries()).map(([key, count]) => {
-    const [gx, gy] = key.split(",").map(Number);
-    const opacity = maxCount > 0 ? 0.1 + 0.7 * (count / maxCount) : 0;
-
-    return (
-      <Circle
-        key={key}
-        cx={gx * cellSize + cellSize / 2}
-        cy={gy * cellSize + cellSize / 2}
-        r={cellSize * 0.7}
-        fill="url(#heatGrad)"
-        opacity={opacity}
-      />
-    );
-  });
+  }, [coords, size]);
 
   const bgColor = isLightTheme ? "#f0ebd870" : "#1a1a1a";
   const strokeColor = isLightTheme ? "#d0c9b4" : "#444";
@@ -593,120 +599,223 @@ export const StatCard = React.memo(
       } else setSortConfig({ col, asc: false });
     };
 
-    const getTranslatedTitle = (id: string) => {
-      switch (id) {
-        case "tournaments":
-          return (
-            t(language, "tournamentsHeader") ||
-            "Tournaments (Played / 1st / 2nd)"
-          );
-        case "games":
-          return t(language, "gamesWonHeader") || "Matches / Won / %";
-        case "performance":
-          return t(language, "avgHeader") || "First 9 / Average";
-        case "checkouts":
-          return t(language, "gameDartsHeader") || "Checkouts / Hit %";
-        case "scoring":
-          return (
-            t(language, "scoringHeader") || "Scoring (60+ / 100+ / 140+ / 180)"
-          );
-        case "hit_chart":
-          return t(language, "sectorsHeader") || "Targets hitted (S / D / T)";
-        case "heatmap":
-          return t(language, "heatmap") || "Heatmap";
-        default:
-          return id;
-      }
+    const translatedTitles: Record<string, string> = {
+      tournaments:
+        t(language, "tournamentsHeader") || "Tournaments (Played / 1st / 2nd)",
+      games: t(language, "gamesWonHeader") || "Matches / Won / %",
+      performance: t(language, "avgHeader") || "First 9 / Average",
+      checkouts: t(language, "gameDartsHeader") || "Checkouts / Hit %",
+      scoring:
+        t(language, "scoringHeader") || "Scoring (60+ / 100+ / 140+ / 180)",
+      hit_chart: t(language, "sectorsHeader") || "Targets hitted (S / D / T)",
+      heatmap: t(language, "heatmap") || "Heatmap",
+    };
+    const title = translatedTitles[item.id] || item.id;
+
+    type ColumnDef = {
+      key: string;
+      label: string;
+      isName?: boolean;
+      render: (s: AggregatedStats) => React.ReactNode;
+    };
+
+    const tableColumns: Record<string, ColumnDef[]> = {
+      tournaments: [
+        {
+          key: "name",
+          label: t(language, "player") || "Player",
+          isName: true,
+          render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
+        },
+        {
+          key: "tPlayed",
+          label: t(language, "playedShort") || "Played",
+          render: (s) => <Text style={styles.cell}>{s.tPlayed}</Text>,
+        },
+        {
+          key: "t1st",
+          label: t(language, "firstPlaceShort") || "1st",
+          render: (s) => (
+            <Text
+              style={[
+                styles.cell,
+                { color: theme.colors.warning, fontWeight: "900" },
+              ]}
+            >
+              {s.t1st}
+            </Text>
+          ),
+        },
+        {
+          key: "t2nd",
+          label: t(language, "secondPlaceShort") || "2nd",
+          render: (s) => (
+            <Text
+              style={[
+                styles.cell,
+                { color: theme.colors.textMuted, fontWeight: "700" },
+              ]}
+            >
+              {s.t2nd}
+            </Text>
+          ),
+        },
+      ],
+      games: [
+        {
+          key: "name",
+          label: t(language, "player") || "Player",
+          isName: true,
+          render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
+        },
+        {
+          key: "mPlayed",
+          label: t(language, "matches") || "Matches",
+          render: (s) => <Text style={styles.cell}>{s.mPlayed}</Text>,
+        },
+        {
+          key: "mWon",
+          label: t(language, "winsShort") || "W",
+          render: (s) => (
+            <Text style={[styles.cell, { color: theme.colors.success }]}>
+              {s.mWon}
+            </Text>
+          ),
+        },
+        {
+          key: "winPct",
+          label: t(language, "winPctShort") || "W %",
+          render: (s) => (
+            <Text style={styles.cell}>{(s.winPct || 0).toFixed(0)}%</Text>
+          ),
+        },
+      ],
+      performance: [
+        {
+          key: "name",
+          label: t(language, "player") || "Player",
+          isName: true,
+          render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
+        },
+        {
+          key: "first9",
+          label: t(language, "firstNine") || "First 9",
+          render: (s) => (
+            <Text style={styles.cell}>
+              {(s.calculatedFirst9 || 0).toFixed(1)}
+            </Text>
+          ),
+        },
+        {
+          key: "avg",
+          label: t(language, "average") || "Average",
+          render: (s) => (
+            <Text
+              style={[
+                styles.cell,
+                { color: theme.colors.success, fontWeight: "bold" },
+              ]}
+            >
+              {(s.calculatedAvg || 0).toFixed(1)}
+            </Text>
+          ),
+        },
+      ],
+      checkouts: [
+        {
+          key: "name",
+          label: t(language, "player") || "Player",
+          isName: true,
+          render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
+        },
+        {
+          key: "checkoutDarts",
+          label: t(language, "attemptsShort") || "Att",
+          render: (s) => <Text style={styles.cell}>{s.checkoutDarts}</Text>,
+        },
+        {
+          key: "checkoutPct",
+          label: t(language, "hitPercent") || "Hit %",
+          render: (s) => (
+            <Text style={[styles.cell, { color: theme.colors.success }]}>
+              {(s.calculatedCheckoutPct || 0).toFixed(1)}%
+            </Text>
+          ),
+        },
+      ],
+      scoring: [
+        {
+          key: "name",
+          label: t(language, "player") || "Player",
+          isName: true,
+          render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
+        },
+        {
+          key: "s60",
+          label: "60+",
+          render: (s) => <Text style={styles.cell}>{s.s60}</Text>,
+        },
+        {
+          key: "s100",
+          label: "100+",
+          render: (s) => <Text style={styles.cell}>{s.s100}</Text>,
+        },
+        {
+          key: "s140",
+          label: "140+",
+          render: (s) => <Text style={styles.cell}>{s.s140}</Text>,
+        },
+        {
+          key: "s180",
+          label: "180",
+          render: (s) => (
+            <Text
+              style={[
+                styles.cell,
+                { color: theme.colors.success, fontWeight: "bold" },
+              ]}
+            >
+              {s.s180}
+            </Text>
+          ),
+        },
+      ],
     };
 
     const sortedStats = useMemo(() => {
       if (!sortConfig || item.id === "hit_chart") return stats;
       return [...stats].sort((a, b) => {
-        let valA: string | number = 0,
-          valB: string | number = 0;
-        switch (sortConfig.col) {
-          case "name":
-            valA = a.name.toLowerCase();
-            valB = b.name.toLowerCase();
-            break;
-          case "tPlayed":
-            valA = a.tPlayed;
-            valB = b.tPlayed;
-            break;
-          case "t1st":
-            valA = a.t1st;
-            valB = b.t1st;
-            break;
-          case "t2nd":
-            valA = a.t2nd;
-            valB = b.t2nd;
-            break;
-          case "mPlayed":
-            valA = a.mPlayed;
-            valB = b.mPlayed;
-            break;
-          case "mWon":
-            valA = a.mWon;
-            valB = b.mWon;
-            break;
-          case "winPct":
-            valA = a.winPct || 0;
-            valB = b.winPct || 0;
-            break;
-          case "avg":
-            valA = a.calculatedAvg || 0;
-            valB = b.calculatedAvg || 0;
-            break;
-          case "first9":
-            valA = a.calculatedFirst9 || 0;
-            valB = b.calculatedFirst9 || 0;
-            break;
-          case "checkoutDarts":
-            valA = a.checkoutDarts;
-            valB = b.checkoutDarts;
-            break;
-          case "checkoutPct":
-            valA = a.calculatedCheckoutPct || 0;
-            valB = b.calculatedCheckoutPct || 0;
-            break;
-          case "s60":
-            valA = a.s60;
-            valB = b.s60;
-            break;
-          case "s100":
-            valA = a.s100;
-            valB = b.s100;
-            break;
-          case "s140":
-            valA = a.s140;
-            valB = b.s140;
-            break;
-          case "s180":
-            valA = a.s180;
-            valB = b.s180;
-            break;
-        }
+        const keyMap: Record<string, keyof AggregatedStats> = {
+          avg: "calculatedAvg",
+          first9: "calculatedFirst9",
+          checkoutPct: "calculatedCheckoutPct",
+        };
+
+        const actualKey =
+          keyMap[sortConfig.col] || (sortConfig.col as keyof AggregatedStats);
+        const valA = a[actualKey] ?? 0;
+        const valB = b[actualKey] ?? 0;
+
         if (valA === valB) return 0;
-        if (typeof valA === "string" && typeof valB === "string")
-          return sortConfig.asc
-            ? valA.localeCompare(valB)
-            : valB.localeCompare(valA);
+        if (typeof valA === "string" && typeof valB === "string") {
+          const cmp = valA.localeCompare(valB, undefined, {
+            sensitivity: "base",
+          });
+          return sortConfig.asc ? cmp : -cmp;
+        }
         return sortConfig.asc
           ? (valA as number) - (valB as number)
           : (valB as number) - (valA as number);
       });
     }, [stats, sortConfig, item.id]);
 
-    const SortableHeader = ({
-      label,
-      colKey,
+    const renderSortableHeader = (
+      label: string,
+      colKey: string,
       isName = false,
-    }: {
-      label: string;
-      colKey: string;
-      isName?: boolean;
-    }) => (
+    ) => (
       <Pressable
+        key={colKey}
         style={isName ? styles.colNameWrap : styles.colWrap}
         onPress={() => handleSort(colKey)}
       >
@@ -739,9 +848,7 @@ export const StatCard = React.memo(
                   color={theme.colors.textLight}
                   style={{ marginRight: 10, opacity: isOpen ? 0.3 : 1 }}
                 />
-                <Text style={styles.sectionTitle}>
-                  {getTranslatedTitle(item.id)}
-                </Text>
+                <Text style={styles.sectionTitle}>{title}</Text>
               </View>
               <Ionicons
                 name={isOpen ? "chevron-up" : "chevron-down"}
@@ -752,181 +859,20 @@ export const StatCard = React.memo(
 
             {isOpen && (
               <View style={styles.table}>
-                {item.id === "tournaments" && (
+                {tableColumns[item.id] && (
                   <>
                     <View style={styles.rowHeader}>
-                      <SortableHeader
-                        label={t(language, "player") || "Player"}
-                        colKey="name"
-                        isName
-                      />
-                      <SortableHeader
-                        label={t(language, "playedShort") || "Played"}
-                        colKey="tPlayed"
-                      />
-                      <SortableHeader
-                        label={t(language, "firstPlaceShort") || "1st"}
-                        colKey="t1st"
-                      />
-                      <SortableHeader
-                        label={t(language, "secondPlaceShort") || "2nd"}
-                        colKey="t2nd"
-                      />
+                      {tableColumns[item.id].map((c) =>
+                        renderSortableHeader(c.label, c.key, c.isName),
+                      )}
                     </View>
                     {sortedStats.map((s: AggregatedStats) => (
                       <View key={s.name} style={styles.row}>
-                        <Text style={styles.cellName}>{s.name}</Text>
-                        <Text style={styles.cell}>{s.tPlayed}</Text>
-                        <Text
-                          style={[
-                            styles.cell,
-                            { color: theme.colors.warning, fontWeight: "900" },
-                          ]}
-                        ></Text>
-                        <Text
-                          style={[
-                            styles.cell,
-                            {
-                              color: theme.colors.textMuted,
-                              fontWeight: "700",
-                            },
-                          ]}
-                        >
-                          {s.t2nd}
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                )}
-                {item.id === "games" && (
-                  <>
-                    <View style={styles.rowHeader}>
-                      <SortableHeader
-                        label={t(language, "player") || "Player"}
-                        colKey="name"
-                        isName
-                      />
-                      <SortableHeader
-                        label={t(language, "matches") || "Matches"}
-                        colKey="mPlayed"
-                      />
-                      <SortableHeader
-                        label={t(language, "winsShort") || "W"}
-                        colKey="mWon"
-                      />
-                      <SortableHeader
-                        label={t(language, "winPctShort") || "W %"}
-                        colKey="winPct"
-                      />
-                    </View>
-                    {sortedStats.map((s: AggregatedStats) => (
-                      <View key={s.name} style={styles.row}>
-                        <Text style={styles.cellName}>{s.name}</Text>
-                        <Text style={styles.cell}>{s.mPlayed}</Text>
-                        <Text
-                          style={[styles.cell, { color: theme.colors.success }]}
-                        >
-                          {s.mWon}
-                        </Text>
-                        <Text style={styles.cell}>
-                          {(s.winPct || 0).toFixed(0)}%
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                )}
-                {item.id === "performance" && (
-                  <>
-                    <View style={styles.rowHeader}>
-                      <SortableHeader
-                        label={t(language, "player") || "Player"}
-                        colKey="name"
-                        isName
-                      />
-                      <SortableHeader
-                        label={t(language, "firstNine") || "First 9"}
-                        colKey="first9"
-                      />
-                      <SortableHeader
-                        label={t(language, "average") || "Average"}
-                        colKey="avg"
-                      />
-                    </View>
-                    {sortedStats.map((s: AggregatedStats) => (
-                      <View key={s.name} style={styles.row}>
-                        <Text style={styles.cellName}>{s.name}</Text>
-                        <Text style={styles.cell}>
-                          {(s.calculatedFirst9 || 0).toFixed(1)}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.cell,
-                            { color: theme.colors.success, fontWeight: "bold" },
-                          ]}
-                        >
-                          {(s.calculatedAvg || 0).toFixed(1)}
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                )}
-                {item.id === "checkouts" && (
-                  <>
-                    <View style={styles.rowHeader}>
-                      <SortableHeader
-                        label={t(language, "player") || "Player"}
-                        colKey="name"
-                        isName
-                      />
-                      <SortableHeader
-                        label={t(language, "attemptsShort") || "Att"}
-                        colKey="checkoutDarts"
-                      />
-                      <SortableHeader
-                        label={t(language, "hitPercent") || "Hit %"}
-                        colKey="checkoutPct"
-                      />
-                    </View>
-                    {sortedStats.map((s: AggregatedStats) => (
-                      <View key={s.name} style={styles.row}>
-                        <Text style={styles.cellName}>{s.name}</Text>
-                        <Text style={styles.cell}>{s.checkoutDarts}</Text>
-                        <Text
-                          style={[styles.cell, { color: theme.colors.success }]}
-                        >
-                          {(s.calculatedCheckoutPct || 0).toFixed(1)}%
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                )}
-                {item.id === "scoring" && (
-                  <>
-                    <View style={styles.rowHeader}>
-                      <SortableHeader
-                        label={t(language, "player") || "Player"}
-                        colKey="name"
-                        isName
-                      />
-                      <SortableHeader label="60+" colKey="s60" />
-                      <SortableHeader label="100+" colKey="s100" />
-                      <SortableHeader label="140+" colKey="s140" />
-                      <SortableHeader label="180" colKey="s180" />
-                    </View>
-                    {sortedStats.map((s: AggregatedStats) => (
-                      <View key={s.name} style={styles.row}>
-                        <Text style={styles.cellName}>{s.name}</Text>
-                        <Text style={styles.cell}>{s.s60}</Text>
-                        <Text style={styles.cell}>{s.s100}</Text>
-                        <Text style={styles.cell}>{s.s140}</Text>
-                        <Text
-                          style={[
-                            styles.cell,
-                            { color: theme.colors.success, fontWeight: "bold" },
-                          ]}
-                        >
-                          {s.s180}
-                        </Text>
+                        {tableColumns[item.id].map((c) => (
+                          <React.Fragment key={c.key}>
+                            {c.render(s)}
+                          </React.Fragment>
+                        ))}
                       </View>
                     ))}
                   </>
@@ -934,11 +880,7 @@ export const StatCard = React.memo(
                 {item.id === "hit_chart" && (
                   <View style={{ paddingTop: 10 }}>
                     {sortedStats.map((s: AggregatedStats) => {
-                      const defaultTargets = [
-                        20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6,
-                        5, 4, 3, 2, 1, 25, 0,
-                      ];
-                      const hasHits = defaultTargets.some(
+                      const hasHits = DEFAULT_TARGETS.some(
                         (t) =>
                           s.hits &&
                           (s.hits[t]?.S > 0 ||
@@ -949,7 +891,7 @@ export const StatCard = React.memo(
                       const isCollapsed =
                         collapsedPlayers &&
                         collapsedPlayers[`${item.id}_${s.name}`];
-                      let targets = [...defaultTargets];
+                      let targets = [...DEFAULT_TARGETS];
                       if (sortConfig && !isCollapsed) {
                         targets.sort((a, b) => {
                           const colKey = sortConfig.col as "S" | "D" | "T";
@@ -957,8 +899,8 @@ export const StatCard = React.memo(
                           const hitsB = s.hits[b]?.[colKey] || 0;
                           if (hitsA === hitsB)
                             return (
-                              defaultTargets.indexOf(a) -
-                              defaultTargets.indexOf(b)
+                              DEFAULT_TARGETS.indexOf(a) -
+                              DEFAULT_TARGETS.indexOf(b)
                             );
                           return sortConfig.asc ? hitsA - hitsB : hitsB - hitsA;
                         });
@@ -987,18 +929,18 @@ export const StatCard = React.memo(
                                     {t(language, "target") || "Target"}
                                   </Text>
                                 </View>
-                                <SortableHeader
-                                  label={t(language, "single") || "Single"}
-                                  colKey="S"
-                                />
-                                <SortableHeader
-                                  label={t(language, "double") || "Double"}
-                                  colKey="D"
-                                />
-                                <SortableHeader
-                                  label={tripleTerm || "Triple"}
-                                  colKey="T"
-                                />
+                                {renderSortableHeader(
+                                  t(language, "single") || "Single",
+                                  "S",
+                                )}
+                                {renderSortableHeader(
+                                  t(language, "double") || "Double",
+                                  "D",
+                                )}
+                                {renderSortableHeader(
+                                  tripleTerm || "Triple",
+                                  "T",
+                                )}
                               </View>
                               {targets.map((target: number) => {
                                 const h = s.hits[target];

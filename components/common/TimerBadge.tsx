@@ -1,14 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-
-const formatTime = (seconds: number) => {
-  const m = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
-  const s = (seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
-};
+import { formatTime } from "../../lib/gameUtils";
 
 interface TimerBadgeProps {
   initialTime: number;

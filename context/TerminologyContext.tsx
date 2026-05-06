@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type TerminologyContextType = {
   tripleTerm: "Triple" | "Treble";
@@ -35,32 +42,35 @@ export const TerminologyProvider: React.FC<{ children: React.ReactNode }> = ({
     loadSettings();
   }, []);
 
-  const setTripleTerm = (val: "Triple" | "Treble") => {
+  const setTripleTerm = useCallback((val: "Triple" | "Treble") => {
     setTripleState(val);
-    AsyncStorage.setItem("@settings_triple", val);
-  };
+    AsyncStorage.setItem("@settings_triple", val).catch(console.error);
+  }, []);
 
-  const setMissTerm = (val: "0" | "Miss") => {
+  const setMissTerm = useCallback((val: "0" | "Miss") => {
     setMissState(val);
-    AsyncStorage.setItem("@settings_miss", val);
-  };
+    AsyncStorage.setItem("@settings_miss", val).catch(console.error);
+  }, []);
 
-  const setBullTerm = (val: "25" | "Bull") => {
+  const setBullTerm = useCallback((val: "25" | "Bull") => {
     setBullState(val);
-    AsyncStorage.setItem("@settings_bull", val);
-  };
+    AsyncStorage.setItem("@settings_bull", val).catch(console.error);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      tripleTerm,
+      missTerm,
+      bullTerm,
+      setTripleTerm,
+      setMissTerm,
+      setBullTerm,
+    }),
+    [tripleTerm, missTerm, bullTerm, setTripleTerm, setMissTerm, setBullTerm],
+  );
 
   return (
-    <TerminologyContext.Provider
-      value={{
-        tripleTerm,
-        missTerm,
-        bullTerm,
-        setTripleTerm,
-        setMissTerm,
-        setBullTerm,
-      }}
-    >
+    <TerminologyContext.Provider value={value}>
       {children}
     </TerminologyContext.Provider>
   );

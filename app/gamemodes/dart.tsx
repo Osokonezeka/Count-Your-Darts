@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -155,6 +156,60 @@ type Action =
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
 
+const advanceToNextPlayer = (
+  state: GameState,
+  updatedPlayers: PlayerState[],
+  snapshot?: GameState,
+  speechEvent: any = null,
+): GameState => {
+  let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
+  while (updatedPlayers[nextIdx].isFinished) {
+    nextIdx = (nextIdx + 1) % state.playerStates.length;
+  }
+  updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], turnThrows: [] };
+
+  return {
+    ...state,
+    playerStates: updatedPlayers,
+    currentIndex: nextIdx,
+    throwsThisTurn: 0,
+    history: snapshot ? [...state.history, snapshot] : state.history,
+    speechEvent,
+    isUndoing: false,
+  };
+};
+
+const handlePlayerWin = (
+  state: GameState,
+  updatedPlayers: PlayerState[],
+  playerIndex: number,
+  snapshot: GameState,
+  speechEvent: any = null,
+): GameState => {
+  const player = updatedPlayers[playerIndex];
+  const { legs: targetLegs = 1, sets: targetSets = 1 } = state.settings || {};
+
+  const isMatchWin =
+    player.sets + (player.legs + 1 === targetLegs ? 1 : 0) === targetSets;
+  const isSetWin = player.legs + 1 === targetLegs;
+
+  player.legs += 1;
+  if (isMatchWin || isSetWin) {
+    player.sets += 1;
+  }
+
+  return {
+    ...state,
+    playerStates: updatedPlayers,
+    matchWinner: isMatchWin ? player : null,
+    setWinner: !isMatchWin && isSetWin ? player : null,
+    legWinner: !isMatchWin && !isSetWin ? player : null,
+    history: [...state.history, snapshot],
+    speechEvent,
+    isUndoing: false,
+  };
+};
+
 function gameReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "ADD_THROW": {
@@ -248,64 +303,22 @@ function gameReducer(state: GameState, action: Action): GameState {
       if (isWin) {
         if (isGameDart) player.checkoutHits = (player.checkoutHits || 0) + 1;
 
-        const isMatchWin =
-          player.sets + (player.legs + 1 === targetLegs ? 1 : 0) === targetSets;
-        const isSetWin = player.legs + 1 === targetLegs;
-
-        if (isMatchWin) {
-          player.legs += 1;
-          player.sets += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            matchWinner: player,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        } else if (isSetWin) {
-          player.legs += 1;
-          player.sets += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            setWinner: player,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        } else {
-          player.legs += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            legWinner: player,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        }
+        return handlePlayerWin(
+          state,
+          updatedPlayers,
+          playerIndex,
+          snapshot,
+          newSpeechEvent,
+        );
       }
 
       if (isBust || state.throwsThisTurn === 2) {
-        let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-        while (updatedPlayers[nextIdx].isFinished) {
-          nextIdx = (nextIdx + 1) % state.playerStates.length;
-        }
-        updatedPlayers[nextIdx] = {
-          ...updatedPlayers[nextIdx],
-          turnThrows: [],
-        };
-
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          currentIndex: nextIdx,
-          throwsThisTurn: 0,
-          history: [...state.history, snapshot],
-          speechEvent: newSpeechEvent,
-          isUndoing: false,
-        };
+        return advanceToNextPlayer(
+          state,
+          updatedPlayers,
+          snapshot,
+          newSpeechEvent,
+        );
       }
 
       return {
@@ -443,60 +456,21 @@ function gameReducer(state: GameState, action: Action): GameState {
       updatedPlayers[playerIndex] = player;
 
       if (isWin) {
-        const isMatchWin =
-          player.sets + (player.legs + 1 === targetLegs ? 1 : 0) === targetSets;
-        const isSetWin = player.legs + 1 === targetLegs;
-
-        if (isMatchWin) {
-          player.legs += 1;
-          player.sets += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            matchWinner: player,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        } else if (isSetWin) {
-          player.legs += 1;
-          player.sets += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            setWinner: player,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        } else {
-          player.legs += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            legWinner: player,
-            history: [...state.history, snapshot],
-            speechEvent: newSpeechEvent,
-            isUndoing: false,
-          };
-        }
+        return handlePlayerWin(
+          state,
+          updatedPlayers,
+          playerIndex,
+          snapshot,
+          newSpeechEvent,
+        );
       }
 
-      let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-      while (updatedPlayers[nextIdx].isFinished) {
-        nextIdx = (nextIdx + 1) % state.playerStates.length;
-      }
-      updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], turnThrows: [] };
-
-      return {
-        ...state,
-        playerStates: updatedPlayers,
-        currentIndex: nextIdx,
-        throwsThisTurn: 0,
-        history: [...state.history, snapshot],
-        speechEvent: newSpeechEvent,
-        isUndoing: false,
-      };
+      return advanceToNextPlayer(
+        state,
+        updatedPlayers,
+        snapshot,
+        newSpeechEvent,
+      );
     }
 
     case "START_NEXT_LEG": {
@@ -556,21 +530,16 @@ function gameReducer(state: GameState, action: Action): GameState {
           isUndoing: false,
         };
 
-      let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-      while (updatedPlayers[nextIdx].isFinished) {
-        nextIdx = (nextIdx + 1) % state.playerStates.length;
-      }
-      updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], turnThrows: [] };
-
+      const nextState = advanceToNextPlayer(
+        state,
+        updatedPlayers,
+        undefined,
+        null,
+      );
       return {
-        ...state,
-        playerStates: updatedPlayers,
-        currentIndex: nextIdx,
-        throwsThisTurn: 0,
+        ...nextState,
         finishedPlayersCount: newFinishedCount,
         matchWinner: null,
-        speechEvent: null,
-        isUndoing: false,
       };
     }
 
@@ -854,14 +823,6 @@ export default function Game() {
       }
       processScoreTurn(botScore, dartsAtDouble, isBust, individualDarts);
     },
-    dependencies: [
-      state.currentIndex,
-      state.throwsThisTurn,
-      showDoublePrompt,
-      isFastBot,
-      botAvg,
-      isBaselineLoaded,
-    ],
   });
 
   useEffect(() => {
@@ -901,8 +862,7 @@ export default function Game() {
     try {
       if (navigateAway) isExiting.current = true;
 
-      const now = new Date();
-      const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
 
       const mappedPlayers = state.playerStates.map((p, idx) => {
         let validTurns = [];
@@ -1609,7 +1569,7 @@ export default function Game() {
         </View>
       </Modal>
 
-      <GameAlerts />
+      {GameAlerts}
     </SafeAreaView>
   );
 }

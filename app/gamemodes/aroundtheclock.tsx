@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import cloneDeep from "lodash/cloneDeep";
 import React, {
@@ -30,6 +31,7 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import { resolveBotAverage, simulateClockBotThrow } from "../../lib/bot";
+import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -58,12 +60,40 @@ type GameState = {
 
 type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
 
-const formatTime = (seconds: number) => {
-  const m = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
-  const s = (seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
+const handleTurnOver = (
+  state: GameState,
+  updatedPlayers: PlayerState[],
+  snapshot: GameState,
+): GameState => {
+  let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
+  const allFinished = updatedPlayers.every((p) => p.isFinished);
+
+  if (allFinished) {
+    return {
+      ...state,
+      playerStates: updatedPlayers,
+      finishedCount: state.finishedCount + 1,
+      history: [...state.history, snapshot],
+      isUndoing: false,
+    };
+  }
+
+  while (updatedPlayers[nextIdx].isFinished) {
+    nextIdx = (nextIdx + 1) % state.playerStates.length;
+  }
+  updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], turnThrows: [] };
+
+  return {
+    ...state,
+    playerStates: updatedPlayers,
+    currentIndex: nextIdx,
+    throwsThisTurn: 0,
+    finishedCount: updatedPlayers[state.currentIndex].isFinished
+      ? state.finishedCount + 1
+      : state.finishedCount,
+    history: [...state.history, snapshot],
+    isUndoing: false,
+  };
 };
 
 function clockReducer(state: GameState, action: Action): GameState {
@@ -96,38 +126,7 @@ function clockReducer(state: GameState, action: Action): GameState {
       const isTurnOver = state.throwsThisTurn === 2 || player.isFinished;
 
       if (isTurnOver) {
-        let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-        const allFinished = updatedPlayers.every((p) => p.isFinished);
-
-        if (allFinished) {
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            finishedCount: state.finishedCount + 1,
-            history: [...state.history, snapshot],
-            isUndoing: false,
-          };
-        }
-
-        while (updatedPlayers[nextIdx].isFinished) {
-          nextIdx = (nextIdx + 1) % state.playerStates.length;
-        }
-        updatedPlayers[nextIdx] = {
-          ...updatedPlayers[nextIdx],
-          turnThrows: [],
-        };
-
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          currentIndex: nextIdx,
-          throwsThisTurn: 0,
-          finishedCount: player.isFinished
-            ? state.finishedCount + 1
-            : state.finishedCount,
-          history: [...state.history, snapshot],
-          isUndoing: false,
-        };
+        return handleTurnOver(state, updatedPlayers, snapshot);
       }
 
       return {
@@ -250,13 +249,6 @@ export default function AroundTheClock() {
       return simulateClockBotThrow(botAvg!, isBull);
     },
     execute: (hit) => handleThrow(hit),
-    dependencies: [
-      state.currentIndex,
-      state.throwsThisTurn,
-      isFastBot,
-      botAvg,
-      isBaselineLoaded,
-    ],
   });
 
   useLayoutEffect(() => {
@@ -273,8 +265,7 @@ export default function AroundTheClock() {
   const saveTrainingStats = async (navigateAway: boolean = true) => {
     try {
       if (navigateAway) isExiting.current = true;
-      const now = new Date();
-      const formattedDate = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}, ${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
 
       const isUnfinished = !allFinished;
       const historyItem = {
@@ -517,7 +508,7 @@ export default function AroundTheClock() {
         </View>
       </FinishModal>
 
-      <GameAlerts />
+      {GameAlerts}
     </SafeAreaView>
   );
 }

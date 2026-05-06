@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type AppContextType = {
   playerName: string;
@@ -18,16 +25,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const updatePlayerName = async (name: string) => {
+  const updatePlayerName = useCallback(async (name: string) => {
     setPlayerName(name);
-    await AsyncStorage.setItem("playerName", name);
-  };
+    await AsyncStorage.setItem("playerName", name).catch(console.error);
+  }, []);
 
-  return (
-    <AppContext.Provider value={{ playerName, updatePlayerName }}>
-      {children}
-    </AppContext.Provider>
+  const value = useMemo(
+    () => ({ playerName, updatePlayerName }),
+    [playerName, updatePlayerName],
   );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export const useApp = () => {
