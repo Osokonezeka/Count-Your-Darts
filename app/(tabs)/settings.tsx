@@ -451,25 +451,23 @@ export default function Settings() {
             />
           </View>
 
-          {isHapticsEnabled && (
-            <View style={{ marginTop: 20 }}>
-              <Text style={styles.subLabel}>
-                {t(language, "intensity") || "Intensity"}
-              </Text>
-              <AnimatedSegmentedControl
-                theme={theme}
-                activeOption={intensity}
-                onSelect={(val) =>
-                  setIntensity(val as "light" | "medium" | "heavy")
-                }
-                options={[
-                  { id: "light", label: t(language, "light") || "Light" },
-                  { id: "medium", label: t(language, "medium") || "Medium" },
-                  { id: "heavy", label: t(language, "heavy") || "Heavy" },
-                ]}
-              />
-            </View>
-          )}
+      <View style={{ marginTop: 20, display: isHapticsEnabled ? "flex" : "none" }}>
+        <Text style={styles.subLabel}>
+          {t(language, "intensity") || "Intensity"}
+        </Text>
+        <AnimatedSegmentedControl
+          theme={theme}
+          activeOption={intensity}
+          onSelect={(val) =>
+            setIntensity(val as "light" | "medium" | "heavy")
+          }
+          options={[
+            { id: "light", label: t(language, "light") || "Light" },
+            { id: "medium", label: t(language, "medium") || "Medium" },
+            { id: "heavy", label: t(language, "heavy") || "Heavy" },
+          ]}
+        />
+      </View>
 
           <View style={styles.settingRow}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -584,7 +582,7 @@ export default function Settings() {
         </View>
 
         <View style={styles.infoFooter}>
-          <Text style={styles.versionText}>Dart App v1.0.0</Text>
+          <Text style={styles.versionText}>Count Your Darts v1.0.0</Text>
         </View>
       </ScrollView>
 

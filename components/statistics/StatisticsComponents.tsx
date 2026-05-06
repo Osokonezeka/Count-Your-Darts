@@ -6,8 +6,9 @@ import {
   Text,
   useColorScheme,
   View,
+  ScrollView,
 } from "react-native";
-import { LineChart } from "react-native-chart-kit";
+import { LineChart } from "react-native-gifted-charts";
 import { ScaleDecorator } from "react-native-draggable-flatlist";
 import Svg, {
   Circle,
@@ -205,31 +206,54 @@ export const ShareCard = ({
             >
               {t(language, "shareAvgLast10") || "AVERAGE OVER LAST 10"}
             </Text>
-            <LineChart
-              data={trendData}
-              width={340}
-              height={160}
-              formatYLabel={(yValue) =>
-                " " + Math.round(Number(yValue)).toString()
-              }
-              chartConfig={{
-                backgroundColor: theme.colors.card,
-                backgroundGradientFrom: theme.colors.card,
-                backgroundGradientTo: theme.colors.card,
-                decimalPlaces: 0,
-                color: () => theme.colors.primary,
-                labelColor: () => theme.colors.textMuted,
-                propsForDots: {
-                  r: "4",
-                  strokeWidth: "2",
-                  stroke: theme.colors.primaryDark,
-                },
-                propsForLabels: { fontSize: 10, fontWeight: "bold" },
-              }}
-              bezier
-              withVerticalLines={false}
-              style={{ borderRadius: 8, paddingRight: 35 }}
-            />
+            {(() => {
+              const chartWidth = 310;
+              const itemsCount = trendData.labels.length;
+              const initialSpace = 25;
+              const endSpace = 25;
+              const spacing =
+                itemsCount > 1
+                  ? (chartWidth - initialSpace - endSpace) / (itemsCount - 1)
+                  : 40;
+              return (
+                <LineChart
+                  isAnimated={false}
+                  data={trendData.labels.map((label, index) => ({
+                    value: trendData.datasets[0].data[index],
+                    label: label,
+                  }))}
+                  width={chartWidth}
+                  height={130}
+                  spacing={spacing}
+                  initialSpacing={initialSpace}
+                  endSpacing={endSpace}
+                  thickness={3}
+                  color={theme.colors.primary}
+                  dataPointsColor={theme.colors.primaryDark}
+                  dataPointsRadius={4}
+                  hideRules
+                  yAxisColor={theme.colors.cardBorder}
+                  xAxisColor={theme.colors.cardBorder}
+                  yAxisTextStyle={{
+                    color: theme.colors.textMuted,
+                    fontSize: 10,
+                    fontWeight: "bold",
+                  }}
+                  xAxisLabelTextStyle={{
+                    color: theme.colors.textMuted,
+                    fontSize: 10,
+                    fontWeight: "bold",
+                  }}
+                  curved
+                  curvature={0.35}
+                  areaChart
+                  startFillColor={theme.colors.primary}
+                  startOpacity={0.4}
+                  endFillColor={theme.colors.primary}
+                  endOpacity={0.05}
+                />
+              );
+            })()}
           </View>
         )}
 
@@ -287,8 +311,9 @@ export const TrendCard = ({
 }: TrendCardProps) => {
   const styles = getStatisticsStyles(theme);
   const [openPlayers, setOpenPlayers] = useState<Record<string, boolean>>({});
-  const togglePlayer = (name: string) =>
+  const togglePlayer = (name: string) => {
     setOpenPlayers((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
   const playerNames = Object.keys(data || {});
 
   return (
@@ -325,7 +350,7 @@ export const TrendCard = ({
                   {t(language, "insufficientDataTrend") || "Not enough data"}
                 </Text>
               ) : (
-                playerNames.map((playerName) => {
+                playerNames.map((playerName, index) => {
                   const chartData = data[playerName];
                   const isPlayerOpen = openPlayers[playerName] || false;
                   return (
@@ -346,35 +371,124 @@ export const TrendCard = ({
                       </Pressable>
                       {isPlayerOpen && (
                         <View style={{ alignItems: "center", marginTop: 10 }}>
-                          <LineChart
-                            data={chartData}
-                            width={Dimensions.get("window").width - 70}
-                            height={180}
-                            formatYLabel={(yValue) =>
-                              Math.round(Number(yValue)).toString()
-                            }
-                            chartConfig={{
-                              backgroundColor: theme.colors.card,
-                              backgroundGradientFrom: theme.colors.card,
-                              backgroundGradientTo: theme.colors.card,
-                              decimalPlaces: 0,
-                              color: () => theme.colors.primary,
-                              labelColor: () => theme.colors.textMuted,
-                              propsForDots: {
-                                r: "5",
-                                strokeWidth: "2",
-                                stroke: theme.colors.primaryDark,
-                              },
-                              propsForLabels: {
-                                fontSize: 10,
-                                fontWeight: "bold",
-                              },
-                            }}
-                            bezier
-                            style={{ borderRadius: 16 }}
-                            withVerticalLines={false}
-                            fromZero={false}
-                          />
+                          {(() => {
+                            const chartWidth =
+                              Dimensions.get("window").width - 90;
+                            const itemsCount = chartData.labels.length;
+                            const initialSpace = 25;
+                            const endSpace = 25;
+                            const spacing =
+                              itemsCount > 1
+                                ? (chartWidth - initialSpace - endSpace) /
+                                  (itemsCount - 1)
+                                : 40;
+                            const maxVal = Math.max(
+                              ...chartData.datasets[0].data,
+                            );
+                            const minVal = Math.min(
+                              ...chartData.datasets[0].data,
+                            );
+                            const range = maxVal - minVal;
+
+                            return (
+                              <LineChart
+                                data={chartData.labels.map((label, index) => ({
+                                  value: chartData.datasets[0].data[index],
+                                  label: label,
+                                }))}
+                                width={chartWidth}
+                                height={180}
+                                spacing={spacing}
+                                initialSpacing={initialSpace}
+                                endSpacing={endSpace}
+                                thickness={3}
+                                color={theme.colors.primary}
+                                dataPointsColor={theme.colors.primaryDark}
+                                dataPointsRadius={5}
+                                hideRules
+                                yAxisColor={theme.colors.cardBorder}
+                                xAxisColor={theme.colors.cardBorder}
+                                yAxisTextStyle={{
+                                  color: theme.colors.textMuted,
+                                  fontSize: 10,
+                                  fontWeight: "bold",
+                                }}
+                                xAxisLabelTextStyle={{
+                                  color: theme.colors.textMuted,
+                                  fontSize: 10,
+                                  fontWeight: "bold",
+                                }}
+                                curved
+                                curvature={0.35}
+                                areaChart
+                                startFillColor={theme.colors.primary}
+                                startOpacity={0.4}
+                                endFillColor={theme.colors.primary}
+                                endOpacity={0.05}
+                                pointerConfig={{
+                                  pointerStripHeight: 160,
+                                  pointerStripColor: theme.colors.primary,
+                                  pointerStripWidth: 2,
+                                  pointerColor: theme.colors.primary,
+                                  radius: 6,
+                                  pointerLabelWidth: 80,
+                                  pointerLabelHeight: 40,
+                                  activatePointersOnLongPress: false,
+                                  autoAdjustPointerLabelPosition: true,
+                                  pointerLabelComponent: (items: any) => {
+                                    const val = items[0].value;
+                                    const isNearTop =
+                                      range === 0
+                                        ? true
+                                        : (val - minVal) / range > 0.75;
+                                    return (
+                                      <View
+                                        style={{
+                                          transform: [
+                                            {
+                                              translateY: isNearTop ? 40 : -30,
+                                            },
+                                          ],
+                                          backgroundColor: theme.colors.card,
+                                          borderWidth: 1,
+                                          borderColor: theme.colors.cardBorder,
+                                          paddingHorizontal: 8,
+                                          paddingVertical: 6,
+                                          borderRadius: 8,
+                                          justifyContent: "center",
+                                          alignItems: "center",
+                                          elevation: 5,
+                                          shadowColor: "#000",
+                                          shadowOffset: { width: 0, height: 2 },
+                                          shadowOpacity: 0.25,
+                                          shadowRadius: 4,
+                                        }}
+                                      >
+                                        <Text
+                                          style={{
+                                            color: theme.colors.textMain,
+                                            fontSize: 12,
+                                            fontWeight: "bold",
+                                          }}
+                                        >
+                                          {items[0].value}
+                                        </Text>
+                                        <Text
+                                          style={{
+                                            color: theme.colors.textMuted,
+                                            fontSize: 10,
+                                            fontWeight: "600",
+                                          }}
+                                        >
+                                          {items[0].label}
+                                        </Text>
+                                      </View>
+                                    );
+                                  },
+                                }}
+                              />
+                            );
+                          })()}
                         </View>
                       )}
                     </View>
@@ -571,6 +685,27 @@ interface StatCardProps {
   language: Parameters<typeof t>[0];
 }
 
+const getFavDoubleData = (s: AggregatedStats) => {
+  let bestT = 0;
+  let maxH = 0;
+  let totalDHits = 0;
+  if (s.hits) {
+    [
+      20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 25,
+    ].forEach((t) => {
+      if (s.hits[t]) {
+        totalDHits += s.hits[t].D;
+        if (s.hits[t].D > maxH) {
+          maxH = s.hits[t].D;
+          bestT = t;
+        }
+      }
+    });
+  }
+  const pctOfTotal = totalDHits > 0 ? (maxH / totalDHits) * 100 : 0;
+  return { target: bestT, hits: maxH, pctOfTotal };
+};
+
 export const StatCard = React.memo(
   ({
     item,
@@ -607,6 +742,7 @@ export const StatCard = React.memo(
       checkouts: t(language, "gameDartsHeader") || "Checkouts / Hit %",
       scoring:
         t(language, "scoringHeader") || "Scoring (60+ / 100+ / 140+ / 180)",
+      favorite_double: t(language, "favoriteDoubleHeader") || "Favorite Double",
       hit_chart: t(language, "sectorsHeader") || "Targets hitted (S / D / T)",
       heatmap: t(language, "heatmap") || "Heatmap",
     };
@@ -780,21 +916,97 @@ export const StatCard = React.memo(
           ),
         },
       ],
+      favorite_double: [
+        {
+          key: "name",
+          label: t(language, "player") || "Player",
+          isName: true,
+          render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
+        },
+        {
+          key: "favDouble",
+          label: t(language, "favoriteDouble") || "Favorite",
+          render: (s) => {
+            const data = getFavDoubleData(s);
+            const label =
+              data.target === 25
+                ? bullTerm || "Bull"
+                : data.target > 0
+                  ? `D${data.target}`
+                  : "-";
+            return (
+              <Text
+                style={[
+                  styles.cell,
+                  { color: theme.colors.primary, fontWeight: "bold" },
+                ]}
+              >
+                {label}
+              </Text>
+            );
+          },
+        },
+        {
+          key: "favDoubleHits",
+          label: t(language, "hitLower") || "hits",
+          render: (s) => {
+            const data = getFavDoubleData(s);
+            return <Text style={styles.cell}>{data.hits}</Text>;
+          },
+        },
+        {
+          key: "favDoublePct",
+          label: t(language, "pctOfTotal") || "% of total",
+          render: (s) => {
+            const data = getFavDoubleData(s);
+            return (
+              <Text style={styles.cell}>{data.pctOfTotal.toFixed(1)}%</Text>
+            );
+          },
+        },
+      ],
     };
 
     const sortedStats = useMemo(() => {
       if (!sortConfig || item.id === "hit_chart") return stats;
       return [...stats].sort((a, b) => {
-        const keyMap: Record<string, keyof AggregatedStats> = {
+        const keyMap: Record<string, keyof AggregatedStats | string> = {
           avg: "calculatedAvg",
           first9: "calculatedFirst9",
           checkoutPct: "calculatedCheckoutPct",
+          favDouble: "favDouble",
+          favDoubleHits: "favDoubleHits",
+          favDoublePct: "favDoublePct",
         };
 
-        const actualKey =
-          keyMap[sortConfig.col] || (sortConfig.col as keyof AggregatedStats);
-        const valA = a[actualKey] ?? 0;
-        const valB = b[actualKey] ?? 0;
+        const actualKey = keyMap[sortConfig.col] || sortConfig.col;
+
+        let valA: any = 0;
+        let valB: any = 0;
+
+        if (
+          actualKey === "favDouble" ||
+          actualKey === "favDoubleHits" ||
+          actualKey === "favDoublePct"
+        ) {
+          const dataA = getFavDoubleData(a);
+          const dataB = getFavDoubleData(b);
+          valA =
+            actualKey === "favDouble"
+              ? dataA.target
+              : actualKey === "favDoublePct"
+                ? dataA.pctOfTotal
+                : dataA.hits;
+          valB =
+            actualKey === "favDouble"
+              ? dataB.target
+              : actualKey === "favDoublePct"
+                ? dataB.pctOfTotal
+                : dataB.hits;
+        } else {
+          valA = a[actualKey as keyof AggregatedStats] ?? 0;
+          valB = b[actualKey as keyof AggregatedStats] ?? 0;
+        }
 
         if (valA === valB) return 0;
         if (typeof valA === "string" && typeof valB === "string") {
@@ -879,136 +1091,191 @@ export const StatCard = React.memo(
                 )}
                 {item.id === "hit_chart" && (
                   <View style={{ paddingTop: 10 }}>
-                    {sortedStats.map((s: AggregatedStats) => {
-                      const hasHits = DEFAULT_TARGETS.some(
-                        (t) =>
-                          s.hits &&
-                          (s.hits[t]?.S > 0 ||
-                            s.hits[t]?.D > 0 ||
-                            s.hits[t]?.T > 0),
+                    {(() => {
+                      const hasAnyHits = sortedStats.some((s) =>
+                        DEFAULT_TARGETS.some(
+                          (t) =>
+                            s.hits &&
+                            (s.hits[t]?.S > 0 ||
+                              s.hits[t]?.D > 0 ||
+                              s.hits[t]?.T > 0),
+                        ),
                       );
-                      if (!hasHits) return null;
-                      const isCollapsed =
-                        collapsedPlayers &&
-                        collapsedPlayers[`${item.id}_${s.name}`];
-                      let targets = [...DEFAULT_TARGETS];
-                      if (sortConfig && !isCollapsed) {
-                        targets.sort((a, b) => {
-                          const colKey = sortConfig.col as "S" | "D" | "T";
-                          const hitsA = s.hits[a]?.[colKey] || 0;
-                          const hitsB = s.hits[b]?.[colKey] || 0;
-                          if (hitsA === hitsB)
-                            return (
-                              DEFAULT_TARGETS.indexOf(a) -
-                              DEFAULT_TARGETS.indexOf(b)
-                            );
-                          return sortConfig.asc ? hitsA - hitsB : hitsB - hitsA;
-                        });
-                      }
-                      return (
-                        <View key={s.name} style={{ marginBottom: 20 }}>
-                          <Pressable
-                            style={styles.hitPlayerHeader}
-                            onPress={() =>
-                              onTogglePlayer &&
-                              onTogglePlayer(`${item.id}_${s.name}`)
-                            }
+                      if (!hasAnyHits && stats.length > 0) {
+                        return (
+                          <Text
+                            style={[styles.emptyText, { paddingBottom: 20 }]}
                           >
-                            <Text style={styles.hitPlayerName}>{s.name}</Text>
-                            <Ionicons
-                              name={isCollapsed ? "chevron-down" : "chevron-up"}
-                              size={18}
-                              color={theme.colors.primary}
-                            />
-                          </Pressable>
-                          {!isCollapsed && (
-                            <>
-                              <View style={styles.rowHeader}>
-                                <View style={styles.colNameWrap}>
-                                  <Text style={styles.colText}>
-                                    {t(language, "target") || "Target"}
-                                  </Text>
-                                </View>
-                                {renderSortableHeader(
-                                  t(language, "single") || "Single",
-                                  "S",
-                                )}
-                                {renderSortableHeader(
-                                  t(language, "double") || "Double",
-                                  "D",
-                                )}
-                                {renderSortableHeader(
-                                  tripleTerm || "Triple",
-                                  "T",
-                                )}
-                              </View>
-                              {targets.map((target: number) => {
-                                const h = s.hits[target];
-                                if (!h || (h.S === 0 && h.D === 0 && h.T === 0))
-                                  return null;
-                                return (
-                                  <View key={target} style={styles.hitRow}>
-                                    <Text style={styles.hitCellTarget}>
-                                      {target === 25
-                                        ? bullTerm
-                                        : target === 0
-                                          ? missTerm
-                                          : target}
-                                    </Text>
-                                    <Text style={styles.hitCell}>
-                                      {h.S > 0 ? h.S : "-"}
-                                    </Text>
-                                    <Text style={styles.hitCell}>
-                                      {target !== 0 && h.D > 0 ? h.D : "-"}
-                                    </Text>
-                                    <Text style={styles.hitCell}>
-                                      {target !== 0 && target !== 25 && h.T > 0
-                                        ? h.T
-                                        : "-"}
+                            {t(language, "insufficientDataTrend") ||
+                              "Not enough data"}
+                          </Text>
+                        );
+                      }
+                      return sortedStats.map((s: AggregatedStats) => {
+                        const hasHits = DEFAULT_TARGETS.some(
+                          (t) =>
+                            s.hits &&
+                            (s.hits[t]?.S > 0 ||
+                              s.hits[t]?.D > 0 ||
+                              s.hits[t]?.T > 0),
+                        );
+                        if (!hasHits) return null;
+                        const isCollapsed =
+                          collapsedPlayers &&
+                          collapsedPlayers[`${item.id}_${s.name}`];
+                        let targets = [...DEFAULT_TARGETS];
+                        if (sortConfig && !isCollapsed) {
+                          targets.sort((a, b) => {
+                            const colKey = sortConfig.col as "S" | "D" | "T";
+                            const hitsA = s.hits[a]?.[colKey] || 0;
+                            const hitsB = s.hits[b]?.[colKey] || 0;
+                            if (hitsA === hitsB)
+                              return (
+                                DEFAULT_TARGETS.indexOf(a) -
+                                DEFAULT_TARGETS.indexOf(b)
+                              );
+                            return sortConfig.asc
+                              ? hitsA - hitsB
+                              : hitsB - hitsA;
+                          });
+                        }
+                        return (
+                          <View
+                            key={s.name}
+                            style={{ marginBottom: 20, overflow: "hidden" }}
+                          >
+                            <Pressable
+                              style={styles.hitPlayerHeader}
+                              onPress={() =>
+                                onTogglePlayer &&
+                                onTogglePlayer(`${item.id}_${s.name}`)
+                              }
+                            >
+                              <Text style={styles.hitPlayerName}>{s.name}</Text>
+                              <Ionicons
+                                name={
+                                  isCollapsed ? "chevron-down" : "chevron-up"
+                                }
+                                size={18}
+                                color={theme.colors.primary}
+                              />
+                            </Pressable>
+                            {!isCollapsed && (
+                              <View>
+                                <View style={styles.rowHeader}>
+                                  <View style={styles.colNameWrap}>
+                                    <Text style={styles.colText}>
+                                      {t(language, "target") || "Target"}
                                     </Text>
                                   </View>
-                                );
-                              })}
-                            </>
-                          )}
-                        </View>
-                      );
-                    })}
+                                  {renderSortableHeader(
+                                    t(language, "single") || "Single",
+                                    "S",
+                                  )}
+                                  {renderSortableHeader(
+                                    t(language, "double") || "Double",
+                                    "D",
+                                  )}
+                                  {renderSortableHeader(
+                                    tripleTerm || "Triple",
+                                    "T",
+                                  )}
+                                </View>
+                                {targets.map((target: number) => {
+                                  const h = s.hits[target];
+                                  if (
+                                    !h ||
+                                    (h.S === 0 && h.D === 0 && h.T === 0)
+                                  )
+                                    return null;
+                                  return (
+                                    <View key={target} style={styles.hitRow}>
+                                      <Text style={styles.hitCellTarget}>
+                                        {target === 25
+                                          ? bullTerm
+                                          : target === 0
+                                            ? missTerm
+                                            : target}
+                                      </Text>
+                                      <Text style={styles.hitCell}>
+                                        {h.S > 0 ? h.S : "-"}
+                                      </Text>
+                                      <Text style={styles.hitCell}>
+                                        {target !== 0 && h.D > 0 ? h.D : "-"}
+                                      </Text>
+                                      <Text style={styles.hitCell}>
+                                        {target !== 0 &&
+                                        target !== 25 &&
+                                        h.T > 0
+                                          ? h.T
+                                          : "-"}
+                                      </Text>
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      });
+                    })()}
                   </View>
                 )}
                 {item.id === "heatmap" && (
                   <View style={{ paddingTop: 10 }}>
-                    {stats.map((s: AggregatedStats) => {
-                      if (!s.coords || s.coords.length === 0) return null;
-                      const isCollapsed =
-                        collapsedPlayers &&
-                        collapsedPlayers[`${item.id}_${s.name}`];
-                      return (
-                        <View key={s.name} style={{ marginBottom: 20 }}>
-                          <Pressable
-                            style={styles.hitPlayerHeader}
-                            onPress={() =>
-                              onTogglePlayer &&
-                              onTogglePlayer(`${item.id}_${s.name}`)
-                            }
-                          >
-                            <Text style={styles.hitPlayerName}>{s.name}</Text>
-                            <Ionicons
-                              name={isCollapsed ? "chevron-down" : "chevron-up"}
-                              size={18}
-                              color={theme.colors.primary}
-                            />
-                          </Pressable>
-                          {!isCollapsed && (
-                            <HeatmapBoard
-                              coords={s.coords}
-                              theme={theme}
-                              size={Dimensions.get("window").width - 100}
-                            />
-                          )}
-                        </View>
+                    {(() => {
+                      const hasAnyCoords = stats.some(
+                        (s) => s.coords && s.coords.length > 0,
                       );
-                    })}
+                      if (!hasAnyCoords && stats.length > 0) {
+                        return (
+                          <Text
+                            style={[styles.emptyText, { paddingBottom: 20 }]}
+                          >
+                            {t(language, "insufficientDataTrend") ||
+                              "Not enough data"}
+                          </Text>
+                        );
+                      }
+                      return stats.map((s: AggregatedStats) => {
+                        if (!s.coords || s.coords.length === 0) return null;
+                        const isCollapsed =
+                          collapsedPlayers &&
+                          collapsedPlayers[`${item.id}_${s.name}`];
+                        return (
+                          <View
+                            key={s.name}
+                            style={{ marginBottom: 20, overflow: "hidden" }}
+                          >
+                            <Pressable
+                              style={styles.hitPlayerHeader}
+                              onPress={() =>
+                                onTogglePlayer &&
+                                onTogglePlayer(`${item.id}_${s.name}`)
+                              }
+                            >
+                              <Text style={styles.hitPlayerName}>{s.name}</Text>
+                              <Ionicons
+                                name={
+                                  isCollapsed ? "chevron-down" : "chevron-up"
+                                }
+                                size={18}
+                                color={theme.colors.primary}
+                              />
+                            </Pressable>
+                            {!isCollapsed && (
+                              <View style={{ paddingTop: 10 }}>
+                                <HeatmapBoard
+                                  coords={s.coords}
+                                  theme={theme}
+                                  size={Dimensions.get("window").width - 100}
+                                />
+                              </View>
+                            )}
+                          </View>
+                        );
+                      });
+                    })()}
                   </View>
                 )}
                 {stats.length === 0 && (
