@@ -15,6 +15,11 @@ export const exportBackup = async (): Promise<boolean> => {
       backupData[key] = value;
     });
 
+    backupData["__CountYourDarts_Backup"] = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      version: "1.0.0",
+    });
+
     const jsonString = JSON.stringify(backupData);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const baseFileName = `CountYourDarts_Backup_${timestamp}`;
@@ -100,6 +105,14 @@ export const importBackup = async (): Promise<boolean> => {
 
     if (typeof backupData !== "object" || backupData === null)
       throw new Error("Invalid backup format");
+
+    if (!backupData["__CountYourDarts_Backup"]) {
+      throw new Error(
+        "Selected JSON file does not appear to be a valid Count Your Darts backup.",
+      );
+    }
+
+    delete backupData["__CountYourDarts_Backup"];
 
     const currentKeys = await AsyncStorage.getAllKeys();
     const currentDataRaw = await AsyncStorage.multiGet(currentKeys);
