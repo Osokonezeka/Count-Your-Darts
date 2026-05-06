@@ -326,5 +326,20 @@
   "secondPlaceShort": "2nd",
   "winsShort": "W",
   "winPctShort": "W %",
-  "attemptsShort": "Att"
+  "attemptsShort": "Att",
+  "dataManagement": "Data Management",
+  "exportData": "Export Backup",
+  "importData": "Import Backup",
+  "exportDesc": "Save a backup of your players, history, and settings to a file",
+  "importDesc": "Restore your data from a previously saved backup file",
+  "exportSuccess": "Backup successfully exported!",
+  "importSuccess": "Data successfully imported! Please restart the app.",
+  "importError": "Invalid file or error during data import.",
+  "exportError": "Error during data export.",
+  "hardReset": "Wipe All Data",
+  "hardResetDesc": "Permanently delete all players, history, and settings",
+  "hardResetConfirmTitle": "Wipe All Data?",
+  "hardResetConfirmMessage": "This action cannot be undone. Are you sure you want to permanently delete all data from this device?",
+  "hardResetSuccess": "All data has been wiped. Please restart the app.",
+  "restartApp": "Restart App"
 }

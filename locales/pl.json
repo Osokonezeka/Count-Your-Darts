@@ -326,5 +326,20 @@
   "secondPlaceShort": "2.",
   "winsShort": "W",
   "winPctShort": "% W",
-  "attemptsShort": "Próby"
+  "attemptsShort": "Próby",
+  "dataManagement": "Zarządzanie danymi",
+  "exportData": "Eksportuj kopię zapasową",
+  "importData": "Importuj kopię zapasową",
+  "exportDesc": "Zapisz kopię zapasową graczy, historii i ustawień do pliku",
+  "importDesc": "Przywróć swoje dane z wcześniej zapisanego pliku",
+  "exportSuccess": "Kopia zapasowa została pomyślnie wyeksportowana!",
+  "importSuccess": "Dane zostały pomyślnie zaimportowane! Zrestartuj aplikację.",
+  "importError": "Nieprawidłowy plik lub błąd podczas importowania danych.",
+  "exportError": "Błąd podczas eksportowania danych kopii zapasowej.",
+  "hardReset": "Wyczyść wszystkie dane",
+  "hardResetDesc": "Trwale usuń graczy, historię i ustawienia",
+  "hardResetConfirmTitle": "Wyczyścić wszystkie dane?",
+  "hardResetConfirmMessage": "Tej operacji nie można cofnąć. Czy na pewno chcesz trwale usunąć wszystkie dane z urządzenia?",
+  "hardResetSuccess": "Wszystkie dane zostały usunięte. Zrestartuj aplikację.",
+  "restartApp": "Uruchom ponownie"
 }
