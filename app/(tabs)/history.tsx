@@ -16,6 +16,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+} from "react-native-reanimated";
 
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
@@ -251,8 +256,29 @@ const MatchStatCard = React.memo(
     };
 
     return (
-      <View style={{ paddingBottom: 16 }}>
-        <View style={styles.statCard}>
+      <Animated.View
+        style={{
+          paddingBottom: 16,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 3,
+          elevation: 2,
+        }}
+        layout={LinearTransition.duration(250)}
+      >
+        <Animated.View
+          style={[
+            styles.statCard,
+            {
+              overflow: "hidden",
+              elevation: 0,
+              shadowOpacity: 0,
+              marginBottom: 0,
+            },
+          ]}
+          layout={LinearTransition.duration(250)}
+        >
           <Pressable style={styles.sectionHeader} onPress={onToggle}>
             <Text style={styles.sectionTitle}>{item.title}</Text>
             <Ionicons
@@ -263,7 +289,11 @@ const MatchStatCard = React.memo(
           </Pressable>
 
           {isOpen && (
-            <View style={styles.table}>
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              exiting={FadeOut.duration(200)}
+              style={styles.table}
+            >
               {item.id === "performance" && (
                 <>
                   <View style={styles.rowHeader}>
@@ -405,7 +435,11 @@ const MatchStatCard = React.memo(
                       });
                     }
                     return (
-                      <View key={s.name} style={{ marginBottom: 20 }}>
+                      <Animated.View
+                        key={s.name}
+                        style={{ marginBottom: 20, overflow: "hidden" }}
+                        layout={LinearTransition.duration(250)}
+                      >
                         <Pressable
                           style={styles.hitPlayerHeader}
                           onPress={() => onTogglePlayer(`${item.id}_${s.name}`)}
@@ -418,7 +452,10 @@ const MatchStatCard = React.memo(
                           />
                         </Pressable>
                         {!isCollapsed && (
-                          <>
+                          <Animated.View
+                            entering={FadeIn.duration(200)}
+                            exiting={FadeOut.duration(200)}
+                          >
                             <View style={styles.rowHeader}>
                               <View style={styles.colNameWrap}>
                                 <Text style={styles.colText}>
@@ -462,9 +499,9 @@ const MatchStatCard = React.memo(
                                 </View>
                               );
                             })}
-                          </>
+                          </Animated.View>
                         )}
-                      </View>
+                      </Animated.View>
                     );
                   })}
                 </View>
@@ -477,7 +514,11 @@ const MatchStatCard = React.memo(
                       collapsedPlayers &&
                       collapsedPlayers[`${item.id}_${s.name}`];
                     return (
-                      <View key={s.name} style={{ marginBottom: 20 }}>
+                      <Animated.View
+                        key={s.name}
+                        style={{ marginBottom: 20, overflow: "hidden" }}
+                        layout={LinearTransition.duration(250)}
+                      >
                         <Pressable
                           style={styles.hitPlayerHeader}
                           onPress={() => onTogglePlayer(`${item.id}_${s.name}`)}
@@ -490,13 +531,18 @@ const MatchStatCard = React.memo(
                           />
                         </Pressable>
                         {!isCollapsed && (
-                          <HeatmapBoard
-                            coords={s.coords}
-                            theme={theme}
-                            size={Dimensions.get("window").width - 100}
-                          />
+                          <Animated.View
+                            entering={FadeIn.duration(200)}
+                            exiting={FadeOut.duration(200)}
+                          >
+                            <HeatmapBoard
+                              coords={s.coords}
+                              theme={theme}
+                              size={Dimensions.get("window").width - 100}
+                            />
+                          </Animated.View>
                         )}
-                      </View>
+                      </Animated.View>
                     );
                   })}
                 </View>
@@ -653,15 +699,15 @@ const MatchStatCard = React.memo(
                   ))}
                 </>
               )}
-            </View>
+            </Animated.View>
           )}
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
     );
   },
 );
 
-export default function History() {
+export default function HistoryScreen() {
   const { tripleTerm, missTerm, bullTerm } = useTerminology();
   const navigation = useNavigation();
   const router = useRouter();
@@ -793,19 +839,13 @@ export default function History() {
     }
   };
 
-  const toggleSection = useCallback(
-    (key: string) =>
-      setOpenSections((prev) => ({ ...prev, [key]: !prev[key] })),
-    [],
-  );
-  const togglePlayerCollapse = useCallback(
-    (key: string) =>
-      setCollapsedPlayers((prev) => ({
-        ...prev,
-        [key]: !prev[key],
-      })),
-    [],
-  );
+  const toggleSection = useCallback((key: string) => {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const togglePlayerCollapse = useCallback((key: string) => {
+    setCollapsedPlayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const filteredHistory = useMemo(() => {
     if (filterMode === "All") return history;

@@ -342,5 +342,8 @@
   "hardResetConfirmTitle": "Wipe All Data?",
   "hardResetConfirmMessage": "This action cannot be undone. Are you sure you want to permanently delete all data from this device?",
   "hardResetSuccess": "All data has been wiped. Please restart the app.",
-  "restartApp": "Restart App"
+  "restartApp": "Restart App",
+  "favoriteDoubleHeader": "Favorite Double",
+  "favoriteDouble": "Favorite",
+  "pctOfTotal": "% of total"
 }

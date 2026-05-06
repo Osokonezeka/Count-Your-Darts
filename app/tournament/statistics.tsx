@@ -73,6 +73,7 @@ export default function TournamentStatistics() {
     { id: "games" },
     { id: "performance" },
     { id: "checkouts" },
+    { id: "favorite_double" },
     { id: "scoring" },
   ];
 
@@ -83,6 +84,7 @@ export default function TournamentStatistics() {
     games: true,
     performance: true,
     checkouts: true,
+    favorite_double: true,
     scoring: true,
   });
 

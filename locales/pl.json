@@ -299,7 +299,7 @@
   "avgShort": "ŚRED",
   "double": "Double",
   "accuracyShort": "CEL",
-  "hitLower": "trafione",
+  "hitLower": "Trafione",
   "hit": "Traf",
   "ok": "OK",
   "showPlayedLegs": "Pokaż rozegrane legi",
@@ -342,5 +342,8 @@
   "hardResetConfirmTitle": "Wyczyścić wszystkie dane?",
   "hardResetConfirmMessage": "Tej operacji nie można cofnąć. Czy na pewno chcesz trwale usunąć wszystkie dane z urządzenia?",
   "hardResetSuccess": "Wszystkie dane zostały usunięte. Zrestartuj aplikację.",
-  "restartApp": "Uruchom ponownie"
+  "restartApp": "Uruchom ponownie",
+  "favoriteDoubleHeader": "Ulubiony Double",
+  "favoriteDouble": "Ulubiony",
+  "pctOfTotal": "% wszystkich"
 }
