@@ -14,6 +14,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  DevSettings,
 } from "react-native";
 
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
@@ -24,12 +25,20 @@ import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
 import { availableLanguages, t } from "../../lib/i18n";
+import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
+import { exportBackup, importBackup } from "../../lib/backupUtils";
+import * as Updates from "expo-updates";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export const languageNames: Record<string, string> = {
   en: "English",
   pl: "Polski",
+};
+
+export const languageFlags: Record<string, string> = {
+  en: "🇬🇧",
+  pl: "🇵🇱",
 };
 
 export default function Settings() {
@@ -50,6 +59,14 @@ export default function Settings() {
 
   const [isLangModalVisible, setLangModalVisible] = useState(false);
   const [isFastBotEnabled, setIsFastBotEnabled] = useState(false);
+
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: "",
+    message: "",
+    buttons: [] as AlertButton[],
+    onDismiss: undefined as (() => void) | undefined,
+  });
 
   const [localTriple, setLocalTriple] = useState(tripleTerm);
   const [localMiss, setLocalMiss] = useState(missTerm);
@@ -95,6 +112,110 @@ export default function Settings() {
     });
   };
 
+  const handleRestartApp = async () => {
+    try {
+      if (__DEV__) DevSettings.reload();
+      else await Updates.reloadAsync();
+    } catch (e) {
+      console.error("Reload error:", e);
+    }
+  };
+
+  const showAlert = (
+    title: string,
+    message: string,
+    buttons?: AlertButton[],
+    onDismiss?: () => void,
+  ) => {
+    setAlertConfig({
+      title,
+      message,
+      buttons: buttons || [
+        {
+          text: t(language, "ok") || "OK",
+          style: "default",
+          onPress: () => setAlertVisible(false),
+        },
+      ],
+      onDismiss,
+    });
+    setAlertVisible(true);
+  };
+
+  const handleExport = async () => {
+    try {
+      await exportBackup();
+    } catch (error) {
+      showAlert(
+        t(language, "error") || "Error",
+        t(language, "exportError") || "Error during data export.",
+      );
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const success = await importBackup();
+      if (success) {
+        showAlert(
+          t(language, "dataManagement") || "Data Management",
+          t(language, "importSuccess") ||
+            "Data successfully imported! Please restart the app.",
+          [
+            {
+              text: t(language, "restartApp") || "Restart App",
+              style: "default",
+              onPress: handleRestartApp,
+            },
+          ],
+          handleRestartApp,
+        );
+      }
+    } catch (error) {
+      showAlert(
+        t(language, "error") || "Error",
+        t(language, "importError") ||
+          "Invalid file or error during data import.",
+      );
+    }
+  };
+
+  const handleHardReset = () => {
+    showAlert(
+      t(language, "hardResetConfirmTitle") || "Wipe All Data?",
+      t(language, "hardResetConfirmMessage") ||
+        "This action cannot be undone. Are you sure you want to permanently delete all data from this device?",
+      [
+        {
+          text: t(language, "cancel") || "Cancel",
+          style: "cancel",
+          onPress: () => setAlertVisible(false),
+        },
+        {
+          text: t(language, "deletePermanently") || "Delete permanently",
+          style: "destructive",
+          onPress: async () => {
+            setAlertVisible(false);
+            await AsyncStorage.clear();
+            showAlert(
+              t(language, "hardReset") || "Wipe All Data",
+              t(language, "hardResetSuccess") ||
+                "All data has been wiped. Please restart the app.",
+              [
+                {
+                  text: t(language, "restartApp") || "Restart App",
+                  style: "default",
+                  onPress: handleRestartApp,
+                },
+              ],
+              handleRestartApp,
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const backdropOpacity = animValue.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0.5],
@@ -125,7 +246,14 @@ export default function Settings() {
           </View>
 
           <Pressable style={styles.dropdownTrigger} onPress={openModal}>
-            <Text style={styles.dropdownValue}>{languageNames[language]}</Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
+              <Text style={{ fontSize: 18 }}>{languageFlags[language]}</Text>
+              <Text style={styles.dropdownValue}>
+                {languageNames[language]}
+              </Text>
+            </View>
             <Ionicons
               name="chevron-down"
               size={20}
@@ -369,6 +497,92 @@ export default function Settings() {
           </View>
         </View>
 
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.iconWrapper}>
+              <Ionicons
+                name="save-outline"
+                size={20}
+                color={theme.colors.primary}
+              />
+            </View>
+            <Text style={styles.sectionTitle}>
+              {t(language, "dataManagement") || "Data Management"}
+            </Text>
+          </View>
+
+          <AnimatedPressable style={styles.actionButton} onPress={handleExport}>
+            <View style={styles.actionIconWrapper}>
+              <Ionicons
+                name="cloud-upload-outline"
+                size={24}
+                color={theme.colors.primary}
+              />
+            </View>
+            <View style={styles.actionTextContainer}>
+              <Text style={styles.actionTitle}>
+                {t(language, "exportData") || "Export Backup"}
+              </Text>
+              <Text style={styles.actionDesc}>
+                {t(language, "exportDesc") || "Save a backup to a file"}
+              </Text>
+            </View>
+          </AnimatedPressable>
+
+          <AnimatedPressable style={styles.actionButton} onPress={handleImport}>
+            <View style={styles.actionIconWrapper}>
+              <Ionicons
+                name="cloud-download-outline"
+                size={24}
+                color={theme.colors.primary}
+              />
+            </View>
+            <View style={styles.actionTextContainer}>
+              <Text style={styles.actionTitle}>
+                {t(language, "importData") || "Import Backup"}
+              </Text>
+              <Text style={styles.actionDesc}>
+                {t(language, "importDesc") || "Restore data from file"}
+              </Text>
+            </View>
+          </AnimatedPressable>
+
+          <AnimatedPressable
+            style={[styles.actionButton, { borderBottomWidth: 0 }]}
+            onPress={handleHardReset}
+          >
+            <View
+              style={[
+                styles.actionIconWrapper,
+                {
+                  backgroundColor:
+                    theme.colors.dangerLight || "rgba(255, 59, 48, 0.15)",
+                },
+              ]}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={24}
+                color={theme.colors.danger || "#ff3b30"}
+              />
+            </View>
+            <View style={styles.actionTextContainer}>
+              <Text
+                style={[
+                  styles.actionTitle,
+                  { color: theme.colors.danger || "#ff3b30" },
+                ]}
+              >
+                {t(language, "hardReset") || "Wipe All Data"}
+              </Text>
+              <Text style={styles.actionDesc}>
+                {t(language, "hardResetDesc") ||
+                  "Permanently delete all players, history, and settings"}
+              </Text>
+            </View>
+          </AnimatedPressable>
+        </View>
+
         <View style={styles.infoFooter}>
           <Text style={styles.versionText}>Dart App v1.0.0</Text>
         </View>
@@ -423,14 +637,23 @@ export default function Settings() {
                     closeModal(() => changeLanguage(lang));
                   }}
                 >
-                  <Text
-                    style={[
-                      styles.langOptionText,
-                      isSelected && styles.langOptionTextActive,
-                    ]}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
                   >
-                    {languageNames[lang]}
-                  </Text>
+                    <Text style={{ fontSize: 20 }}>{languageFlags[lang]}</Text>
+                    <Text
+                      style={[
+                        styles.langOptionText,
+                        isSelected && styles.langOptionTextActive,
+                      ]}
+                    >
+                      {languageNames[lang]}
+                    </Text>
+                  </View>
                   {isSelected && (
                     <Ionicons
                       name="checkmark-circle"
@@ -444,6 +667,19 @@ export default function Settings() {
           </Animated.View>
         </View>
       </Modal>
+
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onRequestClose={() => {
+          setAlertVisible(false);
+          if (alertConfig.onDismiss) {
+            alertConfig.onDismiss();
+          }
+        }}
+      />
     </View>
   );
 }
@@ -519,6 +755,36 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       fontSize: 16,
       fontWeight: "600",
       color: theme.colors.textMain,
+    },
+    actionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.background,
+    },
+    actionIconWrapper: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.colors.background,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    },
+    actionTextContainer: {
+      flex: 1,
+    },
+    actionTitle: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.colors.textMain,
+      marginBottom: 2,
+    },
+    actionDesc: {
+      fontSize: 12,
+      fontWeight: "500",
+      color: theme.colors.textMuted,
     },
     infoFooter: {
       alignItems: "center",
