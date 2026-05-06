@@ -1,28 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
+import "dayjs/locale/en";
+import "dayjs/locale/pl";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Dimensions,
   FlatList,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
-  Dimensions,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import dayjs from "dayjs";
-import "dayjs/locale/pl";
-import "dayjs/locale/en";
 
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
+import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
-import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
-import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { t } from "../../lib/i18n";
 import {
   PlayerMatchStats,
@@ -814,6 +814,10 @@ export default function History() {
     return history.filter((h) => h.mode === filterMode);
   }, [history, filterMode]);
 
+  const paginatedHistory = useMemo(() => {
+    return filteredHistory.slice(0, visibleCount);
+  }, [filteredHistory, visibleCount]);
+
   const canScrollLeft = scrollLayout.offset > 0;
   const canScrollRight =
     scrollLayout.width > 0 &&
@@ -1399,7 +1403,7 @@ export default function History() {
       </View>
 
       <FlatList
-        data={filteredHistory.slice(0, visibleCount)}
+        data={paginatedHistory}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}

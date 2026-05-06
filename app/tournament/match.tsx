@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -13,14 +14,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
+import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
-import { useHaptics } from "../../context/HapticsContext";
-import * as Haptics from "expo-haptics";
-import { t } from "../../lib/i18n";
-import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
 import { useGameModals } from "../../hooks/useGameModals";
 import { useX01Match } from "../../hooks/useX01Match";
+import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
 
 const { width } = Dimensions.get("window");
@@ -181,7 +181,7 @@ export default function TournamentMatchScreen() {
     }
   };
 
-  const renderTable = () => {
+  const tableRows = useMemo(() => {
     const rows = [];
     const p1Active =
       activePlayerId === match.player1.id && p1Throws.length === 0;
@@ -279,7 +279,15 @@ export default function TournamentMatchScreen() {
       );
     }
     return rows;
-  };
+  }, [
+    activePlayerId,
+    p1Throws,
+    p2Throws,
+    currentInput,
+    settings,
+    match,
+    theme,
+  ]);
 
   if (!isFormatLoaded || !settings) {
     return (
@@ -392,7 +400,7 @@ export default function TournamentMatchScreen() {
           scrollViewRef.current?.scrollToEnd({ animated: true })
         }
       >
-        {renderTable()}
+        {tableRows}
       </ScrollView>
 
       {winner && (
