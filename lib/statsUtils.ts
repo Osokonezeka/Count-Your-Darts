@@ -136,6 +136,10 @@ export interface AggregatedStats {
   calculatedCheckoutPct?: number;
 }
 
+export const isDartObject = (dart: TurnDart): dart is Dart => {
+  return typeof dart === "object" && dart !== null;
+};
+
 export const isBot = (name: string): boolean => {
   const nameLower = name.toLowerCase();
   const isAdaptive = availableLanguages.some((lang) => {
@@ -188,7 +192,7 @@ const calculatePlayerMatchStats = (
     c180 = 0,
     hF = 0,
     f100 = 0,
-    bL = 9999,
+    bL = Infinity,
     wL = 0,
     lW = 0;
 
@@ -239,7 +243,7 @@ const calculatePlayerMatchStats = (
     c180,
     hF,
     f100,
-    bL: bL === 9999 ? "-" : bL,
+    bL: bL === Infinity ? "-" : bL,
     wL: wL === 0 ? "-" : wL,
     checkout: `${coPct}% (${lW}/${att})`,
     totalDarts,
@@ -355,10 +359,7 @@ const hasBuggyCompressedTurns = (p: PlayerMatchStats): boolean => {
   return (
     p.totalMatchDarts > sumOfLengths &&
     !turns.some((t: Turn) =>
-      t.some(
-        (d: TurnDart) =>
-          typeof d === "object" && d !== null && d.d !== undefined,
-      ),
+      t.some((d: TurnDart) => isDartObject(d) && d.d !== undefined),
     )
   );
 };
@@ -381,7 +382,7 @@ const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
         a +
         (typeof b === "number"
           ? 1
-          : typeof b === "object" && b !== null && b.d !== undefined
+          : isDartObject(b) && b.d !== undefined
             ? b.d
             : 1),
       0,
@@ -405,14 +406,12 @@ const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
 
     turn.forEach((dart: TurnDart) => {
       const isScoreInput =
-        (typeof dart === "object" && dart !== null && dart.i === true) ||
-        isBuggyCompressed;
+        (isDartObject(dart) && dart.i === true) || isBuggyCompressed;
 
       if (isScoreInput) return;
-      if (typeof dart === "object" && dart !== null && dart.c)
-        s.coords.push(dart.c);
+      if (isDartObject(dart) && dart.c) s.coords.push(dart.c);
 
-      if (typeof dart === "object" && dart !== null && dart.v !== undefined) {
+      if (isDartObject(dart) && dart.v !== undefined) {
         const target = dart.v;
         const mult = dart.m;
         if (s.hits && typeof s.hits === "object" && s.hits[target]) {
@@ -838,7 +837,7 @@ const getPlayerX01MatchTrend = (match: Match, playerName: string) => {
             a +
             (typeof b === "number"
               ? 1
-              : typeof b === "object" && b !== null && b.d !== undefined
+              : isDartObject(b) && b.d !== undefined
                 ? b.d
                 : 1),
           0,
@@ -976,7 +975,7 @@ const accumulateX01Baseline = (p: PlayerMatchStats, match: Match) => {
           a +
           (typeof b === "number"
             ? 1
-            : typeof b === "object" && b !== null && b.d !== undefined
+            : isDartObject(b) && b.d !== undefined
               ? b.d
               : 1),
         0,
