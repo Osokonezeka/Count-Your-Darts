@@ -29,7 +29,7 @@ A feature-rich React Native mobile application built with [Expo](https://expo.de
   - Dark, Light, and System themes.
   - Advanced Haptic feedback (adjustable intensity).
   - Speech synthesis (Voice Announcer reads out your scores).
-- **💾 Offline Ready**: All progress and history are securely stored locally on your device.
+- **💾 Offline Ready & Data Management**: All progress and history are securely stored locally on your device. Export your entire app state as a `.zip` backup, use "Smart Merge" to intelligently restore older data without overwriting new matches, and easily wipe all data with a 1-click Hard Reset.
 
 ## 🚀 Tech Stack
 
@@ -51,7 +51,7 @@ Make sure you have Node.js installed. We recommend using `npm`.
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Osokonezeka/Count-Your-Darts.git
    cd Count-Your-Darts
    ```
 2. Install dependencies:
