@@ -1,37 +1,36 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import cloneDeep from "lodash/cloneDeep";
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
-  useReducer,
-  useState,
   useMemo,
+  useReducer,
   useRef,
+  useState,
 } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { TimerBadge } from "../../components/common/TimerBadge";
+import { TrainingKeyboard } from "../../components/keyboards/TrainingKeyboard";
+import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
-import { TrainingKeyboard } from "../../components/keyboards/TrainingKeyboard";
-import { FinishModal } from "../../components/modals/FinishModal";
-import { useGameModals } from "../../hooks/useGameModals";
-import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
-import { t } from "../../lib/i18n";
-import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
-import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
-import {
-  getBotDifficultyFromName,
-  simulateClockBotThrow,
-  resolveBotAverage,
-} from "../../lib/bot";
+import { useGameModals } from "../../hooks/useGameModals";
+import { resolveBotAverage, simulateClockBotThrow } from "../../lib/bot";
+import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const TARGETS = [
@@ -71,7 +70,7 @@ function clockReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "THROW": {
       const { hit } = action.payload;
-      const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      const snapshot = cloneDeep({ ...state, history: [] });
       snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
@@ -201,9 +200,12 @@ export default function AroundTheClock() {
         },
   );
 
-  const [matchTime, setMatchTime] = useState(
-    () => parsedResume?.gameState?.savedMatchTime || 0,
+  const matchTimeRef = useRef<number>(
+    parsedResume?.gameState?.savedMatchTime || 0,
   );
+  const handleTimeUpdate = useCallback((time: number) => {
+    matchTimeRef.current = time;
+  }, []);
   const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   const allFinished = state.playerStates.every((p) => p.isFinished);
@@ -262,14 +264,6 @@ export default function AroundTheClock() {
   }, [navigation]);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (!allFinished) {
-      interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
-    }
-    return () => clearInterval(interval);
-  }, [allFinished]);
-
-  useEffect(() => {
     if (allFinished) {
       triggerHaptic("success");
       saveTrainingStats();
@@ -286,11 +280,11 @@ export default function AroundTheClock() {
       const historyItem = {
         id: matchId,
         date: formattedDate,
-        duration: formatTime(matchTime),
+        duration: formatTime(matchTimeRef.current),
         mode: "Around the Clock",
         isUnfinished,
         gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTime }
+          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
           : undefined,
         players: state.playerStates
           .map((p) => ({
@@ -347,7 +341,7 @@ export default function AroundTheClock() {
       });
     });
     return unsubscribe;
-  }, [navigation, allFinished, state, matchTime]);
+  }, [navigation, allFinished, state]);
 
   const handleThrow = (hit: boolean) => {
     if (allFinished) return;
@@ -375,14 +369,13 @@ export default function AroundTheClock() {
           </Text>
         </View>
         <View style={styles.headerRight}>
-          <View style={styles.timerBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={theme.colors.primary}
-            />
-            <Text style={styles.timerText}>{formatTime(matchTime)}</Text>
-          </View>
+          <TimerBadge
+            initialTime={matchTimeRef.current}
+            isRunning={!allFinished}
+            onTimeUpdate={handleTimeUpdate}
+            theme={theme}
+            styles={styles}
+          />
         </View>
       </View>
 

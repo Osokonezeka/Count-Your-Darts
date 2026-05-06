@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -18,27 +19,26 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { TimerBadge } from "../../components/common/TimerBadge";
+import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
-import { FinishModal } from "../../components/modals/FinishModal";
-import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
-import { useGameModals } from "../../hooks/useGameModals";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useTheme } from "../../context/ThemeContext";
-import { t } from "../../lib/i18n";
-import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
-import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
 import { useBotDelay } from "../../hooks/useBotDelay";
-import { useBotTurn } from "../../hooks/useBotTurn";
+import { useGameModals } from "../../hooks/useGameModals";
 import {
-  getBotDifficultyFromName,
   getCricketBotTarget,
-  simulateCricketBotThrow,
   resolveBotAverage,
+  simulateCricketBotThrow,
 } from "../../lib/bot";
+import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const TARGETS = [20, 19, 18, 17, 16, 15, 25];
@@ -386,9 +386,12 @@ export default function Cricket() {
   );
 
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
-  const [matchTime, setMatchTime] = useState(
-    () => parsedResume?.gameState?.savedMatchTime || 0,
+  const matchTimeRef = useRef<number>(
+    parsedResume?.gameState?.savedMatchTime || 0,
   );
+  const handleTimeUpdate = useCallback((time: number) => {
+    matchTimeRef.current = time;
+  }, []);
   const [countdown, setCountdown] = useState(3);
 
   const isSingleLegMatch =
@@ -533,16 +536,6 @@ export default function Cricket() {
   }, [state.currentIndex]);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (!state.matchWinner) {
-      interval = setInterval(() => {
-        setMatchTime((prev: number) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [state.matchWinner]);
-
-  useEffect(() => {
     if (state.matchWinner) {
       triggerHaptic("success");
     }
@@ -574,7 +567,7 @@ export default function Cricket() {
     });
 
     return unsubscribe;
-  }, [navigation, language, state, matchTime]);
+  }, [navigation, language, state]);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -628,7 +621,7 @@ export default function Cricket() {
       const historyItem = {
         id: matchId,
         date: formattedDate,
-        duration: formatTime(matchTime),
+        duration: formatTime(matchTimeRef.current),
         mode: "Cricket",
         settings: {
           cricketMode: currentMode,
@@ -637,7 +630,7 @@ export default function Cricket() {
         },
         isUnfinished,
         gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTime }
+          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
           : undefined,
         players: mappedPlayers,
       };
@@ -764,14 +757,13 @@ export default function Cricket() {
           )}
         </View>
         <View style={styles.headerRight}>
-          <View style={styles.timerBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={theme.colors.primary}
-            />
-            <Text style={styles.timerText}>{formatTime(matchTime)}</Text>
-          </View>
+          <TimerBadge
+            initialTime={matchTimeRef.current}
+            isRunning={!state.matchWinner}
+            onTimeUpdate={handleTimeUpdate}
+            theme={theme}
+            styles={styles}
+          />
         </View>
       </View>
 

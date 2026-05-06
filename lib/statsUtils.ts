@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
-import { translations, availableLanguages } from "./i18n";
+import cloneDeep from "lodash/cloneDeep";
+import { availableLanguages, translations } from "./i18n";
 
 export interface Dart {
   v?: number;
@@ -301,9 +302,7 @@ const processX01MatchesIncremental = (
   matches: Match[],
   existingMap: Record<string, AggregatedStats> = {},
 ): Record<string, AggregatedStats> => {
-  const playerMap: Record<string, AggregatedStats> = JSON.parse(
-    JSON.stringify(existingMap),
-  );
+  const playerMap: Record<string, AggregatedStats> = cloneDeep(existingMap);
   matches.forEach((match) => {
     if (match.mode !== "X01") return;
     if (!match.players) return;
@@ -523,9 +522,7 @@ const processTournamentMatchesIncremental = (
   tourneys: Tournament[],
   existingMap: Record<string, AggregatedStats> = {},
 ): Record<string, AggregatedStats> => {
-  const playerMap: Record<string, AggregatedStats> = JSON.parse(
-    JSON.stringify(existingMap),
-  );
+  const playerMap: Record<string, AggregatedStats> = cloneDeep(existingMap);
   tourneys.forEach((tourney) => {
     let firstPlace: string | null = null;
     let secondPlace: string | null = null;

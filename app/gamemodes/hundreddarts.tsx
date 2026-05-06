@@ -1,43 +1,45 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import cloneDeep from "lodash/cloneDeep";
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
-  useReducer,
-  useState,
   useMemo,
+  useReducer,
   useRef,
+  useState,
 } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { TimerBadge } from "../../components/common/TimerBadge";
+import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
+import { InputModeSelector } from "../../components/keyboards/InputModeSelector";
+import { InteractiveDartboard } from "../../components/keyboards/InteractiveDartboard";
+import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
+import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
-import { t } from "../../lib/i18n";
-import { IMPOSSIBLE_SCORES, formatTime } from "../../lib/gameUtils";
-import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
-import { InputModeSelector } from "../../components/keyboards/InputModeSelector";
-import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
-import { InteractiveDartboard } from "../../components/keyboards/InteractiveDartboard";
-import { FinishModal } from "../../components/modals/FinishModal";
-import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
-import { useGameModals } from "../../hooks/useGameModals";
-import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
-import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
+import { useGameModals } from "../../hooks/useGameModals";
 import {
-  getBotDifficultyFromName,
-  simulateBotTurn,
   breakdownScoreToDarts,
   resolveBotAverage,
+  simulateBotTurn,
 } from "../../lib/bot";
+import { IMPOSSIBLE_SCORES, formatTime } from "../../lib/gameUtils";
+import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const MAX_DARTS = 100;
@@ -104,7 +106,7 @@ function scoringReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
-      const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      const snapshot = cloneDeep({ ...state, history: [] });
       snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
@@ -199,7 +201,7 @@ function scoringReducer(state: GameState, action: Action): GameState {
 
     case "ADD_TURN_SCORE": {
       const { score, individualDarts = null } = action.payload;
-      const snapshot = JSON.parse(JSON.stringify({ ...state, history: [] }));
+      const snapshot = cloneDeep({ ...state, history: [] });
       snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
@@ -371,9 +373,12 @@ export default function OneHundredDarts() {
   );
   const [typedScore, setTypedScore] = useState("");
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
-  const [matchTime, setMatchTime] = useState(
-    () => parsedResume?.gameState?.savedMatchTime || 0,
+  const matchTimeRef = useRef<number>(
+    parsedResume?.gameState?.savedMatchTime || 0,
   );
+  const handleTimeUpdate = useCallback((time: number) => {
+    matchTimeRef.current = time;
+  }, []);
   const {
     GameAlerts,
     showExitConfirm,
@@ -466,14 +471,6 @@ export default function OneHundredDarts() {
   }, [navigation]);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (!allDone) {
-      interval = setInterval(() => setMatchTime((p: number) => p + 1), 1000);
-    }
-    return () => clearInterval(interval);
-  }, [allDone]);
-
-  useEffect(() => {
     if (allDone) {
       triggerHaptic("success");
       saveScoringStats();
@@ -490,11 +487,11 @@ export default function OneHundredDarts() {
       const historyItem = {
         id: matchId,
         date: formattedDate,
-        duration: formatTime(matchTime),
+        duration: formatTime(matchTimeRef.current),
         mode: "100 Darts",
         isUnfinished,
         gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTime }
+          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
           : undefined,
         players: state.playerStates
           .map((p, idx) => {
@@ -598,7 +595,7 @@ export default function OneHundredDarts() {
       });
     });
     return unsubscribe;
-  }, [navigation, allDone, state, matchTime]);
+  }, [navigation, allDone, state]);
 
   const handleThrow = (
     value: number,
@@ -690,14 +687,13 @@ export default function OneHundredDarts() {
           </Text>
         </View>
         <View style={styles.headerRight}>
-          <View style={styles.timerBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={theme.colors.primary}
-            />
-            <Text style={styles.timerText}>{formatTime(matchTime)}</Text>
-          </View>
+          <TimerBadge
+            initialTime={matchTimeRef.current}
+            isRunning={!allDone}
+            onTimeUpdate={handleTimeUpdate}
+            theme={theme}
+            styles={styles}
+          />
         </View>
       </View>
 

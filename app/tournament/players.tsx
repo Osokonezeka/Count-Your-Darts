@@ -26,18 +26,18 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import CustomAlert from "../../components/modals/CustomAlert";
-import { useLanguage } from "../../context/LanguageContext";
-import { useTheme } from "../../context/ThemeContext";
-import { usePlayers } from "../../context/PlayersContext";
-import { PlayerModal } from "../../components/modals/PlayerModal";
-import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
-import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
-import { t } from "../../lib/i18n";
-import { useMatchStore } from "../../store/useMatchStore";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
+import CustomAlert from "../../components/modals/CustomAlert";
+import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
+import { PlayerModal } from "../../components/modals/PlayerModal";
+import { useLanguage } from "../../context/LanguageContext";
+import { usePlayers } from "../../context/PlayersContext";
+import { useTheme } from "../../context/ThemeContext";
+import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
+import { useMatchStore } from "../../store/useMatchStore";
 
 type Player = {
   id: string;
@@ -537,6 +537,10 @@ export default function TournamentPlayersScreen() {
     return tournamentPlayersDb.filter((p) => !p.isTeam).map((p) => p.name);
   }, [tournamentPlayersDb]);
 
+  const visiblePlayersData = useMemo(() => {
+    return sortedFilteredPlayers.slice(0, visibleCount);
+  }, [sortedFilteredPlayers, visibleCount]);
+
   if (!settings) {
     return (
       <View
@@ -597,7 +601,7 @@ export default function TournamentPlayersScreen() {
       <FlatList
         style={{ flex: 1 }}
         extraData={selectedPlayerIds}
-        data={sortedFilteredPlayers.slice(0, visibleCount)}
+        data={visiblePlayersData}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"

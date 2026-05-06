@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,37 +13,38 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import cloneDeep from "lodash/cloneDeep";
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
+import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
+import { TimerBadge } from "../../components/common/TimerBadge";
+import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
+import { InputModeSelector } from "../../components/keyboards/InputModeSelector";
+import { InteractiveDartboard } from "../../components/keyboards/InteractiveDartboard";
+import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
+import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
-import { getCheckoutInfo } from "../../lib/checkouts";
-import { t } from "../../lib/i18n";
-import {
-  IMPOSSIBLE_SCORES,
-  BOGEY_NUMBERS,
-  formatTime,
-} from "../../lib/gameUtils";
-import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
-import { InputModeSelector } from "../../components/keyboards/InputModeSelector";
-import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
-import { InteractiveDartboard } from "../../components/keyboards/InteractiveDartboard";
-import { FinishModal } from "../../components/modals/FinishModal";
-import { useGameModals } from "../../hooks/useGameModals";
-import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
-import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
-import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
+import { useGameModals } from "../../hooks/useGameModals";
 import {
-  getBotDifficultyFromName,
-  simulateBotTurn,
   breakdownScoreToDarts,
   resolveBotAverage,
+  simulateBotTurn,
 } from "../../lib/bot";
+import { getCheckoutInfo } from "../../lib/checkouts";
+import {
+  BOGEY_NUMBERS,
+  formatTime,
+  IMPOSSIBLE_SCORES,
+} from "../../lib/gameUtils";
+import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 type Throw = {
@@ -164,8 +166,7 @@ function gameReducer(state: GameState, action: Action): GameState {
         sets: targetSets = 1,
       } = state.settings || {};
 
-      const { history, ...stateWithoutHistory } = state;
-      const snapshot = JSON.parse(JSON.stringify(stateWithoutHistory));
+      const snapshot = cloneDeep({ ...state, history: [] });
       snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
@@ -344,8 +345,7 @@ function gameReducer(state: GameState, action: Action): GameState {
         sets: targetSets = 1,
       } = state.settings || {};
 
-      const { history, ...stateWithoutHistory } = state;
-      const snapshot = JSON.parse(JSON.stringify(stateWithoutHistory));
+      const snapshot = cloneDeep({ ...state, history: [] });
       snapshot.isUndoing = false;
 
       const updatedPlayers = [...state.playerStates];
@@ -500,8 +500,7 @@ function gameReducer(state: GameState, action: Action): GameState {
     }
 
     case "START_NEXT_LEG": {
-      const { history, ...stateWithoutHistory } = state;
-      const snapshot = JSON.parse(JSON.stringify(stateWithoutHistory));
+      const snapshot = cloneDeep({ ...state, history: [] });
 
       const isNewSet = state.setWinner !== null;
       const nextStarter =
@@ -523,7 +522,7 @@ function gameReducer(state: GameState, action: Action): GameState {
         currentIndex: nextStarter,
         startingPlayerIndex: nextStarter,
         throwsThisTurn: 0,
-        history: [...history, snapshot],
+        history: [...state.history, snapshot],
         legWinner: null,
         setWinner: null,
         matchWinner: null,
@@ -696,9 +695,12 @@ export default function Game() {
   const [typedScore, setTypedScore] = useState("");
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [countdown, setCountdown] = useState(3);
-  const [matchTime, setMatchTime] = useState(
-    () => parsedResume?.gameState?.savedMatchTime || 0,
+  const matchTimeRef = useRef<number>(
+    parsedResume?.gameState?.savedMatchTime || 0,
   );
+  const handleTimeUpdate = useCallback((time: number) => {
+    matchTimeRef.current = time;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
@@ -740,7 +742,7 @@ export default function Game() {
     });
 
     return unsubscribe;
-  }, [navigation, language, state, matchTime]);
+  }, [navigation, language, state]);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -863,16 +865,6 @@ export default function Game() {
   });
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (!state.matchWinner) {
-      interval = setInterval(() => {
-        setMatchTime((prev: number) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [state.matchWinner]);
-
-  useEffect(() => {
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({
         y: state.currentIndex * 85,
@@ -978,13 +970,13 @@ export default function Game() {
       const historyItem = {
         id: matchId,
         date: formattedDate,
-        duration: formatTime(matchTime),
+        duration: formatTime(matchTimeRef.current),
         mode: "X01",
         settings: state.settings,
         players: mappedPlayers,
         isUnfinished,
         gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTime }
+          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
           : undefined,
       };
 
@@ -1241,14 +1233,13 @@ export default function Game() {
         </View>
 
         <View style={styles.headerRight}>
-          <View style={styles.timerBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={theme.colors.primary}
-            />
-            <Text style={styles.timerText}>{formatTime(matchTime)}</Text>
-          </View>
+          <TimerBadge
+            initialTime={matchTimeRef.current}
+            isRunning={!state.matchWinner}
+            onTimeUpdate={handleTimeUpdate}
+            theme={theme}
+            styles={styles}
+          />
         </View>
       </View>
 
