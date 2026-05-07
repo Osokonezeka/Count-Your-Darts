@@ -1,9 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
-import { Platform } from "react-native";
+import { File as ExpoFile, Paths } from "expo-file-system";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
-import { Buffer } from "buffer";
 import dayjs from "dayjs";
 import { t, Lang } from "./i18n";
 
@@ -33,28 +32,12 @@ export const exportBackup = async (
       [`${baseFileName}.json`]: strToU8(jsonString),
     });
 
-    if (Platform.OS === "web") {
-      const blob = new Blob([zippedData as any], { type: "application/zip" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = zipFileName;
-      a.click();
-      URL.revokeObjectURL(url);
-      return { success: true };
-    }
-
-    const FS = require("expo-file-system/legacy");
-    const dir = FS.documentDirectory || FS.cacheDirectory;
-    const fileUri = `${dir}${zipFileName}`;
-
-    const base64Zip = Buffer.from(zippedData).toString("base64");
-    await FS.writeAsStringAsync(fileUri, base64Zip, {
-      encoding: FS.EncodingType.Base64,
-    });
+    const dir = Paths.document ?? Paths.cache;
+    const file = new ExpoFile(dir, zipFileName);
+    await file.write(zippedData);
 
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri, {
+      await Sharing.shareAsync(file.uri, {
         mimeType: "application/zip",
         dialogTitle: t(language, "backupDialogTitle") || "Export Darts Backup",
       });
@@ -94,48 +77,19 @@ export const importBackup = async (
     const fileUri = result.assets[0].uri;
     let jsonString = "";
 
-    if (Platform.OS === "web") {
-      const file = (result.assets[0] as any).file;
-      if (!file)
-        return {
-          success: false,
-          error:
-            t(language, "noWebFile") ||
-            "File object is missing on web platform.",
-        };
+    const file = new ExpoFile(fileUri);
+    const zippedData = await file.bytes();
+    const unzipped = unzipSync(zippedData);
+    const jsonFileName = Object.keys(unzipped).find((k) => k.endsWith(".json"));
 
-      const arrayBuffer = await file.arrayBuffer();
-      const unzipped = unzipSync(new Uint8Array(arrayBuffer));
-      const jsonFileName = Object.keys(unzipped).find((k) =>
-        k.endsWith(".json"),
-      );
-      if (!jsonFileName)
-        return {
-          success: false,
-          error:
-            t(language, "noJsonInZip") ||
-            "No JSON file found in the ZIP archive.",
-        };
-      jsonString = strFromU8(unzipped[jsonFileName]);
-    } else {
-      const FS = require("expo-file-system/legacy");
-      const base64Content = await FS.readAsStringAsync(fileUri, {
-        encoding: FS.EncodingType.Base64,
-      });
-      const zippedData = Buffer.from(base64Content, "base64");
-      const unzipped = unzipSync(new Uint8Array(zippedData));
-      const jsonFileName = Object.keys(unzipped).find((k) =>
-        k.endsWith(".json"),
-      );
-      if (!jsonFileName)
-        return {
-          success: false,
-          error:
-            t(language, "noJsonInZip") ||
-            "No JSON file found in the ZIP archive.",
-        };
-      jsonString = strFromU8(unzipped[jsonFileName]);
-    }
+    if (!jsonFileName)
+      return {
+        success: false,
+        error:
+          t(language, "noJsonInZip") ||
+          "No JSON file found in the ZIP archive.",
+      };
+    jsonString = strFromU8(unzipped[jsonFileName]);
 
     const backupData = JSON.parse(jsonString);
 
