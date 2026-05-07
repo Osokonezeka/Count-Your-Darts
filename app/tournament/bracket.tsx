@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import dayjs from "dayjs";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -44,6 +45,21 @@ export default function TournamentBracketScreen() {
   const router = useRouter();
   const { tournamentData, playersData, bracketData, isHistoryView } =
     useLocalSearchParams();
+
+  const statLabels: Record<string, string> = useMemo(
+    () => ({
+      Legs: t(language, "legs") || "Legs",
+      "Darts Thrown": t(language, "dartsThrown") || "Darts Thrown",
+      "3 Darts": t(language, "threeDartsAvg") || "3 Darts",
+      "First 9": t(language, "firstNine") || "First 9",
+      "High Finish": t(language, "highFinish") || "High Finish",
+      "100+ Finishes": t(language, "hundredPlusFinishes") || "100+ Finishes",
+      "Best Leg": t(language, "bestLeg") || "Best Leg",
+      "Worst Leg": t(language, "worstLeg") || "Worst Leg",
+      "Checkout %": t(language, "checkoutPct") || "Checkout %",
+    }),
+    [language],
+  );
 
   const settings = useMemo<TournamentSettings | null>(
     () => (tournamentData ? JSON.parse(tournamentData as string) : null),
@@ -143,7 +159,7 @@ export default function TournamentBracketScreen() {
 
       const historyItem = {
         id: Date.now().toString(),
-        finishedAt: new Date().toISOString(),
+        finishedAt: dayjs().toISOString(),
         settings,
         players,
         bracket,
@@ -181,7 +197,7 @@ export default function TournamentBracketScreen() {
         );
       }
     } catch (e) {
-      console.error("Błąd podczas zapisywania do historii:", e);
+      console.error("Error saving to history:", e);
     }
   };
 
@@ -218,7 +234,7 @@ export default function TournamentBracketScreen() {
         );
       }
     } catch (e) {
-      console.error("Błąd podczas usuwania danych turnieju:", e);
+      console.error("Error deleting tournament data:", e);
     }
     setDeleteAlertVisible(false);
 
@@ -437,7 +453,9 @@ export default function TournamentBracketScreen() {
                         ]}
                       >
                         <Text style={styles.statValueLeft}>{stat.p1}</Text>
-                        <Text style={styles.statLabelCenter}>{stat.label}</Text>
+                        <Text style={styles.statLabelCenter}>
+                          {statLabels[stat.label] || stat.label}
+                        </Text>
                         <Text style={styles.statValueRight}>{stat.p2}</Text>
                       </View>
                     ),

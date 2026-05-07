@@ -24,7 +24,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
-import { availableLanguages, t } from "../../lib/i18n";
+import { availableLanguages, t, Lang } from "../../lib/i18n";
 import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { exportBackup, importBackup } from "../../lib/backupUtils";
 import * as Updates from "expo-updates";
@@ -143,40 +143,35 @@ export default function Settings() {
   };
 
   const handleExport = async () => {
-    try {
-      await exportBackup();
-    } catch (error) {
+    const result = await exportBackup(language as Lang);
+    if (result.success) {
       showAlert(
-        t(language, "error") || "Error",
-        t(language, "exportError") || "Error during data export.",
+        t(language, "dataManagement") || "Data Management",
+        t(language, "exportSuccess") || "Backup successfully exported!",
       );
+    } else if (result.error) {
+      showAlert(t(language, "error") || "Error", result.error);
     }
   };
 
   const handleImport = async () => {
-    try {
-      const success = await importBackup();
-      if (success) {
-        showAlert(
-          t(language, "dataManagement") || "Data Management",
-          t(language, "importSuccess") ||
-            "Data successfully imported! Please restart the app.",
-          [
-            {
-              text: t(language, "restartApp") || "Restart App",
-              style: "default",
-              onPress: handleRestartApp,
-            },
-          ],
-          handleRestartApp,
-        );
-      }
-    } catch (error) {
+    const result = await importBackup(language as Lang);
+    if (result.success) {
       showAlert(
-        t(language, "error") || "Error",
-        t(language, "importError") ||
-          "Invalid file or error during data import.",
+        t(language, "dataManagement") || "Data Management",
+        t(language, "importSuccess") ||
+          "Data successfully imported! Please restart the app.",
+        [
+          {
+            text: t(language, "restartApp") || "Restart App",
+            style: "default",
+            onPress: handleRestartApp,
+          },
+        ],
+        handleRestartApp,
       );
+    } else if (result.error) {
+      showAlert(t(language, "error") || "Error", result.error);
     }
   };
 

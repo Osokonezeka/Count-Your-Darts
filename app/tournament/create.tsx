@@ -19,6 +19,9 @@ import { AnimatedStepper } from "../../components/common/AnimatedStepper";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useLanguage } from "../../context/LanguageContext";
+import dayjs from "dayjs";
+import "dayjs/locale/en";
+import "dayjs/locale/pl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
@@ -61,7 +64,7 @@ export default function TournamentCreateScreen() {
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
-  const [tempDate, setTempDate] = useState(new Date());
+  const [tempDate, setTempDate] = useState(dayjs().toDate());
 
   const [deleteAlert, setDeleteAlert] = useState({
     visible: false,
@@ -77,7 +80,7 @@ export default function TournamentCreateScreen() {
   const [config, setConfig] = useState({
     name: "",
     desc: "",
-    startDate: new Date(),
+    startDate: dayjs().toDate(),
     format: "single_knockout" as TournamentFormat,
     teamSize: "single" as TeamSize,
     targetSets: 1,
@@ -108,7 +111,7 @@ export default function TournamentCreateScreen() {
             setActiveTournaments([]);
           }
         } catch (error) {
-          console.error("Błąd podczas ładowania turniejów", error);
+          console.error("Error loading tournaments:", error);
         }
       };
       loadTournaments();
@@ -184,19 +187,20 @@ export default function TournamentCreateScreen() {
     }
     if (event.type === "set" && selectedDate) {
       if (pickerMode === "date") {
-        const newDate = new Date(config.startDate);
-        newDate.setFullYear(
-          selectedDate.getFullYear(),
-          selectedDate.getMonth(),
-          selectedDate.getDate(),
-        );
+        const newDate = dayjs(config.startDate)
+          .year(selectedDate.getFullYear())
+          .month(selectedDate.getMonth())
+          .date(selectedDate.getDate())
+          .toDate();
         updateConfig("startDate", newDate);
         setShowDatePicker(false);
         setPickerMode("time");
         setTimeout(() => setShowDatePicker(true), 50);
       } else {
-        const newDate = new Date(config.startDate);
-        newDate.setHours(selectedDate.getHours(), selectedDate.getMinutes());
+        const newDate = dayjs(config.startDate)
+          .hour(selectedDate.getHours())
+          .minute(selectedDate.getMinutes())
+          .toDate();
         updateConfig("startDate", newDate);
         setShowDatePicker(false);
       }
@@ -284,11 +288,9 @@ export default function TournamentCreateScreen() {
               color={theme.colors.primary}
             />
             <Text style={styles.dateText}>
-              {config.startDate.toLocaleDateString()}{" "}
-              {config.startDate.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {dayjs(config.startDate)
+                .locale(language === "pl" ? "pl" : "en")
+                .format("DD MMM YYYY, HH:mm")}
             </Text>
           </AnimatedPressable>
 

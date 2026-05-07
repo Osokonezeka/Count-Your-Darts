@@ -34,7 +34,7 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
           setPlayers(JSON.parse(saved));
         }
       } catch (error) {
-        console.error("Błąd ładowania graczy:", error);
+        console.error("Error loading players:", error);
       } finally {
         setIsPlayersLoaded(true);
       }
@@ -50,7 +50,7 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
       AsyncStorage.setItem(
         PLAYERS_STORAGE_KEY,
         JSON.stringify(newPlayers),
-      ).catch((e) => console.error("Błąd zapisu gracza:", e));
+      ).catch((e) => console.error("Error saving player:", e));
       return newPlayers;
     });
   }, []);
@@ -61,7 +61,7 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
       AsyncStorage.setItem(
         PLAYERS_STORAGE_KEY,
         JSON.stringify(newPlayers),
-      ).catch((e) => console.error("Błąd usuwania gracza:", e));
+      ).catch((e) => console.error("Error deleting player:", e));
       return newPlayers;
     });
   }, []);
@@ -79,7 +79,7 @@ export const PlayersProvider: React.FC<{ children: React.ReactNode }> = ({
       AsyncStorage.setItem(
         PLAYERS_STORAGE_KEY,
         JSON.stringify(newPlayers),
-      ).catch((e) => console.error("Błąd aktualizacji gracza:", e));
+      ).catch((e) => console.error("Error updating player:", e));
       return newPlayers;
     });
   }, []);

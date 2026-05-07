@@ -2,6 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+import "dayjs/locale/en";
+import "dayjs/locale/pl";
 import {
   ActivityIndicator,
   FlatList,
@@ -17,7 +20,7 @@ import CustomAlert from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
-import { Match, Tournament } from "../../lib/statsUtils";
+import { Match, Tournament, parseDateString } from "../../lib/statsUtils";
 
 export default function TournamentHistoryScreen() {
   const { theme } = useTheme();
@@ -78,16 +81,13 @@ export default function TournamentHistoryScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: Tournament }) => {
-      const date = new Date(item.finishedAt || "").toLocaleDateString(
-        language === "pl" ? "pl-PL" : "en-US",
-        {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        },
-      );
+      const parsedDate = parseDateString(item.finishedAt || "");
+      let date = "";
+      if (parsedDate.getTime() !== 0) {
+        date = dayjs(parsedDate)
+          .locale(language === "pl" ? "pl" : "en")
+          .format("DD MMM YYYY, HH:mm");
+      }
 
       const formatLabels: Record<string, string> = {
         single_knockout: t(language, "singleKnockout") || "Single Knockout",
