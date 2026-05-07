@@ -44,7 +44,7 @@ export const HapticsProvider = ({
         if (savedIntensity !== null)
           setIntensityState(savedIntensity as HapticIntensity);
       } catch (error) {
-        console.error("Błąd podczas ładowania ustawień haptyki:", error);
+        console.error("Error loading haptics settings:", error);
       }
     };
     loadSettings();
@@ -60,7 +60,7 @@ export const HapticsProvider = ({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
     } catch (error) {
-      console.error("Błąd podczas zapisywania włącznika haptyki:", error);
+      console.error("Error saving haptics toggle:", error);
     }
   }, [isHapticsEnabled]);
 
@@ -77,7 +77,7 @@ export const HapticsProvider = ({
             : Haptics.ImpactFeedbackStyle.Heavy;
       Haptics.impactAsync(style);
     } catch (error) {
-      console.error("Błąd podczas zapisywania intensywności haptyki:", error);
+      console.error("Error saving haptics intensity:", error);
     }
   }, []);
 

@@ -1,7 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
 import cloneDeep from "lodash/cloneDeep";
 import { availableLanguages, translations } from "./i18n";
+
+dayjs.extend(customParseFormat);
 
 export interface Dart {
   v?: number;
@@ -156,20 +159,10 @@ export const isBot = (name: string): boolean => {
 
 export const parseDateString = (dateStr: string): Date => {
   if (!dateStr) return new Date(0);
-
-  const match = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4}),\s(\d{2}):(\d{2})$/);
-  if (match) {
-    const [, day, month, year, hour, minute] = match;
-    return new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-    );
-  }
-
-  const parsed = dayjs(dateStr);
+  const parsed = dayjs(dateStr, [
+    "DD.MM.YYYY, HH:mm",
+    "YYYY-MM-DDTHH:mm:ss.SSSZ",
+  ]);
   return parsed.isValid() ? parsed.toDate() : new Date(0);
 };
 
@@ -348,27 +341,10 @@ const createEmptyAggregatedStats = (name: string): AggregatedStats => {
   return stats;
 };
 
-const hasBuggyCompressedTurns = (p: PlayerMatchStats): boolean => {
-  if (!p.allTurns || p.totalMatchDarts === undefined) return false;
-
-  const turns = p.allTurns;
-  const sumOfLengths = turns.reduce(
-    (acc: number, t: Turn) => acc + t.length,
-    0,
-  );
-  return (
-    p.totalMatchDarts > sumOfLengths &&
-    !turns.some((t: Turn) =>
-      t.some((d: TurnDart) => isDartObject(d) && d.d !== undefined),
-    )
-  );
-};
-
 const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
   if (!p.allTurns) return;
 
   const turns = p.allTurns;
-  const isBuggyCompressed = hasBuggyCompressedTurns(p);
 
   turns.forEach((turn: Turn, index: number) => {
     const turnSum = turn.reduce(
@@ -387,10 +363,6 @@ const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
             : 1),
       0,
     );
-    if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
-      turnDarts =
-        index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
-    }
 
     s.totalPoints += turnSum;
     s.totalDarts += turnDarts;
@@ -405,8 +377,7 @@ const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
     else if (turnSum >= 60) s.s60++;
 
     turn.forEach((dart: TurnDart) => {
-      const isScoreInput =
-        (isDartObject(dart) && dart.i === true) || isBuggyCompressed;
+      const isScoreInput = isDartObject(dart) && dart.i === true;
 
       if (isScoreInput) return;
       if (isDartObject(dart) && dart.c) s.coords.push(dart.c);
@@ -804,7 +775,7 @@ export const calculateTournamentStatistics = (
     if (entityType === "single" && tourney.settings?.teamSize === "team")
       return false;
     if (timeFilter === "all" || !tourney.finishedAt) return true;
-    const matchDate = new Date(tourney.finishedAt);
+    const matchDate = parseDateString(tourney.finishedAt);
     if (timeFilter === "today") return matchDate >= startOfToday;
     if (timeFilter === "7d") return matchDate >= sevenDaysAgo;
     if (timeFilter === "30d") return matchDate >= thirtyDaysAgo;
@@ -820,7 +791,6 @@ const getPlayerX01MatchTrend = (match: Match, playerName: string) => {
   if (!p || !p.allTurns) return null;
 
   const turns = p.allTurns;
-  const isBuggyCompressed = hasBuggyCompressedTurns(p);
   let pts = 0;
   let darts = 0;
 
@@ -830,18 +800,16 @@ const getPlayerX01MatchTrend = (match: Match, playerName: string) => {
         a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
       0,
     );
-    darts += isBuggyCompressed
-      ? 3
-      : turn.reduce(
-          (a: number, b: TurnDart) =>
-            a +
-            (typeof b === "number"
-              ? 1
-              : isDartObject(b) && b.d !== undefined
-                ? b.d
-                : 1),
-          0,
-        );
+    darts += turn.reduce(
+      (a: number, b: TurnDart) =>
+        a +
+        (typeof b === "number"
+          ? 1
+          : isDartObject(b) && b.d !== undefined
+            ? b.d
+            : 1),
+      0,
+    );
   });
 
   return { pts, darts };
@@ -925,8 +893,8 @@ export const calculateTournamentTrendData = (
     )
     .sort(
       (a, b) =>
-        new Date(a.finishedAt || "").getTime() -
-        new Date(b.finishedAt || "").getTime(),
+        parseDateString(a.finishedAt || "").getTime() -
+        parseDateString(b.finishedAt || "").getTime(),
     );
 
   const dataByPlayer: Record<
@@ -947,8 +915,12 @@ export const calculateTournamentTrendData = (
       const { tPoints, tTurns } = getTournamentPlayerTrend(tourney, playerName);
       if (tTurns > 0) {
         dataPoints.push(Number((tPoints / tTurns).toFixed(1)));
-        const d = new Date(tourney.finishedAt || "");
-        labels.push(dayjs(d).format("DD.MM"));
+        const d = parseDateString(tourney.finishedAt || "");
+        if (d.getTime() !== 0) {
+          labels.push(dayjs(d).format("DD.MM"));
+        } else {
+          labels.push((tourney.finishedAt || "").substring(0, 5));
+        }
       }
     });
     if (dataPoints.length >= 2)
@@ -962,7 +934,6 @@ const accumulateX01Baseline = (p: PlayerMatchStats, match: Match) => {
   let darts = 0;
   if (p.allTurns) {
     const turns = p.allTurns;
-    const isBuggyCompressed = hasBuggyCompressedTurns(p);
 
     turns.forEach((turn: Turn, index: number) => {
       pts += turn.reduce(
@@ -980,10 +951,6 @@ const accumulateX01Baseline = (p: PlayerMatchStats, match: Match) => {
               : 1),
         0,
       );
-      if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
-        turnDarts =
-          index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
-      }
       darts += turnDarts;
     });
   } else if (p.totalMatchDarts) {

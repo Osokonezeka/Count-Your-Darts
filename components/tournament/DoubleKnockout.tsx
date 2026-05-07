@@ -448,7 +448,8 @@ export default function DoubleKnockout({
                 return (
                   <View key={`wb-col-${roundKey}`} style={styles.treeColumn}>
                     <Text style={styles.treeRoundTitle}>
-                      WB Round {roundKey}
+                      {t(language, "wbRound")?.replace("{{round}}", roundKey) ||
+                        `WB Round ${roundKey}`}
                     </Text>
                     <View style={styles.treeMatchesWrapper}>
                       {ms.map((match, idx) => (
@@ -480,7 +481,8 @@ export default function DoubleKnockout({
                 return (
                   <View key={`lb-col-${roundKey}`} style={styles.treeColumn}>
                     <Text style={styles.treeRoundTitle}>
-                      LB Round {roundKey}
+                      {t(language, "lbRound")?.replace("{{round}}", roundKey) ||
+                        `LB Round ${roundKey}`}
                     </Text>
                     <View style={styles.treeMatchesWrapper}>
                       {ms.map((match, idx) => (
@@ -505,7 +507,9 @@ export default function DoubleKnockout({
                 }}
               />
               <View style={styles.treeColumn}>
-                <Text style={styles.treeRoundTitle}>Grand Finals</Text>
+                <Text style={styles.treeRoundTitle}>
+                  {t(language, "grandFinals") || "Grand Finals"}
+                </Text>
                 <View style={styles.treeMatchesWrapper}>
                   {matches
                     .filter((m) => m.bracket === "gf")
@@ -535,7 +539,7 @@ export default function DoubleKnockout({
                   dkView === "wb" && styles.phaseTabTextActive,
                 ]}
               >
-                WINNERS
+                {t(language, "winnersBracket") || "WINNERS"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -551,7 +555,7 @@ export default function DoubleKnockout({
                   dkView === "lb" && styles.phaseTabTextActive,
                 ]}
               >
-                LOSERS
+                {t(language, "losersBracket") || "LOSERS"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -567,7 +571,7 @@ export default function DoubleKnockout({
                   dkView === "gf" && styles.phaseTabTextActive,
                 ]}
               >
-                FINALS
+                {t(language, "finals")?.toUpperCase() || "FINALS"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -584,7 +588,17 @@ export default function DoubleKnockout({
                 <View key={roundKey} style={styles.roundSection}>
                   <View style={styles.roundHeader}>
                     <Text style={styles.roundTitle}>
-                      {dkView.toUpperCase()} Round {roundKey}
+                      {dkView === "wb"
+                        ? t(language, "wbRound")?.replace(
+                            "{{round}}",
+                            roundKey,
+                          ) || `WB Round ${roundKey}`
+                        : dkView === "lb"
+                          ? t(language, "lbRound")?.replace(
+                              "{{round}}",
+                              roundKey,
+                            ) || `LB Round ${roundKey}`
+                          : t(language, "grandFinals") || "Grand Finals"}
                     </Text>
                   </View>
                   {ms.map(renderCard)}

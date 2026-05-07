@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { useLanguage } from "./LanguageContext";
+import { t } from "../lib/i18n";
 
 const SPEECH_KEY = "@settings_speech";
 
@@ -30,7 +31,7 @@ export const SpeechProvider = ({ children }: { children: React.ReactNode }) => {
         const savedState = await AsyncStorage.getItem(SPEECH_KEY);
         if (savedState !== null) setIsSpeechEnabled(savedState === "true");
       } catch (error) {
-        console.error("Błąd podczas ładowania ustawień lektora:", error);
+        console.error("Error loading announcer settings:", error);
       }
     };
     loadSettings();
@@ -43,14 +44,11 @@ export const SpeechProvider = ({ children }: { children: React.ReactNode }) => {
       await AsyncStorage.setItem(SPEECH_KEY, String(newValue));
 
       if (newValue) {
-        Speech.speak(
-          language === "pl" ? "Lektor włączony" : "Announcer enabled",
-          {
-            language: language === "pl" ? "pl-PL" : "en-US",
-            pitch: 1.0,
-            rate: 1.0,
-          },
-        );
+        Speech.speak(t(language, "announcerEnabled") || "Announcer enabled", {
+          language: language === "pl" ? "pl-PL" : "en-US",
+          pitch: 1.0,
+          rate: 1.0,
+        });
       } else {
         Speech.stop();
       }

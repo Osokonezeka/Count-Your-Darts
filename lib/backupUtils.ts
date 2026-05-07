@@ -4,8 +4,12 @@ import * as Sharing from "expo-sharing";
 import { Platform } from "react-native";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import { Buffer } from "buffer";
+import dayjs from "dayjs";
+import { t, Lang } from "./i18n";
 
-export const exportBackup = async (): Promise<boolean> => {
+export const exportBackup = async (
+  language: Lang,
+): Promise<{ success: boolean; error?: string }> => {
   try {
     const keys = await AsyncStorage.getAllKeys();
     const result = await AsyncStorage.multiGet(keys);
@@ -16,12 +20,12 @@ export const exportBackup = async (): Promise<boolean> => {
     });
 
     backupData["__CountYourDarts_Backup"] = JSON.stringify({
-      timestamp: new Date().toISOString(),
+      timestamp: dayjs().toISOString(),
       version: "1.0.0",
     });
 
     const jsonString = JSON.stringify(backupData);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const timestamp = dayjs().toISOString().replace(/[:.]/g, "-");
     const baseFileName = `CountYourDarts_Backup_${timestamp}`;
     const zipFileName = `${baseFileName}.zip`;
 
@@ -37,7 +41,7 @@ export const exportBackup = async (): Promise<boolean> => {
       a.download = zipFileName;
       a.click();
       URL.revokeObjectURL(url);
-      return true;
+      return { success: true };
     }
 
     const FS = require("expo-file-system/legacy");
@@ -52,40 +56,66 @@ export const exportBackup = async (): Promise<boolean> => {
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(fileUri, {
         mimeType: "application/zip",
-        dialogTitle: "Eksportuj kopię zapasową Darts",
+        dialogTitle: t(language, "backupDialogTitle") || "Export Darts Backup",
       });
-      return true;
+      return { success: true };
     }
-    return false;
+    return {
+      success: false,
+      error:
+        t(language, "noShareOption") ||
+        "No sharing option available on this device.",
+    };
   } catch (error) {
     console.error("Backup export error:", error);
-    throw error;
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : t(language, "unknownExportError") || "Unknown error during export.",
+    };
   }
 };
 
-export const importBackup = async (): Promise<boolean> => {
+export const importBackup = async (
+  language: Lang,
+): Promise<{ success: boolean; error?: string }> => {
   try {
     const result = await DocumentPicker.getDocumentAsync({
       type: ["application/zip", "*/*"],
       copyToCacheDirectory: true,
     });
 
-    if (result.canceled || !result.assets || result.assets.length === 0)
-      return false;
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return { success: false };
+    }
 
     const fileUri = result.assets[0].uri;
     let jsonString = "";
 
     if (Platform.OS === "web") {
       const file = (result.assets[0] as any).file;
-      if (!file) throw new Error("File object is missing on web");
+      if (!file)
+        return {
+          success: false,
+          error:
+            t(language, "noWebFile") ||
+            "File object is missing on web platform.",
+        };
 
       const arrayBuffer = await file.arrayBuffer();
       const unzipped = unzipSync(new Uint8Array(arrayBuffer));
       const jsonFileName = Object.keys(unzipped).find((k) =>
         k.endsWith(".json"),
       );
-      if (!jsonFileName) throw new Error("Brak pliku JSON w archiwum ZIP");
+      if (!jsonFileName)
+        return {
+          success: false,
+          error:
+            t(language, "noJsonInZip") ||
+            "No JSON file found in the ZIP archive.",
+        };
       jsonString = strFromU8(unzipped[jsonFileName]);
     } else {
       const FS = require("expo-file-system/legacy");
@@ -97,19 +127,32 @@ export const importBackup = async (): Promise<boolean> => {
       const jsonFileName = Object.keys(unzipped).find((k) =>
         k.endsWith(".json"),
       );
-      if (!jsonFileName) throw new Error("Brak pliku JSON w archiwum ZIP");
+      if (!jsonFileName)
+        return {
+          success: false,
+          error:
+            t(language, "noJsonInZip") ||
+            "No JSON file found in the ZIP archive.",
+        };
       jsonString = strFromU8(unzipped[jsonFileName]);
     }
 
     const backupData = JSON.parse(jsonString);
 
-    if (typeof backupData !== "object" || backupData === null)
-      throw new Error("Invalid backup format");
+    if (typeof backupData !== "object" || backupData === null) {
+      return {
+        success: false,
+        error: t(language, "invalidBackupFormat") || "Invalid backup format.",
+      };
+    }
 
     if (!backupData["__CountYourDarts_Backup"]) {
-      throw new Error(
-        "Selected JSON file does not appear to be a valid Count Your Darts backup.",
-      );
+      return {
+        success: false,
+        error:
+          t(language, "notDartsBackup") ||
+          "Selected JSON file is not a valid Count Your Darts backup.",
+      };
     }
 
     delete backupData["__CountYourDarts_Backup"];
@@ -187,11 +230,20 @@ export const importBackup = async (): Promise<boolean> => {
 
     if (kvPairs.length > 0) {
       await AsyncStorage.multiSet(kvPairs);
-      return true;
+      return { success: true };
     }
-    return false;
+    return {
+      success: false,
+      error: t(language, "noNewData") || "No new data to import.",
+    };
   } catch (error) {
     console.error("Backup import error:", error);
-    throw error;
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : t(language, "unknownImportError") || "An unknown error occurred.",
+    };
   }
 };

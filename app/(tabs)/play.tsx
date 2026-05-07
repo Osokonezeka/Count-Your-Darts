@@ -185,8 +185,7 @@ export default function Play() {
   const handleAddBot = (difficulty: number) => {
     let baseName = "";
     if (difficulty === 0) {
-      const adaptiveLabel = language === "pl" ? "Adaptacyjny" : "Adaptive";
-      baseName = `${t(language, "bot") || "Bot"} (${adaptiveLabel})`;
+      baseName = `${t(language, "bot") || "Bot"} (${t(language, "adaptive") || "Adaptive"})`;
     } else {
       const level = (difficulty - 20) / 5;
       baseName = `${t(language, "bot") || "Bot"} (Lvl ${level})`;
