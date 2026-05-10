@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
-import cloneDeep from "lodash/cloneDeep";
+import { produce } from "immer";
 import { availableLanguages, translations } from "./i18n";
 
 dayjs.extend(customParseFormat);
@@ -139,8 +139,10 @@ export interface AggregatedStats {
   calculatedCheckoutPct?: number;
 }
 
+export const DARTS_PER_TURN = 3;
+
 export const isDartObject = (dart: TurnDart): dart is Dart => {
-  return typeof dart === "object" && dart !== null;
+  return typeof dart === "object" && dart !== null && !Array.isArray(dart);
 };
 
 export const isBot = (name: string): boolean => {
@@ -196,7 +198,7 @@ const calculatePlayerMatchStats = (
       const val = t === "BUST" ? 0 : parseInt(t);
       totalScore += val;
       totalTurns++;
-      if (idx < 3) {
+      if (idx < DARTS_PER_TURN) {
         f9S += val;
         f9T++;
       }
@@ -209,7 +211,7 @@ const calculatePlayerMatchStats = (
       else if (val === 180) c180++;
     });
     if (thr.length > 0) {
-      const darts = thr.length * 3;
+      const darts = thr.length * DARTS_PER_TURN;
       if (darts < bL) bL = darts;
       if (darts > wL) wL = darts;
     }
@@ -221,7 +223,7 @@ const calculatePlayerMatchStats = (
   });
 
   const coPct = att > 0 ? ((lW / att) * 100).toFixed(1) : "0.0";
-  const totalDarts = totalTurns * 3;
+  const totalDarts = totalTurns * DARTS_PER_TURN;
 
   return {
     lW,
@@ -305,9 +307,9 @@ const formatPlayerMap = (
     .map((s) => ({
       ...s,
       winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
-      calculatedAvg: s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * 3 : 0,
+      calculatedAvg: s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * DARTS_PER_TURN : 0,
       calculatedFirst9:
-        s.first9Count > 0 ? (s.first9Points / s.first9Count) * 3 : 0,
+        s.first9Count > 0 ? (s.first9Points / s.first9Count) * DARTS_PER_TURN : 0,
       calculatedCheckoutPct:
         s.checkoutDarts > 0 ? (s.checkoutHits / s.checkoutDarts) * 100 : 0,
     }));
@@ -366,7 +368,7 @@ const processPlayerTurns = (s: AggregatedStats, p: PlayerMatchStats) => {
 
     s.totalPoints += turnSum;
     s.totalDarts += turnDarts;
-    if (index < 3) {
+    if (index < DARTS_PER_TURN) {
       s.first9Points += turnSum;
       s.first9Count += turnDarts;
     }
@@ -399,10 +401,10 @@ const processStringThrows = (s: AggregatedStats, throws: string[]) => {
   throws.forEach((tStr, idx) => {
     const val = tStr === "BUST" ? 0 : parseInt(tStr);
     s.totalPoints += val;
-    s.totalDarts += 3;
-    if (idx < 3) {
+    s.totalDarts += DARTS_PER_TURN;
+    if (idx < DARTS_PER_TURN) {
       s.first9Points += val;
-      s.first9Count += 3;
+      s.first9Count += DARTS_PER_TURN;
     }
     if (val >= 180) s.s180++;
     else if (val >= 140) s.s140++;
@@ -415,33 +417,67 @@ const processX01MatchesIncremental = (
   matches: Match[],
   existingMap: Record<string, AggregatedStats> = {},
 ): Record<string, AggregatedStats> => {
-  const playerMap: Record<string, AggregatedStats> = cloneDeep(existingMap);
+  return produce(existingMap, (draft) => {
+    matches.forEach((match) => {
+      if (match.mode !== "X01") return;
+      if (!match.players) return;
 
-  matches.forEach((match) => {
-    if (match.mode !== "X01") return;
-    if (!match.players) return;
+      const winner = [...match.players].sort(
+        (a, b) =>
+          (b.sets || 0) - (a.sets || 0) ||
+          (b.legs || 0) - (a.legs || 0) ||
+          (a.score || 0) - (b.score || 0),
+      )[0];
 
-    const winner = [...match.players].sort(
-      (a, b) =>
-        (b.sets || 0) - (a.sets || 0) ||
-        (b.legs || 0) - (a.legs || 0) ||
-        (a.score || 0) - (b.score || 0),
-    )[0];
+      match.players.forEach((p) => {
+        if (!draft[p.name]) {
+          draft[p.name] = createEmptyAggregatedStats(p.name);
+        }
+        const s = draft[p.name];
+        s.mPlayed += 1;
+        if (winner && p.name === winner.name) s.mWon += 1;
+        s.checkoutDarts += p.checkoutDarts || 0;
+        s.checkoutHits += p.checkoutHits || 0;
 
-    match.players.forEach((p) => {
-      if (!playerMap[p.name]) {
-        playerMap[p.name] = createEmptyAggregatedStats(p.name);
-      }
-      const s = playerMap[p.name];
-      s.mPlayed += 1;
-      if (winner && p.name === winner.name) s.mWon += 1;
-      s.checkoutDarts += p.checkoutDarts || 0;
-      s.checkoutHits += p.checkoutHits || 0;
-
-      processPlayerTurns(s, p);
+        processPlayerTurns(s, p);
+      });
     });
   });
-  return playerMap;
+};
+
+const withIncrementalCache = async <TItem extends { id: string }>(
+  cacheKey: string,
+  history: TItem[],
+  processIncremental: (items: TItem[], existingMap?: Record<string, AggregatedStats>) => Record<string, AggregatedStats>
+): Promise<Record<string, AggregatedStats>> => {
+  const aggStr = await AsyncStorage.getItem(cacheKey);
+  let aggregate: {
+    processedIds: string[];
+    playerMap: Record<string, AggregatedStats>;
+  } = aggStr ? JSON.parse(aggStr) : { processedIds: [], playerMap: {} };
+
+  const historyIds = new Set(history.map((h) => h.id));
+  const cachedIds = new Set(aggregate.processedIds);
+
+  const hasDeletions = aggregate.processedIds.some((id) => !historyIds.has(id));
+
+  if (hasDeletions) {
+    const newMap = processIncremental(history, {});
+    aggregate = {
+      processedIds: history.map((h) => h.id),
+      playerMap: newMap,
+    };
+    await AsyncStorage.setItem(cacheKey, JSON.stringify(aggregate));
+  } else {
+    const newItems = history.filter((h) => !cachedIds.has(h.id));
+    if (newItems.length > 0) {
+      aggregate.playerMap = processIncremental(newItems, aggregate.playerMap);
+      aggregate.processedIds = history.map((h) => h.id);
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(aggregate));
+    }
+  }
+
+  return aggregate.playerMap;
 };
 
 export const getOverallStatisticsAsync = async (
@@ -454,43 +490,9 @@ export const getOverallStatisticsAsync = async (
 
   try {
     const CACHE_KEY = "@dart_overall_agg";
-    const aggStr = await AsyncStorage.getItem(CACHE_KEY);
-    let aggregate: {
-      processedIds: string[];
-      playerMap: Record<string, AggregatedStats>;
-    } = aggStr ? JSON.parse(aggStr) : { processedIds: [], playerMap: {} };
-
     const x01History = history.filter((h) => h.mode === "X01");
-    const historyIds = new Set(x01History.map((h) => h.id));
-    const cachedIds = new Set(aggregate.processedIds);
-
-    let hasDeletions = false;
-    for (const id of aggregate.processedIds) {
-      if (!historyIds.has(id)) {
-        hasDeletions = true;
-        break;
-      }
-    }
-
-    if (hasDeletions) {
-      const newMap = processX01MatchesIncremental(x01History, {});
-      aggregate = {
-        processedIds: x01History.map((h) => h.id),
-        playerMap: newMap,
-      };
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(aggregate));
-    } else {
-      const newMatches = x01History.filter((h) => !cachedIds.has(h.id));
-      if (newMatches.length > 0) {
-        aggregate.playerMap = processX01MatchesIncremental(
-          newMatches,
-          aggregate.playerMap,
-        );
-        aggregate.processedIds = x01History.map((h) => h.id);
-        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(aggregate));
-      }
-    }
-    return formatPlayerMap(aggregate.playerMap, appliedNames);
+    const playerMap = await withIncrementalCache(CACHE_KEY, x01History, processX01MatchesIncremental);
+    return formatPlayerMap(playerMap, appliedNames);
   } catch (e) {
     console.error("Aggregate overall error:", e);
     return calculateOverallStatistics(history, appliedNames, timeFilter);
@@ -519,23 +521,6 @@ export const calculateOverallStatistics = (
 
   const playerMap = processX01MatchesIncremental(filteredHistory, {});
   return formatPlayerMap(playerMap, appliedNames);
-};
-
-const formatTournamentPlayerMap = (
-  playerMap: Record<string, AggregatedStats>,
-  appliedNames: string[],
-): AggregatedStats[] => {
-  return Object.values(playerMap)
-    .filter((s) => appliedNames.includes(s.name) && !isBot(s.name))
-    .map((s) => ({
-      ...s,
-      winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
-      calculatedAvg: s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * 3 : 0,
-      calculatedFirst9:
-        s.first9Count > 0 ? (s.first9Points / s.first9Count) * 3 : 0,
-      calculatedCheckoutPct:
-        s.checkoutDarts > 0 ? (s.checkoutHits / s.checkoutDarts) * 100 : 0,
-    }));
 };
 
 const getTournamentPlacements = (
@@ -616,78 +601,77 @@ const processTournamentMatchesIncremental = (
   tourneys: Tournament[],
   existingMap: Record<string, AggregatedStats> = {},
 ): Record<string, AggregatedStats> => {
-  const playerMap: Record<string, AggregatedStats> = cloneDeep(existingMap);
+  return produce(existingMap, (draft) => {
+    const initPlayer = (name: string) => {
+      if (!draft[name]) {
+        draft[name] = createEmptyAggregatedStats(name);
+      }
+    };
 
-  const initPlayer = (name: string) => {
-    if (!playerMap[name]) {
-      playerMap[name] = createEmptyAggregatedStats(name);
-    }
-  };
+    tourneys.forEach((tourney) => {
+      const { firstPlace, secondPlace } = getTournamentPlacements(tourney);
 
-  tourneys.forEach((tourney) => {
-    const { firstPlace, secondPlace } = getTournamentPlacements(tourney);
+      const participants = tourney.players?.map((p) => p.name) || [];
+      participants.forEach((pName: string) => {
+        initPlayer(pName);
+        draft[pName].tPlayed++;
+      });
 
-    const participants = tourney.players?.map((p) => p.name) || [];
-    participants.forEach((pName: string) => {
-      initPlayer(pName);
-      playerMap[pName].tPlayed++;
-    });
-
-    if (firstPlace) {
-      initPlayer(firstPlace);
-      playerMap[firstPlace].t1st++;
-    }
-    if (secondPlace) {
-      initPlayer(secondPlace);
-      playerMap[secondPlace].t2nd++;
-    }
-
-    tourney.bracket?.forEach((match) => {
-      if (match.isBye || !match.player1 || !match.winner) return;
-
-      const p1Name = match.player1.name;
-      const p2Name = match.player2?.name;
-
-      initPlayer(p1Name);
-      playerMap[p1Name].mPlayed++;
-      if (match.winner?.id === match.player1.id) playerMap[p1Name].mWon++;
-
-      if (p2Name) {
-        initPlayer(p2Name);
-        playerMap[p2Name].mPlayed++;
-        if (match.winner?.id === match.player2?.id) playerMap[p2Name].mWon++;
+      if (firstPlace) {
+        initPlayer(firstPlace);
+        draft[firstPlace].t1st++;
+      }
+      if (secondPlace) {
+        initPlayer(secondPlace);
+        draft[secondPlace].t2nd++;
       }
 
-      const coStat = match.stats?.find((s) => s.label === "Checkout %");
-      if (coStat) {
-        const p1Match = String(coStat.p1).match(/\((\d+)\/(\d+)\)/);
-        if (p1Match) {
-          playerMap[p1Name].checkoutHits += parseInt(p1Match[1], 10);
-          playerMap[p1Name].checkoutDarts += parseInt(p1Match[2], 10);
+      tourney.bracket?.forEach((match) => {
+        if (match.isBye || !match.player1 || !match.winner) return;
+
+        const p1Name = match.player1.name;
+        const p2Name = match.player2?.name;
+
+        initPlayer(p1Name);
+        draft[p1Name].mPlayed++;
+        if (match.winner?.id === match.player1.id) draft[p1Name].mWon++;
+
+        if (p2Name) {
+          initPlayer(p2Name);
+          draft[p2Name].mPlayed++;
+          if (match.winner?.id === match.player2?.id) draft[p2Name].mWon++;
         }
-        if (p2Name && coStat.p2) {
-          const p2Match = String(coStat.p2).match(/\((\d+)\/(\d+)\)/);
-          if (p2Match) {
-            playerMap[p2Name].checkoutHits += parseInt(p2Match[1], 10);
-            playerMap[p2Name].checkoutDarts += parseInt(p2Match[2], 10);
+
+        const coStat = match.stats?.find((s) => s.label === "Checkout %");
+        if (coStat) {
+          const p1Match = String(coStat.p1).match(/\((\d+)\/(\d+)\)/);
+          if (p1Match) {
+            draft[p1Name].checkoutHits += parseInt(p1Match[1], 10);
+            draft[p1Name].checkoutDarts += parseInt(p1Match[2], 10);
+          }
+          if (p2Name && coStat.p2) {
+            const p2Match = String(coStat.p2).match(/\((\d+)\/(\d+)\)/);
+            if (p2Match) {
+              draft[p2Name].checkoutHits += parseInt(p2Match[1], 10);
+              draft[p2Name].checkoutDarts += parseInt(p2Match[2], 10);
+            }
           }
         }
-      }
 
-      if (match.logs) {
-        match.logs.forEach((leg) => {
-          if (leg.winnerId === match.player1?.id) playerMap[p1Name].lWon++;
-          else if (p2Name && leg.winnerId === match.player2?.id)
-            playerMap[p2Name].lWon++;
+        if (match.logs) {
+          match.logs.forEach((leg) => {
+            if (leg.winnerId === match.player1?.id) draft[p1Name].lWon++;
+            else if (p2Name && leg.winnerId === match.player2?.id)
+              draft[p2Name].lWon++;
 
-          processStringThrows(playerMap[p1Name], leg.p1Throws || []);
-          if (p2Name)
-            processStringThrows(playerMap[p2Name], leg.p2Throws || []);
-        });
-      }
+            processStringThrows(draft[p1Name], leg.p1Throws || []);
+            if (p2Name)
+              processStringThrows(draft[p2Name], leg.p2Throws || []);
+          });
+        }
+      });
     });
   });
-  return playerMap;
 };
 
 export const getTournamentStatisticsAsync = async (
@@ -706,47 +690,13 @@ export const getTournamentStatisticsAsync = async (
 
   try {
     const CACHE_KEY = `@dart_tourney_agg_${entityType}`;
-    const aggStr = await AsyncStorage.getItem(CACHE_KEY);
-    let aggregate: {
-      processedIds: string[];
-      playerMap: Record<string, AggregatedStats>;
-    } = aggStr ? JSON.parse(aggStr) : { processedIds: [], playerMap: {} };
-
     const relevantHistory = history.filter((t) =>
       entityType === "team"
         ? t.settings?.teamSize === "team"
         : t.settings?.teamSize !== "team",
     );
-    const historyIds = new Set(relevantHistory.map((h) => h.id));
-    const cachedIds = new Set(aggregate.processedIds);
-
-    let hasDeletions = false;
-    for (const id of aggregate.processedIds) {
-      if (!historyIds.has(id)) {
-        hasDeletions = true;
-        break;
-      }
-    }
-
-    if (hasDeletions) {
-      const newMap = processTournamentMatchesIncremental(relevantHistory, {});
-      aggregate = {
-        processedIds: relevantHistory.map((h) => h.id),
-        playerMap: newMap,
-      };
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(aggregate));
-    } else {
-      const newMatches = relevantHistory.filter((h) => !cachedIds.has(h.id));
-      if (newMatches.length > 0) {
-        aggregate.playerMap = processTournamentMatchesIncremental(
-          newMatches,
-          aggregate.playerMap,
-        );
-        aggregate.processedIds = relevantHistory.map((h) => h.id);
-        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(aggregate));
-      }
-    }
-    return formatTournamentPlayerMap(aggregate.playerMap, appliedNames);
+    const playerMap = await withIncrementalCache(CACHE_KEY, relevantHistory, processTournamentMatchesIncremental);
+    return formatPlayerMap(playerMap, appliedNames);
   } catch (e) {
     console.error("Aggregate tourney error:", e);
     return calculateTournamentStatistics(
@@ -783,7 +733,7 @@ export const calculateTournamentStatistics = (
   });
 
   const playerMap = processTournamentMatchesIncremental(filteredHistory, {});
-  return formatTournamentPlayerMap(playerMap, appliedNames);
+  return formatPlayerMap(playerMap, appliedNames);
 };
 
 const getPlayerX01MatchTrend = (match: Match, playerName: string) => {
@@ -844,7 +794,7 @@ export const calculateTrendData = (
     last10.forEach((match) => {
       const trend = getPlayerX01MatchTrend(match, playerName);
       if (trend && trend.darts > 0) {
-        dataPoints.push(Number(((trend.pts / trend.darts) * 3).toFixed(1)));
+        dataPoints.push(Number(((trend.pts / trend.darts) * DARTS_PER_TURN).toFixed(1)));
         const d = parseDateString(match.date || "");
         if (d.getTime() !== 0) {
           labels.push(dayjs(d).format("DD.MM"));
@@ -1035,11 +985,11 @@ export const getPlayersHistoricalBaseline = async (
 
       let playerAvg = 0;
       if (mode === "X01" || mode === "100 Darts") {
-        if (totalDarts > 0) playerAvg = (totalPts / totalDarts) * 3;
+        if (totalDarts > 0) playerAvg = (totalPts / totalDarts) * DARTS_PER_TURN;
       } else if (mode === "Bob's 27") {
         if (totalDarts > 0) playerAvg = totalPts / totalDarts;
       } else if (mode === "Cricket") {
-        if (totalDarts > 0) playerAvg = (totalMarks / totalDarts) * 3;
+        if (totalDarts > 0) playerAvg = (totalMarks / totalDarts) * DARTS_PER_TURN;
       } else if (mode === "Around the Clock") {
         if (totalDarts > 0) playerAvg = totalHits / totalDarts;
       }
