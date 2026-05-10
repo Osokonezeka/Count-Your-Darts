@@ -1,22 +1,37 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+  useNavigation,
+} from "expo-router";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 import {
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import CustomAlert from "../../components/modals/CustomAlert";
 import DoubleKnockout from "../../components/tournament/DoubleKnockout";
 import GroupsAndKnockout from "../../components/tournament/GroupsAndKnockout";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { SharedMatch } from "../../components/tournament/MatchCard";
 import RoundRobin from "../../components/tournament/RoundRobin";
 import SingleKnockout from "../../components/tournament/SingleKnockout";
@@ -30,6 +45,18 @@ import {
   TournamentSettings,
 } from "../../lib/statsUtils";
 import { useMatchStore } from "../../store/useMatchStore";
+import {
+  doc,
+  onSnapshot,
+  updateDoc,
+  arrayRemove,
+  arrayUnion,
+} from "firebase/firestore";
+import {
+  connectToDynamicFirebase,
+  parseConnectionString,
+  cancelFirebaseRoom,
+} from "../../lib/firebaseDynamic";
 
 export default function TournamentBracketScreen() {
   const { theme } = useTheme();
@@ -43,8 +70,329 @@ export default function TournamentBracketScreen() {
   );
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tournamentData, playersData, bracketData, isHistoryView } =
-    useLocalSearchParams();
+  const navigation = useNavigation();
+  const isExitingRef = useRef(false);
+  const {
+    tournamentData,
+    playersData,
+    bracketData,
+    isHistoryView,
+    roomId,
+    connectionString,
+    isHost,
+  } = useLocalSearchParams();
+
+  const settings = useMemo<TournamentSettings | null>(
+    () => (tournamentData ? JSON.parse(tournamentData as string) : null),
+    [tournamentData],
+  );
+  const players = useMemo<PlayerMatchStats[]>(
+    () => (playersData ? JSON.parse(playersData as string) : []),
+    [playersData],
+  );
+  const initialBracket = useMemo<SharedMatch[] | null>(
+    () => (bracketData ? JSON.parse(bracketData as string) : null),
+    [bracketData],
+  );
+
+  const parsedConfig = useMemo(() => {
+    if (connectionString) {
+      return parseConnectionString(connectionString as string);
+    }
+    return null;
+  }, [connectionString]);
+
+  const isHostBool = isHost !== "false";
+
+  const deviceIdRef = useRef<string | null>(null);
+  const registered = useRef(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [deviceName, setDeviceName] = useState<string>("");
+  const [firebaseBracket, setFirebaseBracket] = useState<SharedMatch[] | null>(
+    null,
+  );
+  const [connectedDevices, setConnectedDevices] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [isDevicesModalVisible, setDevicesModalVisible] = useState(false);
+  const [deviceToKick, setDeviceToKick] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [kickedOutAlertVisible, setKickedOutAlertVisible] = useState(false);
+
+  useEffect(() => {
+    const initDevice = async () => {
+      const id = await AsyncStorage.getItem("@device_id");
+      const name = await AsyncStorage.getItem("@device_name");
+      deviceIdRef.current = id;
+      setDeviceId(id);
+      setDeviceName(name || "Unknown Device");
+    };
+    initDevice();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !isHostBool &&
+      parsedConfig &&
+      deviceId &&
+      deviceName &&
+      isHistoryView !== "true" &&
+      !registered.current
+    ) {
+      registered.current = true;
+
+      const registerDevice = async () => {
+        const connection = connectToDynamicFirebase(parsedConfig.configStr);
+        if (!connection) return;
+        const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
+
+        await updateDoc(roomRef, {
+          connectedDevices: arrayUnion({ id: deviceId, name: deviceName }),
+        });
+      };
+      registerDevice().catch((e) => console.log(e));
+
+      return () => {
+        const connection = connectToDynamicFirebase(parsedConfig.configStr);
+        if (connection) {
+          const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
+          updateDoc(roomRef, {
+            connectedDevices: arrayRemove({ id: deviceId, name: deviceName }),
+          }).catch((e) => console.log(e));
+        }
+      };
+    }
+  }, [isHostBool, parsedConfig, deviceId, deviceName, isHistoryView]);
+
+  useEffect(() => {
+    if (!parsedConfig || !parsedConfig.roomId) return;
+    const connection = connectToDynamicFirebase(parsedConfig.configStr);
+    if (!connection) return;
+
+    const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
+    const unsubscribe = onSnapshot(roomRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const isStaleCache =
+          docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites;
+
+        if (
+          !isStaleCache &&
+          (data.status === "completed" || data.status === "cancelled")
+        ) {
+          await AsyncStorage.removeItem("@current_multiplayer_session");
+        }
+
+        if (data.connectedDevices) {
+          setConnectedDevices(data.connectedDevices);
+        }
+
+        if (
+          isHostBool &&
+          data.pingRequest &&
+          data.pingRequest !== data.pingResponse
+        ) {
+          updateDoc(roomRef, { pingResponse: data.pingRequest }).catch(
+            () => {},
+          );
+        }
+
+        if (deviceIdRef.current && !isHostBool) {
+          const banTimestamp = data.kickedBans?.[deviceIdRef.current];
+          const isTemporarilyBanned =
+            banTimestamp && Date.now() - banTimestamp < 3 * 60 * 1000;
+          if (
+            (data.kickedDevices?.includes(deviceIdRef.current) ||
+              isTemporarilyBanned) &&
+            !isStaleCache
+          ) {
+            DeviceEventEmitter.emit("force_exit_match");
+            setKickedOutAlertVisible(true);
+            return;
+          }
+        }
+
+        if (data.bracket) {
+          const needsSync = await AsyncStorage.getItem("@bracket_needs_sync");
+          if (needsSync === "true") return;
+
+          setFirebaseBracket(data.bracket);
+
+          Promise.resolve().then(async () => {
+            const keysToRemove: string[] = [];
+            const storeState = useMatchStore.getState() as {
+              matches?: Record<string, unknown>;
+              games?: Record<string, unknown>;
+            };
+            const targetKey = storeState.matches
+              ? "matches"
+              : storeState.games
+                ? "games"
+                : null;
+            const stateUpdates: Record<string, unknown> = {};
+
+            for (const m of data.bracket) {
+              const hasScore =
+                m.score &&
+                (m.score.p1Sets > 0 ||
+                  m.score.p1Legs > 0 ||
+                  m.score.p2Sets > 0 ||
+                  m.score.p2Legs > 0);
+              if (!m.hasProgress && !hasScore && !m.isInProgress) {
+                keysToRemove.push(`match_save_${m.id}`);
+              } else if (m.gameState) {
+                await AsyncStorage.setItem(
+                  `match_save_${m.id}`,
+                  JSON.stringify(m.gameState),
+                );
+                if (targetKey && !m.isInProgress) {
+                  stateUpdates[m.id] = m.gameState;
+                }
+              }
+            }
+
+            if (Object.keys(stateUpdates).length > 0 && targetKey) {
+              if (targetKey === "matches") {
+                useMatchStore.setState({
+                  matches: {
+                    ...(storeState.matches || {}),
+                    ...stateUpdates,
+                  },
+                } as unknown as Partial<
+                  ReturnType<typeof useMatchStore.getState>
+                >);
+              } else if (targetKey === "games") {
+                useMatchStore.setState({
+                  games: {
+                    ...(storeState.games || {}),
+                    ...stateUpdates,
+                  },
+                } as unknown as Partial<
+                  ReturnType<typeof useMatchStore.getState>
+                >);
+              }
+            }
+
+            if (keysToRemove.length > 0) {
+              await AsyncStorage.multiRemove(keysToRemove);
+              useMatchStore
+                .getState()
+                .clearMultipleMatches(
+                  keysToRemove.map((k: string) => k.replace("match_save_", "")),
+                );
+            }
+            const bKey = `bracket_structure_${String(data.settings?.name || "").replace(/\s/g, "_")}`;
+            await AsyncStorage.setItem(bKey, JSON.stringify(data.bracket));
+          });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [parsedConfig]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const syncHostBracket = async () => {
+        if (parsedConfig && settings) {
+          const bKey = `bracket_structure_${String(settings.name || "").replace(/\s/g, "_")}`;
+          const savedStr = await AsyncStorage.getItem(bKey);
+          const needsSync = await AsyncStorage.getItem("@bracket_needs_sync");
+
+          if (savedStr) {
+            let parsedBracket = JSON.parse(savedStr);
+            let hasStuckMatches = false;
+
+            if (deviceIdRef.current) {
+              parsedBracket = parsedBracket.map((m: SharedMatch) => {
+                if (
+                  m.isInProgress &&
+                  m.inProgressDeviceId === deviceIdRef.current
+                ) {
+                  hasStuckMatches = true;
+                  return {
+                    ...m,
+                    isInProgress: false,
+                    inProgressDeviceName: null,
+                    inProgressDeviceId: null,
+                  };
+                }
+                return m;
+              });
+            }
+
+            if (needsSync === "true" || hasStuckMatches) {
+              if (hasStuckMatches && needsSync !== "true") {
+                await AsyncStorage.setItem(bKey, JSON.stringify(parsedBracket));
+              }
+              setFirebaseBracket(parsedBracket);
+              const connection = connectToDynamicFirebase(
+                parsedConfig.configStr,
+              );
+              if (connection) {
+                const roomRef = doc(
+                  connection.db,
+                  "rooms",
+                  parsedConfig.roomId,
+                );
+                const sanitizedData = JSON.parse(JSON.stringify(parsedBracket));
+                await updateDoc(roomRef, { bracket: sanitizedData });
+              }
+            }
+          }
+          if (needsSync === "true") {
+            await AsyncStorage.removeItem("@bracket_needs_sync");
+          }
+        }
+      };
+      syncHostBracket();
+    }, [parsedConfig, settings]),
+  );
+
+  const handleExitTournament = async () => {
+    isExitingRef.current = true;
+    if (isHostBool && parsedConfig) {
+      await cancelFirebaseRoom(parsedConfig.configStr, parsedConfig.roomId);
+    }
+    await AsyncStorage.removeItem("@current_multiplayer_session");
+    router.navigate("/(tabs)/tournaments");
+  };
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (isHistoryView === "true" || isExitingRef.current) return;
+
+      if (e.data.action.type === "GO_BACK") {
+        e.preventDefault();
+        handleExitTournament();
+      }
+    });
+    return unsubscribe;
+  }, [navigation, isHistoryView, isHostBool, parsedConfig]);
+
+  const pushBracketToFirebase = async (bracketData: SharedMatch[]) => {
+    if (parsedConfig) {
+      const connection = connectToDynamicFirebase(parsedConfig.configStr);
+      if (connection) {
+        const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
+        const sanitizedData = JSON.parse(JSON.stringify(bracketData));
+        await updateDoc(roomRef, { bracket: sanitizedData });
+      }
+    }
+  };
+
+  const executeKickDevice = async () => {
+    if (!parsedConfig || !deviceToKick) return;
+    const connection = connectToDynamicFirebase(parsedConfig.configStr);
+    if (!connection) return;
+    const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
+    await updateDoc(roomRef, {
+      connectedDevices: arrayRemove(deviceToKick),
+      [`kickedBans.${deviceToKick.id}`]: Date.now(),
+    });
+    setDeviceToKick(null);
+  };
 
   const statLabels: Record<string, string> = useMemo(
     () => ({
@@ -61,22 +409,10 @@ export default function TournamentBracketScreen() {
     [language],
   );
 
-  const settings = useMemo<TournamentSettings | null>(
-    () => (tournamentData ? JSON.parse(tournamentData as string) : null),
-    [tournamentData],
-  );
-  const players = useMemo<PlayerMatchStats[]>(
-    () => (playersData ? JSON.parse(playersData as string) : []),
-    [playersData],
-  );
-  const initialBracket = useMemo<SharedMatch[] | null>(
-    () => (bracketData ? JSON.parse(bracketData as string) : null),
-    [bracketData],
-  );
-
   const [viewMode, setViewMode] = useState<"list" | "tree">("tree");
-  const [isDeleteAlertVisible, setDeleteAlertVisible] = useState(false);
   const [isFinishedPromptVisible, setFinishedPromptVisible] = useState(false);
+  const [isQrModalVisible, setQrModalVisible] = useState(false);
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
 
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isStatsModalVisible, setStatsModalVisible] = useState(false);
@@ -87,66 +423,65 @@ export default function TournamentBracketScreen() {
   );
   const [phaseView, setPhaseView] = useState<"group" | "knockout">("group");
 
-  useFocusEffect(
-    useCallback(() => {
-      const checkFinished = async () => {
-        if (!settings || isHistoryView === "true" || isSaved) return;
-        try {
+  useEffect(() => {
+    const checkFinished = async () => {
+      if (!settings || isHistoryView === "true" || isSaved) return;
+      try {
+        let bracket = firebaseBracket;
+        if (!bracket) {
           const bracketStorageKey = `bracket_structure_${String(settings.name || "").replace(/\s/g, "_")}`;
           const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
-          if (savedBracketStr) {
-            const bracket = JSON.parse(savedBracketStr);
-            if (Array.isArray(bracket)) {
-              let isFinished = false;
-              if (settings.format === "round_robin") {
-                isFinished =
-                  bracket.length > 0 &&
-                  bracket.every((m: Match) => m.winner !== null || m.isBye);
-              } else if (
-                settings.format === "groups_and_knockout" ||
-                settings.format === "groups_and_double_knockout"
-              ) {
-                const koMatches = bracket.filter(
-                  (m: Match) => m.phase === "knockout",
-                );
-                if (koMatches.length > 0) {
-                  const totalR = Math.max(
-                    ...koMatches.map((m: Match) => m.round || 0),
-                  );
-                  const finalRoundMatches = koMatches.filter(
-                    (m: Match) => m.round === totalR,
-                  );
-                  isFinished =
-                    finalRoundMatches.length > 0 &&
-                    finalRoundMatches.every(
-                      (m: Match) => m.winner !== null || m.isBye,
-                    );
-                }
-              } else {
-                const totalR = Math.max(
-                  ...bracket.map((m: Match) => m.round || 0),
-                );
-                const finalRoundMatches = bracket.filter(
-                  (m: Match) => m.round === totalR,
-                );
-                isFinished =
-                  finalRoundMatches.length > 0 &&
-                  finalRoundMatches.every(
-                    (m: Match) => m.winner !== null || m.isBye,
-                  );
-              }
-              if (isFinished) {
-                setFinishedPromptVisible(true);
-              }
-            }
-          }
-        } catch (error) {
-          console.error(error);
+          if (savedBracketStr) bracket = JSON.parse(savedBracketStr);
         }
-      };
-      checkFinished();
-    }, [settings, isHistoryView, isSaved]),
-  );
+        if (bracket && Array.isArray(bracket)) {
+          let isFinished = false;
+          if (settings.format === "round_robin") {
+            isFinished =
+              bracket.length > 0 &&
+              bracket.every((m: SharedMatch) => m.winner !== null || m.isBye);
+          } else if (
+            settings.format === "groups_and_knockout" ||
+            settings.format === "groups_and_double_knockout"
+          ) {
+            const koMatches = bracket.filter(
+              (m: SharedMatch) => m.phase === "knockout",
+            );
+            if (koMatches.length > 0) {
+              const totalR = Math.max(
+                ...koMatches.map((m: SharedMatch) => m.round || 0),
+              );
+              const finalRoundMatches = koMatches.filter(
+                (m: SharedMatch) => m.round === totalR,
+              );
+              isFinished =
+                finalRoundMatches.length > 0 &&
+                finalRoundMatches.every(
+                  (m: SharedMatch) => m.winner !== null || m.isBye,
+                );
+            }
+          } else {
+            const totalR = Math.max(
+              ...bracket.map((m: SharedMatch) => m.round || 0),
+            );
+            const finalRoundMatches = bracket.filter(
+              (m: SharedMatch) => m.round === totalR,
+            );
+            isFinished =
+              finalRoundMatches.length > 0 &&
+              finalRoundMatches.every(
+                (m: SharedMatch) => m.winner !== null || m.isBye,
+              );
+          }
+          if (isFinished) {
+            setFinishedPromptVisible(true);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    checkFinished();
+  }, [settings, isHistoryView, isSaved, firebaseBracket]);
 
   const handleSaveAndStay = async () => {
     setFinishedPromptVisible(false);
@@ -196,49 +531,18 @@ export default function TournamentBracketScreen() {
           JSON.stringify(savedArr),
         );
       }
+
+      if (isHostBool && parsedConfig) {
+        const connection = connectToDynamicFirebase(parsedConfig.configStr);
+        if (connection) {
+          const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
+          await updateDoc(roomRef, { status: "completed" });
+        }
+      }
+      await AsyncStorage.removeItem("@current_multiplayer_session");
     } catch (e) {
       console.error("Error saving to history:", e);
     }
-  };
-
-  const handleDeleteTournament = async () => {
-    if (!settings) return;
-    try {
-      const bracketStorageKey = `bracket_structure_${String(settings.name || "").replace(/\s/g, "_")}`;
-      const selectedPlayersKey = `@dart_selected_players_${String(settings.name || "").replace(/\s/g, "_")}`;
-      const keysToRemove = [bracketStorageKey, selectedPlayersKey];
-      const matchIdsToRemove: string[] = [];
-
-      const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
-      if (savedBracketStr) {
-        const savedBracket = JSON.parse(savedBracketStr);
-        if (Array.isArray(savedBracket)) {
-          savedBracket.forEach((match: Match) => {
-            matchIdsToRemove.push(match.id);
-          });
-        }
-      }
-      await AsyncStorage.multiRemove(keysToRemove);
-      useMatchStore.getState().clearMultipleMatches(matchIdsToRemove);
-
-      const savedArrStr = await AsyncStorage.getItem("@active_tournaments");
-      if (savedArrStr) {
-        let savedArr = JSON.parse(savedArrStr);
-        savedArr = savedArr.filter(
-          (t: { settings: { name: string } }) =>
-            t.settings.name !== settings.name,
-        );
-        await AsyncStorage.setItem(
-          "@active_tournaments",
-          JSON.stringify(savedArr),
-        );
-      }
-    } catch (e) {
-      console.error("Error deleting tournament data:", e);
-    }
-    setDeleteAlertVisible(false);
-
-    router.back();
   };
 
   const handleMatchPress = (match: SharedMatch | Match) => {
@@ -259,7 +563,10 @@ export default function TournamentBracketScreen() {
             "Error loading tournament data."}
         </Text>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            if (isHistoryView === "true") router.back();
+            else router.navigate("/(tabs)/tournaments");
+          }}
           style={{ marginTop: 20 }}
         >
           <Text style={{ color: theme.colors.primary }}>
@@ -274,7 +581,10 @@ export default function TournamentBracketScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            if (isHistoryView === "true") router.back();
+            else handleExitTournament();
+          }}
           style={styles.headerBtn}
         >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
@@ -287,16 +597,18 @@ export default function TournamentBracketScreen() {
         </Text>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={() => setDeleteAlertVisible(true)}
-            style={styles.headerBtn}
-          >
-            <Ionicons
-              name="trash-outline"
-              size={24}
-              color={theme.colors.danger || "#dc3545"}
-            />
-          </TouchableOpacity>
+          {isHostBool && parsedConfig && (
+            <TouchableOpacity
+              onPress={() => setQrModalVisible(true)}
+              style={styles.headerBtn}
+            >
+              <Ionicons
+                name="qr-code-outline"
+                size={24}
+                color={theme.colors.primary}
+              />
+            </TouchableOpacity>
+          )}
 
           {(settings.format === "single_knockout" ||
             settings.format === "double_knockout" ||
@@ -341,16 +653,48 @@ export default function TournamentBracketScreen() {
         </View>
       </View>
 
+      {!!settings.desc && (
+        <Pressable
+          style={{ paddingHorizontal: 16, paddingBottom: 10 }}
+          onPress={() => setIsDescExpanded(!isDescExpanded)}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              color: theme.colors.textMain,
+              lineHeight: 18,
+            }}
+            numberOfLines={isDescExpanded ? undefined : 2}
+          >
+            {settings.desc}
+          </Text>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "700",
+              color: theme.colors.primary,
+              marginTop: 4,
+            }}
+          >
+            {isDescExpanded
+              ? t(language, "showLess") || "Show less"
+              : t(language, "showMore") || "Show more"}
+          </Text>
+        </Pressable>
+      )}
+
       {settings.format === "groups_and_knockout" ||
       settings.format === "groups_and_double_knockout" ? (
         <GroupsAndKnockout
           players={players}
           settings={settings}
           onMatchPress={handleMatchPress}
-          initialBracket={initialBracket}
+          initialBracket={firebaseBracket || initialBracket}
           isReadOnly={isHistoryView === "true" || isSaved}
           activeTab={rrViewMode}
           viewMode={viewMode}
+          isHost={isHostBool}
+          onBracketGenerated={pushBracketToFirebase}
           phaseView={phaseView}
           setPhaseView={setPhaseView}
         />
@@ -360,17 +704,21 @@ export default function TournamentBracketScreen() {
           settings={settings}
           viewMode={viewMode}
           onMatchPress={handleMatchPress}
-          initialBracket={initialBracket}
+          initialBracket={firebaseBracket || initialBracket}
           isReadOnly={isHistoryView === "true" || isSaved}
+          isHost={isHostBool}
+          onBracketGenerated={pushBracketToFirebase}
         />
       ) : settings.format === "round_robin" ? (
         <RoundRobin
           players={players}
           settings={settings}
           onMatchPress={handleMatchPress}
-          initialBracket={initialBracket}
+          initialBracket={firebaseBracket || initialBracket}
           isReadOnly={isHistoryView === "true" || isSaved}
           activeTab={rrViewMode}
+          isHost={isHostBool}
+          onBracketGenerated={pushBracketToFirebase}
         />
       ) : (
         <SingleKnockout
@@ -378,8 +726,10 @@ export default function TournamentBracketScreen() {
           settings={settings}
           viewMode={viewMode}
           onMatchPress={handleMatchPress}
-          initialBracket={initialBracket}
+          initialBracket={firebaseBracket || initialBracket}
           isReadOnly={isHistoryView === "true" || isSaved}
+          isHost={isHostBool}
+          onBracketGenerated={pushBracketToFirebase}
         />
       )}
 
@@ -529,27 +879,181 @@ export default function TournamentBracketScreen() {
         ]}
       />
 
+      <Modal
+        visible={isQrModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setQrModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setQrModalVisible(false)}
+          />
+          <View style={styles.modalContent}>
+            <View style={styles.qrModalHeader}>
+              <AnimatedPressable
+                onPress={() => setQrModalVisible(false)}
+                style={styles.qrCloseBtn}
+              >
+                <Ionicons
+                  name="close"
+                  size={28}
+                  color={theme.colors.textMain}
+                />
+              </AnimatedPressable>
+              <Text style={styles.qrModalTitle}>
+                {t(language, "scanToJoin") || "Scan to join"}
+              </Text>
+              <View style={{ width: 28 }} />
+            </View>
+            <View style={{ alignItems: "center", width: "100%" }}>
+              <View style={styles.qrWrapper}>
+                <QRCode
+                  value={connectionString as string}
+                  size={200}
+                  color={theme.colors.textMain}
+                  backgroundColor={theme.colors.card}
+                />
+              </View>
+              <Text style={styles.connectionStringCode} selectable={true}>
+                {connectionString}
+              </Text>
+              <Text style={styles.copyHint}>
+                {t(language, "copyHint") || "(Hold to copy the code manually)"}
+              </Text>
+
+              <AnimatedPrimaryButton
+                title={t(language, "viewDevices") || "View devices"}
+                theme={theme}
+                onPress={() => {
+                  setQrModalVisible(false);
+                  setDevicesModalVisible(true);
+                }}
+                style={{ marginTop: 24, width: "100%" }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isDevicesModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setDevicesModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setDevicesModalVisible(false)}
+          />
+          <View style={styles.modalContent}>
+            <View style={styles.qrModalHeader}>
+              <AnimatedPressable
+                onPress={() => setDevicesModalVisible(false)}
+                style={styles.qrCloseBtn}
+              >
+                <Ionicons
+                  name="close"
+                  size={28}
+                  color={theme.colors.textMain}
+                />
+              </AnimatedPressable>
+              <Text style={styles.qrModalTitle}>
+                {t(language, "connectedDevices") || "Connected devices"}
+              </Text>
+              <View style={{ width: 28 }} />
+            </View>
+
+            <ScrollView style={{ maxHeight: 300, width: "100%" }}>
+              {connectedDevices.length === 0 ? (
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    textAlign: "center",
+                    marginTop: 20,
+                  }}
+                >
+                  {t(language, "noDevices") || "No devices"}
+                </Text>
+              ) : (
+                connectedDevices.map((device, index) => (
+                  <View key={device.id} style={styles.deviceRow}>
+                    <Text style={styles.deviceRank}>{index + 1}.</Text>
+                    <Text style={styles.deviceName} numberOfLines={1}>
+                      {device.name}
+                    </Text>
+                    {isHostBool && (
+                      <AnimatedPressable
+                        onPress={() => setDeviceToKick(device)}
+                        style={styles.kickBtn}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={20}
+                          color={theme.colors.danger}
+                        />
+                      </AnimatedPressable>
+                    )}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <CustomAlert
-        visible={isDeleteAlertVisible}
-        title={t(language, "deleteTournament") || "Delete tournament"}
+        visible={!!deviceToKick}
+        title={t(language, "kickDeviceTitle") || "Disconnect device"}
         message={
-          t(language, "deleteTournamentConfirmName")?.replace(
+          t(language, "kickDeviceMessage")?.replace(
             "{{name}}",
-            String(settings?.name || ""),
+            deviceToKick?.name || "",
           ) ||
-          `Are you sure you want to delete '${settings?.name}'? Results WILL NOT be saved in history.`
+          `Are you sure you want to disconnect device '${deviceToKick?.name}' from the tournament?`
         }
-        onRequestClose={() => setDeleteAlertVisible(false)}
+        onRequestClose={() => setDeviceToKick(null)}
         buttons={[
           {
             text: t(language, "cancel") || "Cancel",
             style: "cancel",
-            onPress: () => setDeleteAlertVisible(false),
+            onPress: () => setDeviceToKick(null),
           },
           {
-            text: t(language, "deletePermanently") || "Delete permanently",
+            text: t(language, "delete") || "Delete",
             style: "destructive",
-            onPress: handleDeleteTournament,
+            onPress: executeKickDevice,
+          },
+        ]}
+      />
+
+      <CustomAlert
+        visible={kickedOutAlertVisible}
+        title={t(language, "kickedAlertTitle") || "Kicked out"}
+        message={
+          t(language, "kickedAlertMessage") ||
+          "The Host removed this device from the game. You can rejoin after 3 minutes."
+        }
+        onRequestClose={() => {
+          setKickedOutAlertVisible(false);
+          router.navigate("/(tabs)/tournaments");
+        }}
+        buttons={[
+          {
+            text: t(language, "ok") || "OK",
+            style: "default",
+            onPress: () => {
+              setKickedOutAlertVisible(false);
+              router.navigate("/(tabs)/tournaments");
+            },
           },
         ]}
       />
@@ -654,4 +1158,69 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       gap: 8,
     },
     showLogsBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+    qrModalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+      marginBottom: 24,
+    },
+    qrModalTitle: {
+      fontSize: 18,
+      fontWeight: "900",
+      color: theme.colors.textMain,
+      textTransform: "uppercase",
+    },
+    qrCloseBtn: { padding: 2 },
+    qrWrapper: {
+      padding: 16,
+      backgroundColor: theme.colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+    },
+    connectionStringCode: {
+      marginTop: 20,
+      fontSize: 12,
+      color: theme.colors.textMuted,
+      textAlign: "center",
+      backgroundColor: theme.colors.background,
+      padding: 10,
+      borderRadius: 8,
+      overflow: "hidden",
+      width: "100%",
+    },
+    copyHint: {
+      fontSize: 10,
+      color: theme.colors.textLight,
+      marginTop: 8,
+      fontStyle: "italic",
+      textAlign: "center",
+    },
+    deviceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.background,
+      width: "100%",
+    },
+    deviceRank: {
+      width: 30,
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.colors.textLight,
+    },
+    deviceName: {
+      flex: 1,
+      fontSize: 16,
+      fontWeight: "700",
+      color: theme.colors.textMain,
+      marginRight: 8,
+    },
+    kickBtn: {
+      padding: 6,
+      backgroundColor: theme.colors.dangerLight || "rgba(220, 53, 69, 0.1)",
+      borderRadius: 8,
+    },
   });

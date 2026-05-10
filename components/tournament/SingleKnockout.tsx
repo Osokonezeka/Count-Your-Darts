@@ -1,7 +1,7 @@
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -12,6 +12,7 @@ import {
   SharedMatch as Match,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { useMatchStore } from "../../store/useMatchStore";
 import { TournamentSettings } from "../../lib/statsUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
@@ -23,6 +24,8 @@ export interface SingleKnockoutProps {
   onMatchPress: (match: Match) => void;
   initialBracket?: Match[] | null;
   isReadOnly?: boolean;
+  isHost?: boolean;
+  onBracketGenerated?: (bracket: Match[]) => void | Promise<void>;
 }
 
 export default function SingleKnockout({
@@ -32,6 +35,8 @@ export default function SingleKnockout({
   onMatchPress,
   initialBracket = null,
   isReadOnly = false,
+  isHost = true,
+  onBracketGenerated,
 }: SingleKnockoutProps) {
   const { theme } = useTheme();
   const styles = getStyles(theme);
@@ -46,31 +51,48 @@ export default function SingleKnockout({
 
   const bracketStorageKey = `bracket_structure_${String(settings?.name || "").replace(/\s/g, "_")}`;
 
+  useEffect(() => {
+    if (initialBracket) {
+      setMatches(initialBracket);
+      (async () => {
+        const progressObj: Record<string, boolean> = {};
+        for (const m of initialBracket) {
+          const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
+          if (savedScore) progressObj[m.id] = true;
+        }
+        setInProgressMatches(progressObj);
+      })();
+    }
+  }, [initialBracket]);
+
   useFocusEffect(
     useCallback(() => {
       const loadTournamentState = async () => {
-        if (initialBracket) {
-          setMatches(initialBracket);
-          return;
-        }
-
         try {
-          const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
-          if (savedBracketStr) {
-            const currentMatches = JSON.parse(savedBracketStr) as Match[];
+          let currentMatches: Match[] = [];
+          if (initialBracket) {
+            currentMatches = initialBracket;
             setMatches(currentMatches);
-
-            const progressObj: Record<string, boolean> = {};
-            for (const m of currentMatches) {
-              const savedScore = await AsyncStorage.getItem(
-                `match_save_${m.id}`,
-              );
-              if (savedScore) progressObj[m.id] = true;
+          } else {
+            const savedBracketStr =
+              await AsyncStorage.getItem(bracketStorageKey);
+            if (savedBracketStr) {
+              currentMatches = JSON.parse(savedBracketStr) as Match[];
+              setMatches(currentMatches);
+            } else if (players.length > 0 && !isReadOnly && isHost) {
+              generateBracket();
+              return;
+            } else {
+              return;
             }
-            setInProgressMatches(progressObj);
-          } else if (players.length > 0 && !isReadOnly) {
-            generateBracket();
           }
+
+          const progressObj: Record<string, boolean> = {};
+          for (const m of currentMatches) {
+            const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
+            if (savedScore) progressObj[m.id] = true;
+          }
+          setInProgressMatches(progressObj);
         } catch (e) {
           console.error(e);
         }
@@ -193,17 +215,36 @@ export default function SingleKnockout({
 
     setMatches(newMatches);
     await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
+    if (onBracketGenerated) onBracketGenerated(newMatches);
   };
 
   const performResetMatch = async () => {
     if (!resetAlert.matchId) return;
     try {
       await AsyncStorage.removeItem(`match_save_${resetAlert.matchId}`);
+      useMatchStore.getState().clearMultipleMatches([resetAlert.matchId]);
       setInProgressMatches((prev: Record<string, boolean>) => {
         const updated = { ...prev };
         delete updated[resetAlert.matchId];
         return updated;
       });
+
+      const newMatches = matches.map((m) => {
+        if (m.id === resetAlert.matchId) {
+          const {
+            score,
+            gameState,
+            inProgressDeviceName,
+            inProgressDeviceId,
+            ...rest
+          } = m;
+          return { ...rest, isInProgress: false, hasProgress: false };
+        }
+        return m;
+      });
+      setMatches(newMatches);
+      await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
+      if (onBracketGenerated) onBracketGenerated(newMatches);
     } catch (e) {
       console.error(
         t(language, "resetMatchError") || "Error resetting match:",
@@ -245,7 +286,28 @@ export default function SingleKnockout({
   }, []);
 
   const handlePlayMatch = useCallback(
-    (match: Match) => {
+    async (match: Match) => {
+      const dName =
+        (await AsyncStorage.getItem("@device_name")) || "Unknown Device";
+      const dId = (await AsyncStorage.getItem("@device_id")) || "Unknown ID";
+      const updatedMatches = matches.map((m) =>
+        m.id === match.id
+          ? {
+              ...m,
+              isInProgress: true,
+              inProgressDeviceName: dName,
+              inProgressDeviceId: dId,
+            }
+          : m,
+      );
+      setMatches(updatedMatches);
+      await AsyncStorage.setItem(
+        bracketStorageKey,
+        JSON.stringify(updatedMatches),
+      );
+      await AsyncStorage.setItem("@bracket_needs_sync", "true");
+      if (onBracketGenerated) onBracketGenerated(updatedMatches);
+
       let matchSettings = { ...settings };
       if (
         settings.customFinals &&
@@ -270,7 +332,7 @@ export default function SingleKnockout({
         },
       });
     },
-    [settings, totalR, router],
+    [matches, settings, totalR, router, bracketStorageKey, onBracketGenerated],
   );
 
   const renderCard = useCallback(
@@ -304,7 +366,7 @@ export default function SingleKnockout({
   );
   const calculatedHeight = Math.max(
     screenHeight,
-    (matchesByRound[1]?.length || 1) * 170 + 100,
+    (matchesByRound[1]?.length || 1) * 200 + 100,
   );
 
   return (

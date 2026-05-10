@@ -11,7 +11,21 @@ export const exportBackup = async (
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const result = await AsyncStorage.multiGet(keys);
+
+    // Odsączamy dane tymczasowe, trwające gry, sesje multiplayer i cache statystyk
+    const keysToExport = keys.filter((key) => {
+      if (key === "@active_tournaments") return false;
+      if (key === "@current_multiplayer_session") return false;
+      if (key === "@bracket_needs_sync") return false;
+      if (key === "@dart_overall_agg") return false;
+      if (key.startsWith("@dart_tourney_agg_")) return false;
+      if (key.startsWith("bracket_structure_")) return false;
+      if (key.startsWith("@dart_selected_players_")) return false;
+      if (key.startsWith("match_save_")) return false;
+      return true;
+    });
+
+    const result = await AsyncStorage.multiGet(keysToExport);
 
     const backupData: Record<string, string | null> = {};
     result.forEach(([key, value]) => {
@@ -135,16 +149,20 @@ export const importBackup = async (
         const parsedBackup = JSON.parse(backupValueStr);
 
         if (Array.isArray(parsedLocal) && Array.isArray(parsedBackup)) {
-          const isObjectWithId = (item: any) =>
-            item && typeof item === "object" && "id" in item;
+          const isObjectWithId = (
+            item: unknown,
+          ): item is { id: string | number } =>
+            item !== null && typeof item === "object" && "id" in item;
           const hasIds =
             parsedLocal.some(isObjectWithId) ||
             parsedBackup.some(isObjectWithId);
 
           if (hasIds) {
-            const localIds = new Set(parsedLocal.map((item: any) => item.id));
+            const localIds = new Set(
+              parsedLocal.map((item: { id: string | number }) => item.id),
+            );
             const itemsToAdd = parsedBackup.filter(
-              (item: any) => !localIds.has(item.id),
+              (item: { id: string | number }) => !localIds.has(item.id),
             );
             const mergedArray = [...parsedLocal, ...itemsToAdd];
 
@@ -158,10 +176,10 @@ export const importBackup = async (
             kvPairs.push([key, JSON.stringify(mergedArray)]);
           } else {
             const localStrings = new Set(
-              parsedLocal.map((i: any) => JSON.stringify(i)),
+              parsedLocal.map((i: unknown) => JSON.stringify(i)),
             );
             const itemsToAdd = parsedBackup.filter(
-              (i: any) => !localStrings.has(JSON.stringify(i)),
+              (i: unknown) => !localStrings.has(JSON.stringify(i)),
             );
             const mergedArray = [...parsedLocal, ...itemsToAdd];
             kvPairs.push([key, JSON.stringify(mergedArray)]);

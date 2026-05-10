@@ -5,6 +5,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,13 +25,19 @@ import "dayjs/locale/en";
 import "dayjs/locale/pl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
-import { t } from "../../lib/i18n";
+import { t, Lang } from "../../lib/i18n";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import {
   TournamentSettings,
   PlayerMatchStats,
   Match,
 } from "../../lib/statsUtils";
+import {
+  connectToDynamicFirebase,
+  parseConnectionString,
+  cancelFirebaseRoom,
+} from "../../lib/firebaseDynamic";
+import { doc, updateDoc } from "firebase/firestore";
 
 type TournamentFormat =
   | "single_knockout"
@@ -40,6 +47,51 @@ type TournamentFormat =
   | "groups_and_double_knockout";
 type TeamSize = "single" | "team";
 type BracketOrder = "top_to_bottom" | "bottom_to_top";
+
+type ActiveTournamentItem = {
+  settings: TournamentSettings;
+  players: PlayerMatchStats[];
+  roomId?: string;
+  connectionString?: string;
+};
+
+const ExpandableDesc = ({
+  desc,
+  language,
+  theme,
+}: {
+  desc?: string;
+  language: Lang;
+  theme: { colors: Record<string, string> };
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  if (!desc) return null;
+  return (
+    <Pressable
+      style={{ marginBottom: 6 }}
+      onPress={() => setIsExpanded(!isExpanded)}
+    >
+      <Text
+        style={{ fontSize: 13, color: theme.colors.textMain, lineHeight: 18 }}
+        numberOfLines={isExpanded ? undefined : 1}
+      >
+        {desc}
+      </Text>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: "700",
+          color: theme.colors.primary,
+          marginTop: 4,
+        }}
+      >
+        {isExpanded
+          ? t(language, "showLess") || "Show less"
+          : t(language, "showMore") || "Show more"}
+      </Text>
+    </Pressable>
+  );
+};
 
 export default function TournamentCreateScreen() {
   const router = useRouter();
@@ -56,15 +108,11 @@ export default function TournamentCreateScreen() {
   const { isHost } = useLocalSearchParams();
 
   const [activeTournaments, setActiveTournaments] = useState<
-    { settings: TournamentSettings; players: PlayerMatchStats[] }[]
+    ActiveTournamentItem[]
   >([]);
   const [isSavedModalVisible, setSavedModalVisible] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
   const [nameError, setNameError] = useState(false);
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
-  const [tempDate, setTempDate] = useState(dayjs().toDate());
 
   const [deleteAlert, setDeleteAlert] = useState({
     visible: false,
@@ -138,14 +186,32 @@ export default function TournamentCreateScreen() {
           onPress: async () => {
             setDeleteAlert((prev) => ({ ...prev, visible: false }));
 
+            const tItem = activeTournaments.find(
+              (t) => t.settings.name === tName,
+            );
+            if (tItem && tItem.roomId && tItem.connectionString) {
+              const parsed = parseConnectionString(tItem.connectionString);
+              if (parsed) {
+                await cancelFirebaseRoom(parsed.configStr, parsed.roomId);
+              }
+            }
+
+            const savedArrStr = await AsyncStorage.getItem(
+              "@active_tournaments",
+            );
+            if (savedArrStr) {
+              const allT: ActiveTournamentItem[] = JSON.parse(savedArrStr);
+              const newAllT = allT.filter((t) => t.settings.name !== tName);
+              await AsyncStorage.setItem(
+                "@active_tournaments",
+                JSON.stringify(newAllT),
+              );
+            }
+
             const updated = activeTournaments.filter(
               (t) => t.settings.name !== tName,
             );
             setActiveTournaments(updated);
-            await AsyncStorage.setItem(
-              "@active_tournaments",
-              JSON.stringify(updated),
-            );
 
             const bracketKey = `bracket_structure_${tName.replace(/\s/g, "_")}`;
             const selectedPlayersKey = `@dart_selected_players_${tName.replace(/\s/g, "_")}`;
@@ -162,6 +228,16 @@ export default function TournamentCreateScreen() {
             }
             await AsyncStorage.multiRemove(keysToRemove);
 
+            const sessionStr = await AsyncStorage.getItem(
+              "@current_multiplayer_session",
+            );
+            if (sessionStr) {
+              const session = JSON.parse(sessionStr);
+              if (session.tournamentName === tName) {
+                await AsyncStorage.removeItem("@current_multiplayer_session");
+              }
+            }
+
             if (updated.length === 0) setSavedModalVisible(false);
           },
         },
@@ -173,39 +249,6 @@ export default function TournamentCreateScreen() {
     key: keyof typeof config,
     value: string | number | boolean | Date,
   ) => setConfig((prev) => ({ ...prev, [key]: value }));
-
-  const openDatePicker = () => {
-    setTempDate(config.startDate);
-    if (Platform.OS === "android") setPickerMode("date");
-    setShowDatePicker(true);
-  };
-
-  const handleDateChange = (event: { type?: string }, selectedDate?: Date) => {
-    if (Platform.OS === "ios") {
-      if (selectedDate) setTempDate(selectedDate);
-      return;
-    }
-    if (event.type === "set" && selectedDate) {
-      if (pickerMode === "date") {
-        const newDate = dayjs(config.startDate)
-          .year(selectedDate.getFullYear())
-          .month(selectedDate.getMonth())
-          .date(selectedDate.getDate())
-          .toDate();
-        updateConfig("startDate", newDate);
-        setShowDatePicker(false);
-        setPickerMode("time");
-        setTimeout(() => setShowDatePicker(true), 50);
-      } else {
-        const newDate = dayjs(config.startDate)
-          .hour(selectedDate.getHours())
-          .minute(selectedDate.getMinutes())
-          .toDate();
-        updateConfig("startDate", newDate);
-        setShowDatePicker(false);
-      }
-    } else setShowDatePicker(false);
-  };
 
   const isKnockoutFormat = config.format.includes("knockout");
 
@@ -278,10 +321,7 @@ export default function TournamentCreateScreen() {
           <Text style={styles.inputLabel}>
             {t(language, "startDate") || "Start date"}
           </Text>
-          <AnimatedPressable
-            style={styles.dateSelector}
-            onPress={openDatePicker}
-          >
+          <View style={styles.dateSelector}>
             <Ionicons
               name="calendar-outline"
               size={20}
@@ -292,7 +332,7 @@ export default function TournamentCreateScreen() {
                 .locale(language === "pl" ? "pl" : "en")
                 .format("DD MMM YYYY, HH:mm")}
             </Text>
-          </AnimatedPressable>
+          </View>
 
           <View style={styles.descHeader}>
             <Text style={styles.inputLabel}>
@@ -622,15 +662,20 @@ export default function TournamentCreateScreen() {
           iconName="arrow-forward"
           theme={theme}
           fontSize={18}
-          style={{ marginTop: 16 }}
-          onPress={() => {
+          onPress={async () => {
             const trimmedName = config.name.trim();
             if (!trimmedName) {
               setNameError(true);
               nameInputRef.current?.focus();
               return;
             }
-            const nameExists = activeTournaments.some(
+            const savedArrStr = await AsyncStorage.getItem(
+              "@active_tournaments",
+            );
+            const allT: ActiveTournamentItem[] = savedArrStr
+              ? JSON.parse(savedArrStr)
+              : [];
+            const nameExists = allT.some(
               (tItem) =>
                 String(tItem.settings.name || "").toLowerCase() ===
                 trimmedName.toLowerCase(),
@@ -658,6 +703,7 @@ export default function TournamentCreateScreen() {
             router.push({
               pathname: "/tournament/players",
               params: {
+                isHost: isHost as string,
                 tournamentData: JSON.stringify({
                   ...config,
                   name: trimmedName,
@@ -708,10 +754,15 @@ export default function TournamentCreateScreen() {
             <ScrollView style={{ maxHeight: 400 }}>
               {activeTournaments.map((tItem, idx) => (
                 <View key={idx} style={styles.savedTournamentRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={styles.savedTName} numberOfLines={1}>
                       {String(tItem.settings.name || "")}
                     </Text>
+                    <ExpandableDesc
+                      desc={tItem.settings.desc as string | undefined}
+                      language={language}
+                      theme={theme}
+                    />
                     <Text style={styles.savedTDesc}>
                       {tItem.players?.length || 0}{" "}
                       {t(language, "playersShort") || "players"} •{" "}
@@ -722,15 +773,62 @@ export default function TournamentCreateScreen() {
                   <View style={{ flexDirection: "row", gap: 10 }}>
                     <AnimatedPressable
                       style={styles.actionBtnPlay}
-                      onPress={() => {
+                      onPress={async () => {
                         setSavedModalVisible(false);
-                        router.push({
-                          pathname: "/tournament/bracket",
-                          params: {
-                            tournamentData: JSON.stringify(tItem.settings),
-                            playersData: JSON.stringify(tItem.players),
-                          },
-                        });
+                        if (
+                          isHost === "true" &&
+                          tItem.roomId &&
+                          tItem.connectionString
+                        ) {
+                          const parsed = parseConnectionString(
+                            tItem.connectionString,
+                          );
+                          if (parsed) {
+                            const connection = connectToDynamicFirebase(
+                              parsed.configStr,
+                            );
+                            if (connection) {
+                              const roomRef = doc(
+                                connection.db,
+                                "rooms",
+                                parsed.roomId,
+                              );
+                              await updateDoc(roomRef, {
+                                status: "waiting",
+                                connectedDevices: [],
+                              }).catch(() => {});
+                            }
+                          }
+
+                          await AsyncStorage.setItem(
+                            "@current_multiplayer_session",
+                            JSON.stringify({
+                              roomId: tItem.roomId,
+                              connectionString: tItem.connectionString,
+                              tournamentName:
+                                tItem.settings.name || "Tournament",
+                              timestamp: Date.now(),
+                              isHost: "true",
+                            }),
+                          );
+
+                          router.push({
+                            pathname: "/tournament/lobby",
+                            params: {
+                              roomId: tItem.roomId,
+                              connectionString: tItem.connectionString,
+                              isHost: "true",
+                            },
+                          });
+                        } else {
+                          router.push({
+                            pathname: "/tournament/bracket",
+                            params: {
+                              tournamentData: JSON.stringify(tItem.settings),
+                              playersData: JSON.stringify(tItem.players),
+                            },
+                          });
+                        }
                       }}
                     >
                       <Ionicons name="play" size={18} color="#fff" />
