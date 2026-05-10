@@ -8,6 +8,7 @@ import "dayjs/locale/pl";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,7 +20,7 @@ import { getSharedTournamentStyles } from "../../components/common/SharedTournam
 import CustomAlert from "../../components/modals/CustomAlert";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
-import { t } from "../../lib/i18n";
+import { t, Lang } from "../../lib/i18n";
 import { Match, Tournament, parseDateString } from "../../lib/statsUtils";
 
 export default function TournamentHistoryScreen() {
@@ -79,8 +80,24 @@ export default function TournamentHistoryScreen() {
     setDeleteAlert({ visible: false, id: "" });
   }, [history, deleteAlert.id]);
 
-  const renderItem = useCallback(
-    ({ item }: { item: Tournament }) => {
+  const HistoryCard = React.memo(
+    ({
+      item,
+      language,
+      theme,
+      styles,
+      router,
+      confirmDelete,
+    }: {
+      item: Tournament;
+      language: Lang;
+      theme: { colors: Record<string, string> };
+      styles: Record<string, object>;
+      router: ReturnType<typeof useRouter>;
+      confirmDelete: (id: string) => void;
+    }) => {
+      const [isExpanded, setIsExpanded] = useState(false);
+
       const parsedDate = parseDateString(item.finishedAt || "");
       let date = "";
       if (parsedDate.getTime() !== 0) {
@@ -164,7 +181,7 @@ export default function TournamentHistoryScreen() {
       const isTeam = item.settings?.teamSize === "team";
 
       return (
-        <TouchableOpacity
+        <Pressable
           style={styles.historyCard}
           onPress={() =>
             router.push({
@@ -192,6 +209,28 @@ export default function TournamentHistoryScreen() {
           <Text style={styles.tournamentName}>
             {String(item.settings?.name || "")}
           </Text>
+
+          {!!item.settings?.desc && (
+            <Pressable
+              style={styles.descContainer}
+              onPress={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+            >
+              <Text
+                style={styles.descText}
+                numberOfLines={isExpanded ? undefined : 2}
+              >
+                {item.settings.desc}
+              </Text>
+              <Text style={styles.expandText}>
+                {isExpanded
+                  ? t(language, "showLess") || "Show less"
+                  : t(language, "showMore") || "Show more"}
+              </Text>
+            </Pressable>
+          )}
 
           <View style={styles.tagsContainer}>
             {formatName && (
@@ -245,9 +284,22 @@ export default function TournamentHistoryScreen() {
               </View>
             )}
           </View>
-        </TouchableOpacity>
+        </Pressable>
       );
     },
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Tournament }) => (
+      <HistoryCard
+        item={item}
+        language={language}
+        theme={theme}
+        styles={styles}
+        router={router}
+        confirmDelete={confirmDelete}
+      />
+    ),
     [language, theme, router, confirmDelete],
   );
 
@@ -350,7 +402,26 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       fontSize: 18,
       fontWeight: "800",
       color: theme.colors.textMain,
+      marginBottom: 12,
+    },
+    descContainer: {
       marginBottom: 16,
+      backgroundColor: theme.colors.background,
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+    },
+    descText: {
+      fontSize: 13,
+      color: theme.colors.textMain,
+      lineHeight: 18,
+    },
+    expandText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.colors.primary,
+      marginTop: 6,
     },
     tagsContainer: {
       flexDirection: "row",

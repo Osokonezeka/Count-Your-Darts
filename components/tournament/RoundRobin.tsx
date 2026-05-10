@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dimensions,
   Modal,
@@ -22,6 +22,7 @@ import {
   MatchCard,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { useMatchStore } from "../../store/useMatchStore";
 
 export interface RoundRobinProps {
   players: Player[];
@@ -30,6 +31,8 @@ export interface RoundRobinProps {
   initialBracket?: Match[] | null;
   isReadOnly?: boolean;
   activeTab?: "matches" | "standings";
+  isHost?: boolean;
+  onBracketGenerated?: (bracket: Match[]) => void | Promise<void>;
 }
 
 export default function RoundRobin({
@@ -39,6 +42,8 @@ export default function RoundRobin({
   initialBracket = null,
   isReadOnly = false,
   activeTab = "matches",
+  isHost = true,
+  onBracketGenerated,
 }: RoundRobinProps) {
   const { theme } = useTheme();
   const styles = getStyles(theme);
@@ -56,31 +61,48 @@ export default function RoundRobin({
 
   const bracketStorageKey = `bracket_structure_${String(settings?.name || "").replace(/\s/g, "_")}`;
 
+  useEffect(() => {
+    if (initialBracket) {
+      setMatches(initialBracket);
+      (async () => {
+        const progressObj: Record<string, boolean> = {};
+        for (const m of initialBracket) {
+          const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
+          if (savedScore) progressObj[m.id] = true;
+        }
+        setInProgressMatches(progressObj);
+      })();
+    }
+  }, [initialBracket]);
+
   useFocusEffect(
     useCallback(() => {
       const loadTournamentState = async () => {
-        if (initialBracket) {
-          setMatches(initialBracket);
-          return;
-        }
-
         try {
-          const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
-          if (savedBracketStr) {
-            const currentMatches = JSON.parse(savedBracketStr) as Match[];
+          let currentMatches: Match[] = [];
+          if (initialBracket) {
+            currentMatches = initialBracket;
             setMatches(currentMatches);
-
-            const progressObj: Record<string, boolean> = {};
-            for (const m of currentMatches) {
-              const savedScore = await AsyncStorage.getItem(
-                `match_save_${m.id}`,
-              );
-              if (savedScore) progressObj[m.id] = true;
+          } else {
+            const savedBracketStr =
+              await AsyncStorage.getItem(bracketStorageKey);
+            if (savedBracketStr) {
+              currentMatches = JSON.parse(savedBracketStr) as Match[];
+              setMatches(currentMatches);
+            } else if (players.length > 0 && !isReadOnly && isHost) {
+              generateBracket();
+              return;
+            } else {
+              return;
             }
-            setInProgressMatches(progressObj);
-          } else if (players.length > 0 && !isReadOnly) {
-            generateBracket();
           }
+
+          const progressObj: Record<string, boolean> = {};
+          for (const m of currentMatches) {
+            const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
+            if (savedScore) progressObj[m.id] = true;
+          }
+          setInProgressMatches(progressObj);
         } catch (e) {
           console.error(e);
         }
@@ -128,17 +150,36 @@ export default function RoundRobin({
 
     setMatches(newMatches);
     await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
+    if (onBracketGenerated) onBracketGenerated(newMatches);
   };
 
   const performResetMatch = async () => {
     if (!resetAlert.matchId) return;
     try {
       await AsyncStorage.removeItem(`match_save_${resetAlert.matchId}`);
+      useMatchStore.getState().clearMultipleMatches([resetAlert.matchId]);
       setInProgressMatches((prev: Record<string, boolean>) => {
         const updated = { ...prev };
         delete updated[resetAlert.matchId];
         return updated;
       });
+
+      const newMatches = matches.map((m) => {
+        if (m.id === resetAlert.matchId) {
+          const {
+            score,
+            gameState,
+            inProgressDeviceName,
+            inProgressDeviceId,
+            ...rest
+          } = m;
+          return { ...rest, isInProgress: false, hasProgress: false };
+        }
+        return m;
+      });
+      setMatches(newMatches);
+      await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
+      if (onBracketGenerated) onBracketGenerated(newMatches);
     } catch (e) {
       console.error(
         t(language, "resetMatchError") || "Error resetting match:",
@@ -232,7 +273,28 @@ export default function RoundRobin({
   }, []);
 
   const handlePlayMatch = useCallback(
-    (match: Match) => {
+    async (match: Match) => {
+      const dName =
+        (await AsyncStorage.getItem("@device_name")) || "Unknown Device";
+      const dId = (await AsyncStorage.getItem("@device_id")) || "Unknown ID";
+      const updatedMatches = matches.map((m) =>
+        m.id === match.id
+          ? {
+              ...m,
+              isInProgress: true,
+              inProgressDeviceName: dName,
+              inProgressDeviceId: dId,
+            }
+          : m,
+      );
+      setMatches(updatedMatches);
+      await AsyncStorage.setItem(
+        bracketStorageKey,
+        JSON.stringify(updatedMatches),
+      );
+      await AsyncStorage.setItem("@bracket_needs_sync", "true");
+      if (onBracketGenerated) onBracketGenerated(updatedMatches);
+
       setSelectedPlayerMatches(null);
       router.push({
         pathname: "/tournament/match",
@@ -242,7 +304,7 @@ export default function RoundRobin({
         },
       });
     },
-    [settings, router],
+    [matches, settings, router, bracketStorageKey, onBracketGenerated],
   );
 
   const handlePressMatch = useCallback(

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dimensions,
   Modal,
@@ -23,6 +23,7 @@ import {
   MatchCard,
   SharedPlayer as Player,
 } from "./MatchCard";
+import { useMatchStore } from "../../store/useMatchStore";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -36,6 +37,8 @@ export interface GroupsAndKnockoutProps {
   isReadOnly?: boolean;
   phaseView: "group" | "knockout";
   setPhaseView: (phase: "group" | "knockout") => void;
+  isHost?: boolean;
+  onBracketGenerated?: (bracket: Match[]) => void | Promise<void>;
 }
 
 export default function GroupsAndKnockout({
@@ -48,6 +51,8 @@ export default function GroupsAndKnockout({
   isReadOnly = false,
   phaseView,
   setPhaseView,
+  isHost = true,
+  onBracketGenerated,
 }: GroupsAndKnockoutProps): React.JSX.Element {
   const { theme } = useTheme();
   const styles = getStyles(theme);
@@ -66,40 +71,67 @@ export default function GroupsAndKnockout({
 
   const bracketStorageKey = `bracket_structure_${String(settings?.name || "").replace(/\s/g, "_")}`;
 
+  useEffect(() => {
+    if (initialBracket) {
+      setMatches(initialBracket);
+      if (initialBracket.some((m: Match) => m.phase === "knockout")) {
+        setPhaseView("knockout");
+      }
+      if (isHost && !isReadOnly) checkAndGenerateKnockout(initialBracket);
+      (async () => {
+        const progressObj: Record<string, boolean> = {};
+        for (const m of initialBracket) {
+          const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
+          if (savedScore) progressObj[m.id] = true;
+        }
+        setInProgressMatches(progressObj);
+      })();
+    }
+  }, [initialBracket, isHost, isReadOnly]);
+
   useFocusEffect(
     useCallback(() => {
       const loadTournamentState = async () => {
-        if (initialBracket) {
-          setMatches(initialBracket);
-          if (initialBracket.some((m: Match) => m.phase === "knockout")) {
-            setPhaseView("knockout");
-          }
-          return;
-        }
         try {
-          const savedBracketStr = await AsyncStorage.getItem(bracketStorageKey);
-          if (savedBracketStr) {
-            const currentMatches = JSON.parse(savedBracketStr) as Match[];
+          let currentMatches: Match[] = [];
+          if (initialBracket) {
+            currentMatches = initialBracket;
             setMatches(currentMatches);
             if (currentMatches.some((m: Match) => m.phase === "knockout")) {
               setPhaseView("knockout");
             } else {
               setPhaseView("group");
             }
-            const progressObj: Record<string, boolean> = {};
-            for (const m of currentMatches) {
-              const savedScore = await AsyncStorage.getItem(
-                `match_save_${m.id}`,
-              );
-              if (savedScore) progressObj[m.id] = true;
+            if (isHost && !isReadOnly)
+              await checkAndGenerateKnockout(currentMatches);
+          } else {
+            const savedBracketStr =
+              await AsyncStorage.getItem(bracketStorageKey);
+            if (savedBracketStr) {
+              currentMatches = JSON.parse(savedBracketStr) as Match[];
+              setMatches(currentMatches);
+              if (currentMatches.some((m: Match) => m.phase === "knockout")) {
+                setPhaseView("knockout");
+              } else {
+                setPhaseView("group");
+              }
+              if (isHost && !isReadOnly)
+                await checkAndGenerateKnockout(currentMatches);
+            } else if (players.length > 0 && !isReadOnly && isHost) {
+              generateGroupPhase();
+              setPhaseView("group");
+              return;
+            } else {
+              return;
             }
-            setInProgressMatches(progressObj);
-
-            if (!isReadOnly) await checkAndGenerateKnockout(currentMatches);
-          } else if (players.length > 0 && !isReadOnly) {
-            generateGroupPhase();
-            setPhaseView("group");
           }
+
+          const progressObj: Record<string, boolean> = {};
+          for (const m of currentMatches) {
+            const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
+            if (savedScore) progressObj[m.id] = true;
+          }
+          setInProgressMatches(progressObj);
         } catch (e) {
           console.error(e);
         }
@@ -400,6 +432,7 @@ export default function GroupsAndKnockout({
       bracketStorageKey,
       JSON.stringify(updatedMatches),
     );
+    if (onBracketGenerated) onBracketGenerated(updatedMatches);
     setPhaseView("knockout");
   };
 
@@ -461,17 +494,36 @@ export default function GroupsAndKnockout({
 
     setMatches(newMatches);
     await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
+    if (onBracketGenerated) onBracketGenerated(newMatches);
   };
 
   const performResetMatch = async () => {
     if (!resetAlert.matchId) return;
     try {
       await AsyncStorage.removeItem(`match_save_${resetAlert.matchId}`);
+      useMatchStore.getState().clearMultipleMatches([resetAlert.matchId]);
       setInProgressMatches((prev: Record<string, boolean>) => {
         const updated = { ...prev };
         delete updated[resetAlert.matchId];
         return updated;
       });
+
+      const newMatches = matches.map((m) => {
+        if (m.id === resetAlert.matchId) {
+          const {
+            score,
+            gameState,
+            inProgressDeviceName,
+            inProgressDeviceId,
+            ...rest
+          } = m;
+          return { ...rest, isInProgress: false, hasProgress: false };
+        }
+        return m;
+      });
+      setMatches(newMatches);
+      await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
+      if (onBracketGenerated) onBracketGenerated(newMatches);
     } catch (e) {
       console.error(e);
     }
@@ -620,7 +672,28 @@ export default function GroupsAndKnockout({
   }, []);
 
   const handlePlayMatch = useCallback(
-    (match: Match) => {
+    async (match: Match) => {
+      const dName =
+        (await AsyncStorage.getItem("@device_name")) || "Unknown Device";
+      const dId = (await AsyncStorage.getItem("@device_id")) || "Unknown ID";
+      const updatedMatches = matches.map((m) =>
+        m.id === match.id
+          ? {
+              ...m,
+              isInProgress: true,
+              inProgressDeviceName: dName,
+              inProgressDeviceId: dId,
+            }
+          : m,
+      );
+      setMatches(updatedMatches);
+      await AsyncStorage.setItem(
+        bracketStorageKey,
+        JSON.stringify(updatedMatches),
+      );
+      await AsyncStorage.setItem("@bracket_needs_sync", "true");
+      if (onBracketGenerated) onBracketGenerated(updatedMatches);
+
       setSelectedPlayerMatches(null);
       let matchSettings = { ...settings };
       if (match.phase === "group" && settings.customGroups) {
@@ -679,7 +752,15 @@ export default function GroupsAndKnockout({
         },
       });
     },
-    [settings, totalKORounds, router],
+    [
+      matches,
+      koMatches,
+      settings,
+      totalKORounds,
+      router,
+      bracketStorageKey,
+      onBracketGenerated,
+    ],
   );
 
   const handlePressMatch = useCallback(
@@ -737,7 +818,7 @@ export default function GroupsAndKnockout({
       : Math.max(koMatchesByRound[1]?.length || 1, 1);
   const calculatedHeight = Math.max(
     screenHeight,
-    maxMatchesInColumn * 170 + 100,
+    maxMatchesInColumn * 200 + 100,
   );
 
   return (
@@ -756,7 +837,7 @@ export default function GroupsAndKnockout({
               phaseView === "group" && styles.phaseTabTextActive,
             ]}
           >
-            GROUP STAGE
+            {t(language, "groupStage") || "GROUP STAGE"}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -772,7 +853,7 @@ export default function GroupsAndKnockout({
               phaseView === "knockout" && styles.phaseTabTextActive,
             ]}
           >
-            KNOCKOUT
+            {t(language, "knockout") || "KNOCKOUT"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -930,7 +1011,8 @@ export default function GroupsAndKnockout({
               textAlign: "center",
             }}
           >
-            Finish all group stage matches to unlock the Knockout Bracket.
+            {t(language, "finishGroupsToUnlock") ||
+              "Finish all group stage matches to unlock the Knockout Bracket."}
           </Text>
         </View>
       ) : viewMode === "tree" ? (
@@ -1088,7 +1170,7 @@ export default function GroupsAndKnockout({
                     dkView === "wb" && styles.phaseTabTextActive,
                   ]}
                 >
-                  WINNERS
+                  {t(language, "winnersBracket") || "WINNERS"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1104,7 +1186,7 @@ export default function GroupsAndKnockout({
                     dkView === "lb" && styles.phaseTabTextActive,
                   ]}
                 >
-                  LOSERS
+                  {t(language, "losersBracket") || "LOSERS"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1120,7 +1202,7 @@ export default function GroupsAndKnockout({
                     dkView === "gf" && styles.phaseTabTextActive,
                   ]}
                 >
-                  FINALS
+                  {t(language, "finals")?.toUpperCase() || "FINALS"}
                 </Text>
               </TouchableOpacity>
             </View>

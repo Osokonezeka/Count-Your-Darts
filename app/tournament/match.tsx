@@ -12,6 +12,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
@@ -23,6 +24,7 @@ import { useGameModals } from "../../hooks/useGameModals";
 import { useX01Match } from "../../hooks/useX01Match";
 import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
+import { useMatchStore } from "../../store/useMatchStore";
 
 const { width } = Dimensions.get("window");
 
@@ -154,24 +156,122 @@ export default function TournamentMatchScreen() {
     determineMatchFormat();
   }, []);
 
+  const handleExitRef = useRef<() => void>(() => {});
+
+  const saveMatchAndExit = async () => {
+    isExiting.current = true;
+
+    if (initialSettings && initialSettings.name && match && match.id) {
+      try {
+        const bKey = `bracket_structure_${String(initialSettings.name).replace(/\s/g, "_")}`;
+        const bStr = await AsyncStorage.getItem(bKey);
+        if (bStr) {
+          const bracket = JSON.parse(bStr);
+          const mIndex = bracket.findIndex((m: Match) => m.id === match.id);
+          if (mIndex > -1) {
+            bracket[mIndex].isInProgress = false;
+            bracket[mIndex].inProgressDeviceName = null;
+            bracket[mIndex].inProgressDeviceId = null;
+
+            const hasAnyProgress =
+              (p1Score.sets || 0) > 0 ||
+              (p1Score.legs || 0) > 0 ||
+              (p2Score.sets || 0) > 0 ||
+              (p2Score.legs || 0) > 0 ||
+              p1Throws.length > 0 ||
+              p2Throws.length > 0;
+
+            if (hasAnyProgress) {
+              bracket[mIndex].score = {
+                p1Sets: p1Score.sets || 0,
+                p1Legs: p1Score.legs || 0,
+                p2Sets: p2Score.sets || 0,
+                p2Legs: p2Score.legs || 0,
+              };
+              bracket[mIndex].hasProgress =
+                p1Throws.length > 0 || p2Throws.length > 0;
+
+              const storeState = useMatchStore.getState() as ReturnType<
+                typeof useMatchStore.getState
+              > & {
+                matches?: Record<string, unknown>;
+                games?: Record<string, unknown>;
+              };
+              const ramState =
+                storeState.matches?.[match.id] || storeState.games?.[match.id];
+              if (ramState) bracket[mIndex].gameState = ramState;
+              else {
+                const savedStateStr = await AsyncStorage.getItem(
+                  `match_save_${match.id}`,
+                );
+                if (savedStateStr)
+                  bracket[mIndex].gameState = JSON.parse(savedStateStr);
+              }
+            } else {
+              delete bracket[mIndex].score;
+              delete bracket[mIndex].gameState;
+              bracket[mIndex].hasProgress = false;
+
+              await AsyncStorage.removeItem(`match_save_${match.id}`);
+              useMatchStore.getState().clearMultipleMatches([match.id]);
+            }
+
+            await AsyncStorage.setItem(bKey, JSON.stringify(bracket));
+          }
+        }
+      } catch (e) {
+        console.error(
+          "Błąd podczas aktualizacji drabinki przy wyjściu z meczu:",
+          e,
+        );
+      }
+    }
+    await AsyncStorage.setItem("@bracket_needs_sync", "true");
+    router.back();
+  };
+
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
       if (winner || isExiting.current) return;
       e.preventDefault();
-      handleExitRequest();
+      handleExitRef.current();
     });
     return unsubscribe;
   }, [navigation, winner]);
 
   const handleExitRequest = () => {
-    showExitConfirm(
-      () => {
-        isExiting.current = true;
-        router.back();
-      },
-      t(language, "exitMatchSub") || "Score will be saved.",
-    );
+    const hasProgress =
+      (p1Score.sets || 0) > 0 ||
+      (p1Score.legs || 0) > 0 ||
+      (p2Score.sets || 0) > 0 ||
+      (p2Score.legs || 0) > 0 ||
+      p1Throws.length > 0 ||
+      p2Throws.length > 0;
+
+    if (!hasProgress) {
+      saveMatchAndExit();
+    } else {
+      showExitConfirm(
+        saveMatchAndExit,
+        t(language, "exitMatchSub") || "Score will be saved.",
+      );
+    }
   };
+
+  handleExitRef.current = handleExitRequest;
+
+  const handleForceExitRef = useRef<() => Promise<void>>(async () => {});
+  handleForceExitRef.current = async () => {
+    if (winner || isExiting.current) return;
+    await saveMatchAndExit();
+  };
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener("force_exit_match", () => {
+      handleForceExitRef.current();
+    });
+    return () => sub.remove();
+  }, []);
 
   const triggerHaptic = () => {
     if (isHapticsEnabled) {
@@ -411,8 +511,35 @@ export default function TournamentMatchScreen() {
           </Text>
           <AnimatedPressable
             style={styles.winBtn}
-            onPress={() => {
+            onPress={async () => {
               isExiting.current = true;
+
+              if (
+                initialSettings &&
+                initialSettings.name &&
+                match &&
+                match.id
+              ) {
+                try {
+                  const bKey = `bracket_structure_${String(initialSettings.name).replace(/\s/g, "_")}`;
+                  const bStr = await AsyncStorage.getItem(bKey);
+                  if (bStr) {
+                    const bracket = JSON.parse(bStr);
+                    const mIndex = bracket.findIndex(
+                      (m: Match) => m.id === match.id,
+                    );
+                    if (mIndex > -1) {
+                      bracket[mIndex].isInProgress = false;
+                      bracket[mIndex].inProgressDeviceName = null;
+                      bracket[mIndex].inProgressDeviceId = null;
+                      bracket[mIndex].gameState = undefined;
+                      await AsyncStorage.setItem(bKey, JSON.stringify(bracket));
+                    }
+                  }
+                } catch (e) {}
+              }
+
+              await AsyncStorage.setItem("@bracket_needs_sync", "true");
               router.back();
             }}
           >

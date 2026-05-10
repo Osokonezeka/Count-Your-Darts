@@ -37,6 +37,11 @@ import { useTheme } from "../../context/ThemeContext";
 import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
 import { useMatchStore } from "../../store/useMatchStore";
+import {
+  createHostRoom,
+  parseConnectionString,
+  cancelFirebaseRoom,
+} from "../../lib/firebaseDynamic";
 
 type Player = {
   id: string;
@@ -109,7 +114,7 @@ export default function TournamentPlayersScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
 
-  const { tournamentData } = useLocalSearchParams();
+  const { tournamentData, isHost } = useLocalSearchParams();
   const settings = tournamentData ? JSON.parse(tournamentData as string) : null;
 
   const selectedPlayersKey = settings
@@ -149,13 +154,18 @@ export default function TournamentPlayersScreen() {
 
   const [isBackModalVisible, setBackModalVisible] = useState(false);
   const [duplicateErrorVisible, setDuplicateErrorVisible] = useState(false);
-  const [duplicateTeamErrorVisible, setDuplicateTeamErrorVisible] = useState(false);
+  const [duplicateTeamErrorVisible, setDuplicateTeamErrorVisible] =
+    useState(false);
   const [overlapAlertVisible, setOverlapAlertVisible] = useState(false);
   const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
 
   const [hasExistingBracket, setHasExistingBracket] = useState(false);
   const [resetAlertVisible, setResetAlertVisible] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [firebaseErrorVisible, setFirebaseErrorVisible] = useState(false);
+  const [firebaseErrorMsg, setFirebaseErrorMsg] = useState("");
 
   const isExiting = useRef(false);
   const pendingNavAction = useRef<
@@ -697,39 +707,157 @@ export default function TournamentPlayersScreen() {
       <View style={styles.fixedBottomContainer}>
         <AnimatedPrimaryButton
           title={
-            hasExistingBracket
-              ? t(language, "returnToTournament") || "Return to tournament"
-              : t(language, "startTournament") || "Start tournament"
+            isCreating
+              ? t(language, "awaiting") || "Awaiting..."
+              : hasExistingBracket
+                ? t(language, "returnToTournament") || "Return to tournament"
+                : t(language, "startTournament") || "Start tournament"
           }
           iconName="play"
           theme={theme}
           fontSize={18}
-          disabled={selectedPlayerIds.length < minPlayers}
+          disabled={selectedPlayerIds.length < minPlayers || isCreating}
+          style={[isCreating && { opacity: 0.7 }]}
           onPress={async () => {
+            if (isCreating) return;
+
             const selectedPlayers = tournamentPlayersDb.filter((p) =>
               selectedPlayerIds.includes(p.id),
             );
-            const savedArrStr = await AsyncStorage.getItem(
-              "@active_tournaments",
-            );
-            let savedArr = savedArrStr ? JSON.parse(savedArrStr) : [];
-            savedArr = savedArr.filter(
-              (t: { settings: { name: string } }) =>
-                t.settings.name !== settings.name,
-            );
-            savedArr.push({ settings: settings, players: selectedPlayers });
-            await AsyncStorage.setItem(
-              "@active_tournaments",
-              JSON.stringify(savedArr),
-            );
 
-            router.push({
-              pathname: "/tournament/bracket",
-              params: {
-                tournamentData: JSON.stringify(settings),
-                playersData: JSON.stringify(selectedPlayers),
-              },
-            });
+            if (isHost === "true" && !hasExistingBracket) {
+              setIsCreating(true);
+              try {
+                const configStr = await AsyncStorage.getItem(
+                  "@firebase_host_config",
+                );
+
+                if (!configStr) {
+                  setIsCreating(false);
+                  setFirebaseErrorMsg(
+                    t(language, "firebaseNoConfig") ||
+                      "No Firebase configuration for Host.",
+                  );
+                  setFirebaseErrorVisible(true);
+                  return;
+                }
+
+                const oldSessionStr = await AsyncStorage.getItem(
+                  "@current_multiplayer_session",
+                );
+                if (oldSessionStr) {
+                  try {
+                    const oldSession = JSON.parse(oldSessionStr);
+                    if (
+                      oldSession.isHost === "true" &&
+                      oldSession.connectionString &&
+                      oldSession.roomId
+                    ) {
+                      const parsedOld = parseConnectionString(
+                        oldSession.connectionString,
+                      );
+                      if (parsedOld) {
+                        await cancelFirebaseRoom(
+                          parsedOld.configStr,
+                          parsedOld.roomId,
+                        );
+                      }
+                    }
+                  } catch (e) {}
+                }
+
+                const roomData = await createHostRoom(
+                  configStr,
+                  {
+                    settings: settings,
+                    players: selectedPlayers,
+                  },
+                  language as "pl" | "en",
+                );
+
+                setIsCreating(false);
+
+                if (roomData) {
+                  const savedArrStr = await AsyncStorage.getItem(
+                    "@active_tournaments",
+                  );
+                  let savedArr = savedArrStr ? JSON.parse(savedArrStr) : [];
+                  savedArr = savedArr.filter(
+                    (t: { settings: { name: string } }) =>
+                      t.settings.name !== settings.name,
+                  );
+                  savedArr.push({
+                    settings: settings,
+                    players: selectedPlayers,
+                    roomId: roomData.roomId,
+                    connectionString: roomData.connectionString,
+                  });
+                  await AsyncStorage.setItem(
+                    "@active_tournaments",
+                    JSON.stringify(savedArr),
+                  );
+
+                  await AsyncStorage.setItem(
+                    "@current_multiplayer_session",
+                    JSON.stringify({
+                      roomId: roomData.roomId,
+                      connectionString: roomData.connectionString,
+                      tournamentName: settings.name || "Tournament",
+                      timestamp: Date.now(),
+                      isHost: "true",
+                    }),
+                  );
+
+                  router.push({
+                    pathname: "/tournament/lobby",
+                    params: {
+                      roomId: roomData.roomId,
+                      connectionString: roomData.connectionString,
+                      isHost: "true",
+                      tournamentData: JSON.stringify(settings),
+                      playersData: JSON.stringify(selectedPlayers),
+                    },
+                  });
+                } else {
+                  setFirebaseErrorMsg(
+                    t(language, "firebaseUnknownError") ||
+                      "An unknown error occurred while connecting to Firestore.",
+                  );
+                  setFirebaseErrorVisible(true);
+                }
+              } catch (error) {
+                setIsCreating(false);
+                setFirebaseErrorMsg(
+                  error instanceof Error && error.message
+                    ? error.message
+                    : t(language, "firebaseDbError") ||
+                        "Firebase database error.",
+                );
+                setFirebaseErrorVisible(true);
+              }
+            } else {
+              const savedArrStr = await AsyncStorage.getItem(
+                "@active_tournaments",
+              );
+              let savedArr = savedArrStr ? JSON.parse(savedArrStr) : [];
+              savedArr = savedArr.filter(
+                (t: { settings: { name: string } }) =>
+                  t.settings.name !== settings.name,
+              );
+              savedArr.push({ settings: settings, players: selectedPlayers });
+              await AsyncStorage.setItem(
+                "@active_tournaments",
+                JSON.stringify(savedArr),
+              );
+
+              router.push({
+                pathname: "/tournament/bracket",
+                params: {
+                  tournamentData: JSON.stringify(settings),
+                  playersData: JSON.stringify(selectedPlayers),
+                },
+              });
+            }
           }}
         />
       </View>
@@ -811,6 +939,20 @@ export default function TournamentPlayersScreen() {
             text: t(language, "delete") || "Delete",
             style: "destructive",
             onPress: handleDeletePlayer,
+          },
+        ]}
+      />
+
+      <CustomAlert
+        visible={firebaseErrorVisible}
+        title={t(language, "error") || "Error"}
+        message={firebaseErrorMsg}
+        onRequestClose={() => setFirebaseErrorVisible(false)}
+        buttons={[
+          {
+            text: t(language, "ok") || "OK",
+            style: "default",
+            onPress: () => setFirebaseErrorVisible(false),
           },
         ]}
       />
@@ -961,23 +1103,28 @@ export default function TournamentPlayersScreen() {
                               onPress={() => {
                                 setTeamMembers((prev) => [...prev, newName]);
                                 setTeamSearchQuery("");
-                            setTournamentPlayersDb((prevDb) => {
-                              const exists = prevDb.some(
-                                (p) =>
-                                  !p.isTeam &&
-                                  p.name.toLowerCase() === newName.toLowerCase(),
-                              );
-                              if (!exists) {
-                                const newPlayer: Player = {
-                                  id: Date.now().toString() + Math.random().toString().substring(2, 8),
-                                  name: newName,
-                                };
-                                const updatedDb = [...prevDb, newPlayer];
-                                saveToDb(updatedDb);
-                                return updatedDb;
-                              }
-                              return prevDb;
-                            });
+                                setTournamentPlayersDb((prevDb) => {
+                                  const exists = prevDb.some(
+                                    (p) =>
+                                      !p.isTeam &&
+                                      p.name.toLowerCase() ===
+                                        newName.toLowerCase(),
+                                  );
+                                  if (!exists) {
+                                    const newPlayer: Player = {
+                                      id:
+                                        Date.now().toString() +
+                                        Math.random()
+                                          .toString()
+                                          .substring(2, 8),
+                                      name: newName,
+                                    };
+                                    const updatedDb = [...prevDb, newPlayer];
+                                    saveToDb(updatedDb);
+                                    return updatedDb;
+                                  }
+                                  return prevDb;
+                                });
                               }}
                             >
                               <Text style={styles.availablePlayerTextHighlight}>

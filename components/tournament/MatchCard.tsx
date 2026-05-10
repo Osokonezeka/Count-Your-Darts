@@ -24,6 +24,10 @@ export type SharedMatch = {
   loserDropSlot?: "p1" | "p2" | null;
   isBye: boolean;
   isThirdPlace?: boolean;
+  isInProgress?: boolean;
+  inProgressDeviceName?: string | null;
+  inProgressDeviceId?: string | null;
+  hasProgress?: boolean;
   stats?: MatchStatItem[];
   score?: { p1Sets: number; p1Legs: number; p2Sets: number; p2Legs: number };
   [key: string]: unknown;
@@ -61,6 +65,16 @@ export const MatchCard = React.memo(
     const isClickable = hasWinner && !match.isBye && onMatchPress;
     const showCheckmarks = match.phase !== "group";
 
+    const isLocalOwner = isMatchInProgress;
+    const hasScoreProgress =
+      !!match.score &&
+      (match.score.p1Sets > 0 ||
+        match.score.p1Legs > 0 ||
+        match.score.p2Sets > 0 ||
+        match.score.p2Legs > 0);
+    const isEffectivelyInProgress =
+      isLocalOwner || hasScoreProgress || !!match.hasProgress;
+
     return (
       <AnimatedPressable
         style={[
@@ -72,28 +86,57 @@ export const MatchCard = React.memo(
           isClickable && onMatchPress ? () => onMatchPress(match) : undefined
         }
       >
-        {isMatchInProgress && !hasWinner && !isReadOnly && onResetMatch && (
-          <AnimatedPressable
-            style={styles.resetMatchBtn}
-            onPress={() => onResetMatch(match.id)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={20}
-              color={theme.colors.danger || "#dc3545"}
-            />
-          </AnimatedPressable>
-        )}
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            {match.isThirdPlace && (
+              <View style={styles.thirdPlaceBadge}>
+                <Text style={styles.thirdPlaceLabel}>
+                  {t(language, "thirdPlaceMatchLabel") || "3rd Place 🥉"}
+                </Text>
+              </View>
+            )}
+            {match.phase === "group" && match.groupId && (
+              <Text style={styles.groupBadgeLabel}>
+                {(t(language, "groupNumber") || "Group {{number}}").replace(
+                  "{{number}}",
+                  match.groupId,
+                )}
+              </Text>
+            )}
+            {match.isInProgress && match.inProgressDeviceName && (
+              <View style={styles.devicePlayingBadge}>
+                <Ionicons
+                  name="phone-portrait-outline"
+                  size={10}
+                  color={theme.colors.warning}
+                />
+                <Text style={styles.deviceText} numberOfLines={1}>
+                  {match.inProgressDeviceName}
+                </Text>
+              </View>
+            )}
+          </View>
 
-        {match.isThirdPlace && (
-          <Text style={styles.thirdPlaceLabel}>
-            {t(language, "thirdPlaceMatchLabel") || "3rd Place Match 🥉"}
-          </Text>
-        )}
-        {match.phase === "group" && match.groupId && (
-          <Text style={styles.groupBadgeLabel}>Group {match.groupId}</Text>
-        )}
+          <View style={styles.cardHeaderRight}>
+            {isEffectivelyInProgress &&
+              !match.isInProgress &&
+              !hasWinner &&
+              !isReadOnly &&
+              onResetMatch && (
+                <AnimatedPressable
+                  style={styles.resetMatchBtn}
+                  onPress={() => onResetMatch(match.id)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons
+                    name="refresh-outline"
+                    size={14}
+                    color={theme.colors.danger || "#dc3545"}
+                  />
+                </AnimatedPressable>
+              )}
+          </View>
+        </View>
 
         <View>
           <View
@@ -211,24 +254,37 @@ export const MatchCard = React.memo(
               </Text>
             </AnimatedPressable>
           ) : !isReadOnly && !match.isBye && !isWaiting ? (
-            <AnimatedPressable
-              style={[
-                styles.playButton,
-                isMatchInProgress && styles.resumeButton,
-              ]}
-              onPress={() => onPlay(match)}
-            >
-              <Ionicons
-                name={isMatchInProgress ? "play-forward" : "play"}
-                size={16}
-                color="#fff"
-              />
-              <Text style={styles.playButtonText}>
-                {isMatchInProgress
-                  ? t(language, "resume") || "Resume"
-                  : t(language, "start") || "Play"}
-              </Text>
-            </AnimatedPressable>
+            match.isInProgress ? (
+              <View style={styles.inProgressBadge}>
+                <Ionicons
+                  name="time-outline"
+                  size={16}
+                  color={theme.colors.warning}
+                />
+                <Text style={styles.inProgressText}>
+                  {t(language, "inProgress") || "In progress"}
+                </Text>
+              </View>
+            ) : (
+              <AnimatedPressable
+                style={[
+                  styles.playButton,
+                  isEffectivelyInProgress && styles.resumeButton,
+                ]}
+                onPress={() => onPlay(match)}
+              >
+                <Ionicons
+                  name={isEffectivelyInProgress ? "play-forward" : "play"}
+                  size={16}
+                  color="#fff"
+                />
+                <Text style={styles.playButtonText}>
+                  {isEffectivelyInProgress
+                    ? t(language, "resume") || "Resume"
+                    : t(language, "start") || "Play"}
+                </Text>
+              </AnimatedPressable>
+            )
           ) : match.isBye ? (
             <Text style={styles.infoText}>
               {t(language, "byePlayer") || "Bye"}
@@ -243,11 +299,9 @@ export const MatchCard = React.memo(
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     resetMatchBtn: {
-      position: "absolute",
-      top: 8,
-      right: 8,
-      zIndex: 10,
-      padding: 2,
+      padding: 4,
+      backgroundColor: theme.colors.dangerLight || "rgba(220, 53, 69, 0.1)",
+      borderRadius: 6,
     },
     matchCard: {
       backgroundColor: theme.colors.card,
@@ -257,34 +311,71 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       padding: 12,
       marginBottom: 10,
       elevation: 2,
-      height: 148,
+      height: 176,
       justifyContent: "space-between",
-      position: "relative",
     },
     byeCard: { opacity: 0.6, backgroundColor: theme.colors.background },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.background,
+      paddingBottom: 8,
+      marginBottom: 4,
+      minHeight: 28,
+    },
+    cardHeaderLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+      flex: 1,
+      marginRight: 8,
+    },
+    cardHeaderRight: {
+      justifyContent: "flex-start",
+    },
+    devicePlayingBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: theme.colors.warning + "20",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.warning + "40",
+    },
+    deviceText: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: theme.colors.warning,
+    },
     thirdPlaceCard: {
       borderColor: "#cd7f32",
       borderWidth: 2,
       borderStyle: "dashed",
     },
+    thirdPlaceBadge: {
+      backgroundColor: "rgba(205, 127, 50, 0.1)",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
     thirdPlaceLabel: {
-      fontSize: 12,
+      fontSize: 10,
       color: "#cd7f32",
       fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 4,
     },
     groupBadgeLabel: {
-      position: "absolute",
-      top: -8,
-      left: 10,
       backgroundColor: theme.colors.cardBorder,
       color: theme.colors.textMain,
       paddingHorizontal: 8,
       paddingVertical: 2,
       fontSize: 10,
       fontWeight: "900",
-      borderRadius: 8,
+      borderRadius: 6,
       overflow: "hidden",
     },
     playerRow: {
@@ -356,6 +447,23 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     },
     playButtonText: {
       color: "#fff",
+      fontSize: 14,
+      fontWeight: "800",
+      textTransform: "uppercase",
+    },
+    inProgressBadge: {
+      flexDirection: "row",
+      backgroundColor: theme.colors.warning + "20",
+      paddingVertical: 9,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.warning,
+    },
+    inProgressText: {
+      color: theme.colors.warning,
       fontSize: 14,
       fontWeight: "800",
       textTransform: "uppercase",

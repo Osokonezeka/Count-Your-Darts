@@ -7,8 +7,11 @@ import {
   Dimensions,
   Easing,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
+  Linking,
+  TextInput,
   StyleSheet,
   Switch,
   Text,
@@ -28,6 +31,7 @@ import { availableLanguages, t, Lang } from "../../lib/i18n";
 import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
 import { exportBackup, importBackup } from "../../lib/backupUtils";
 import * as Updates from "expo-updates";
+import { parseFirebaseConfig } from "../../lib/firebaseDynamic";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -60,6 +64,11 @@ export default function Settings() {
   const [isLangModalVisible, setLangModalVisible] = useState(false);
   const [isFastBotEnabled, setIsFastBotEnabled] = useState(false);
 
+  const [isConfigModalVisible, setConfigModalVisible] = useState(false);
+  const [firebaseConfigStr, setFirebaseConfigStr] = useState("");
+  const [isDeviceNameModalVisible, setDeviceNameModalVisible] = useState(false);
+  const [deviceNameInput, setDeviceNameInput] = useState("");
+
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
     title: "",
@@ -73,6 +82,13 @@ export default function Settings() {
   const [localBull, setLocalBull] = useState(bullTerm);
   const [localThemeMode, setLocalThemeMode] = useState(themeMode);
 
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    terminology: false,
+    preferences: true,
+    dataManagement: false,
+    multiplayer: false,
+  });
+
   useEffect(() => setLocalTriple(tripleTerm), [tripleTerm]);
   useEffect(() => setLocalMiss(missTerm), [missTerm]);
   useEffect(() => setLocalBull(bullTerm), [bullTerm]);
@@ -83,6 +99,20 @@ export default function Settings() {
       setIsFastBotEnabled(val === "true"),
     );
   }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem("@settings_sections_open").then((val) => {
+      if (val) setOpenSections((prev) => ({ ...prev, ...JSON.parse(val) }));
+    });
+  }, []);
+
+  const toggleSection = (key: string) => {
+    setOpenSections((prev) => {
+      const newState = { ...prev, [key]: !prev[key] };
+      AsyncStorage.setItem("@settings_sections_open", JSON.stringify(newState));
+      return newState;
+    });
+  };
 
   const toggleFastBot = async (val: boolean) => {
     setIsFastBotEnabled(val);
@@ -211,6 +241,56 @@ export default function Settings() {
     );
   };
 
+  const openHostConfig = async () => {
+    const savedConfig = await AsyncStorage.getItem("@firebase_host_config");
+    if (savedConfig) setFirebaseConfigStr(savedConfig);
+    else setFirebaseConfigStr("");
+    setConfigModalVisible(true);
+  };
+
+  const saveHostConfig = async () => {
+    if (firebaseConfigStr.trim().length > 0) {
+      try {
+        const parsed = parseFirebaseConfig(firebaseConfigStr);
+        await AsyncStorage.setItem(
+          "@firebase_host_config",
+          JSON.stringify(parsed, null, 2),
+        );
+      } catch (error) {
+        setConfigModalVisible(false);
+        setTimeout(
+          () =>
+            showAlert(
+              t(language, "error") || "Error",
+              t(language, "invalidFirebaseConfig") || "Invalid configuration",
+            ),
+          400,
+        );
+        return;
+      }
+    } else {
+      await AsyncStorage.removeItem("@firebase_host_config");
+    }
+    setConfigModalVisible(false);
+  };
+
+  const openDeviceNameConfig = async () => {
+    const name = await AsyncStorage.getItem("@device_name");
+    if (name) setDeviceNameInput(name);
+    else
+      setDeviceNameInput(
+        `${Platform.OS === "ios" ? "iOS" : "Android"} Device ${Math.floor(Math.random() * 1000)}`,
+      );
+    setDeviceNameModalVisible(true);
+  };
+
+  const saveDeviceNameConfig = async () => {
+    const trimmed = deviceNameInput.trim();
+    if (trimmed.length > 0) await AsyncStorage.setItem("@device_name", trimmed);
+    else await AsyncStorage.removeItem("@device_name");
+    setDeviceNameModalVisible(false);
+  };
+
   const backdropOpacity = animValue.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0.5],
@@ -228,16 +308,18 @@ export default function Settings() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <View style={styles.iconWrapper}>
-              <Ionicons
-                name="globe-outline"
-                size={20}
-                color={theme.colors.primary}
-              />
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.iconWrapper}>
+                <Ionicons
+                  name="globe-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.sectionTitle}>
+                {t(language, "language") || "Language"}
+              </Text>
             </View>
-            <Text style={styles.sectionTitle}>
-              {t(language, "language") || "Language"}
-            </Text>
           </View>
 
           <Pressable style={styles.dropdownTrigger} onPress={openModal}>
@@ -259,79 +341,18 @@ export default function Settings() {
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <View style={styles.iconWrapper}>
-              <Ionicons
-                name="text-outline"
-                size={20}
-                color={theme.colors.primary}
-              />
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.iconWrapper}>
+                <Ionicons
+                  name="color-palette-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.sectionTitle}>
+                {t(language, "theme") || "Theme"}
+              </Text>
             </View>
-            <Text style={styles.sectionTitle}>
-              {t(language, "terminology") || "Terminology"}
-            </Text>
-          </View>
-
-          <Text style={styles.subLabel}>
-            {t(language, "x3Multiplier") || "X3 Multiplier"}
-          </Text>
-          <AnimatedSegmentedControl
-            theme={theme}
-            activeOption={localTriple}
-            onSelect={(val) => {
-              setLocalTriple(val as "Triple" | "Treble");
-              setTimeout(() => setTripleTerm(val as "Triple" | "Treble"), 50);
-            }}
-            options={[
-              { id: "Triple", label: t(language, "triple") || "Triple" },
-              { id: "Treble", label: t(language, "treble") || "Treble" },
-            ]}
-          />
-
-          <Text style={[styles.subLabel, { marginTop: 16 }]}>
-            {t(language, "miss") || "Miss"}
-          </Text>
-          <AnimatedSegmentedControl
-            theme={theme}
-            activeOption={localMiss}
-            onSelect={(val) => {
-              setLocalMiss(val as "0" | "Miss");
-              setTimeout(() => setMissTerm(val as "0" | "Miss"), 50);
-            }}
-            options={[
-              { id: "0", label: "0" },
-              { id: "Miss", label: t(language, "miss") || "Miss" },
-            ]}
-          />
-
-          <Text style={[styles.subLabel, { marginTop: 16 }]}>
-            {t(language, "bullseye") || "Bullseye"}
-          </Text>
-          <AnimatedSegmentedControl
-            theme={theme}
-            activeOption={localBull}
-            onSelect={(val) => {
-              setLocalBull(val as "25" | "Bull");
-              setTimeout(() => setBullTerm(val as "25" | "Bull"), 50);
-            }}
-            options={[
-              { id: "25", label: "25" },
-              { id: "Bull", label: t(language, "bull") || "Bull" },
-            ]}
-          />
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.iconWrapper}>
-              <Ionicons
-                name="color-palette-outline"
-                size={20}
-                color={theme.colors.primary}
-              />
-            </View>
-            <Text style={styles.sectionTitle}>
-              {t(language, "theme") || "Theme"}
-            </Text>
           </View>
 
           <AnimatedSegmentedControl
@@ -383,202 +404,408 @@ export default function Settings() {
         </View>
 
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.iconWrapper}>
-              <Ionicons
-                name="settings-outline"
-                size={20}
-                color={theme.colors.primary}
-              />
-            </View>
-            <Text style={styles.sectionTitle}>
-              {t(language, "preferences") || "Preferences"}
-            </Text>
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons
-                name="volume-high-outline"
-                size={22}
-                color={theme.colors.textMuted}
-                style={{ marginRight: 10 }}
-              />
-              <Text style={styles.settingLabel}>
-                {t(language, "speech") || "Announcer"}
-              </Text>
-            </View>
-            <Switch
-              value={isSpeechEnabled}
-              onValueChange={toggleSpeech}
-              trackColor={{
-                false: theme.colors.cardBorder,
-                true: theme.colors.primaryLight,
-              }}
-              thumbColor={
-                isSpeechEnabled ? theme.colors.primary : theme.colors.textLight
-              }
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons
-                name="phone-portrait-outline"
-                size={22}
-                color={theme.colors.textMuted}
-                style={{ marginRight: 10 }}
-              />
-              <Text style={styles.settingLabel}>
-                {t(language, "vibrations") || "Haptics & Vibrations"}
-              </Text>
-            </View>
-            <Switch
-              value={isHapticsEnabled}
-              onValueChange={toggleHaptics}
-              trackColor={{
-                false: theme.colors.cardBorder,
-                true: theme.colors.primaryLight,
-              }}
-              thumbColor={
-                isHapticsEnabled ? theme.colors.primary : theme.colors.textLight
-              }
-            />
-          </View>
-
-          <View
-            style={{
-              marginTop: 20,
-              display: isHapticsEnabled ? "flex" : "none",
-            }}
+          <Pressable
+            style={[
+              styles.cardHeader,
+              !openSections.preferences && { marginBottom: 0 },
+            ]}
+            onPress={() => toggleSection("preferences")}
           >
-            <Text style={styles.subLabel}>
-              {t(language, "intensity") || "Intensity"}
-            </Text>
-            <AnimatedSegmentedControl
-              theme={theme}
-              activeOption={intensity}
-              onSelect={(val) =>
-                setIntensity(val as "light" | "medium" | "heavy")
-              }
-              options={[
-                { id: "light", label: t(language, "light") || "Light" },
-                { id: "medium", label: t(language, "medium") || "Medium" },
-                { id: "heavy", label: t(language, "heavy") || "Heavy" },
-              ]}
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons
-                name="flash-outline"
-                size={22}
-                color={theme.colors.textMuted}
-                style={{ marginRight: 10 }}
-              />
-              <Text style={styles.settingLabel}>
-                {t(language, "fastBot") || "Fast bot throw"}
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.iconWrapper}>
+                <Ionicons
+                  name="settings-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.sectionTitle}>
+                {t(language, "preferences") || "Preferences"}
               </Text>
             </View>
-            <Switch
-              value={isFastBotEnabled}
-              onValueChange={toggleFastBot}
-              trackColor={{
-                false: theme.colors.cardBorder,
-                true: theme.colors.primaryLight,
-              }}
-              thumbColor={
-                isFastBotEnabled ? theme.colors.primary : theme.colors.textLight
-              }
+            <Ionicons
+              name={openSections.preferences ? "chevron-up" : "chevron-down"}
+              size={24}
+              color={theme.colors.textMuted}
             />
-          </View>
+          </Pressable>
+
+          {openSections.preferences && (
+            <>
+              <View style={styles.settingRow}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons
+                    name="volume-high-outline"
+                    size={22}
+                    color={theme.colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <Text style={styles.settingLabel}>
+                    {t(language, "speech") || "Announcer"}
+                  </Text>
+                </View>
+                <Switch
+                  value={isSpeechEnabled}
+                  onValueChange={toggleSpeech}
+                  trackColor={{
+                    false: theme.colors.cardBorder,
+                    true: theme.colors.primaryLight,
+                  }}
+                  thumbColor={
+                    isSpeechEnabled
+                      ? theme.colors.primary
+                      : theme.colors.textLight
+                  }
+                />
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons
+                    name="phone-portrait-outline"
+                    size={22}
+                    color={theme.colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <Text style={styles.settingLabel}>
+                    {t(language, "vibrations") || "Haptics & Vibrations"}
+                  </Text>
+                </View>
+                <Switch
+                  value={isHapticsEnabled}
+                  onValueChange={toggleHaptics}
+                  trackColor={{
+                    false: theme.colors.cardBorder,
+                    true: theme.colors.primaryLight,
+                  }}
+                  thumbColor={
+                    isHapticsEnabled
+                      ? theme.colors.primary
+                      : theme.colors.textLight
+                  }
+                />
+              </View>
+
+              <View
+                style={{
+                  marginTop: 20,
+                  display: isHapticsEnabled ? "flex" : "none",
+                }}
+              >
+                <Text style={styles.subLabel}>
+                  {t(language, "intensity") || "Intensity"}
+                </Text>
+                <AnimatedSegmentedControl
+                  theme={theme}
+                  activeOption={intensity}
+                  onSelect={(val) =>
+                    setIntensity(val as "light" | "medium" | "heavy")
+                  }
+                  options={[
+                    { id: "light", label: t(language, "light") || "Light" },
+                    { id: "medium", label: t(language, "medium") || "Medium" },
+                    { id: "heavy", label: t(language, "heavy") || "Heavy" },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons
+                    name="flash-outline"
+                    size={22}
+                    color={theme.colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <Text style={styles.settingLabel}>
+                    {t(language, "fastBot") || "Fast bot throw"}
+                  </Text>
+                </View>
+                <Switch
+                  value={isFastBotEnabled}
+                  onValueChange={toggleFastBot}
+                  trackColor={{
+                    false: theme.colors.cardBorder,
+                    true: theme.colors.primaryLight,
+                  }}
+                  thumbColor={
+                    isFastBotEnabled
+                      ? theme.colors.primary
+                      : theme.colors.textLight
+                  }
+                />
+              </View>
+            </>
+          )}
         </View>
 
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.iconWrapper}>
-              <Ionicons
-                name="save-outline"
-                size={20}
-                color={theme.colors.primary}
-              />
-            </View>
-            <Text style={styles.sectionTitle}>
-              {t(language, "dataManagement") || "Data Management"}
-            </Text>
-          </View>
-
-          <AnimatedPressable style={styles.actionButton} onPress={handleExport}>
-            <View style={styles.actionIconWrapper}>
-              <Ionicons
-                name="cloud-upload-outline"
-                size={24}
-                color={theme.colors.primary}
-              />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>
-                {t(language, "exportData") || "Export Backup"}
-              </Text>
-              <Text style={styles.actionDesc}>
-                {t(language, "exportDesc") || "Save a backup to a file"}
-              </Text>
-            </View>
-          </AnimatedPressable>
-
-          <AnimatedPressable style={styles.actionButton} onPress={handleImport}>
-            <View style={styles.actionIconWrapper}>
-              <Ionicons
-                name="cloud-download-outline"
-                size={24}
-                color={theme.colors.primary}
-              />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>
-                {t(language, "importData") || "Import Backup"}
-              </Text>
-              <Text style={styles.actionDesc}>
-                {t(language, "importDesc") || "Restore data from file"}
-              </Text>
-            </View>
-          </AnimatedPressable>
-
-          <AnimatedPressable
-            style={[styles.actionButton, { borderBottomWidth: 0 }]}
-            onPress={handleHardReset}
+          <Pressable
+            style={[
+              styles.cardHeader,
+              !openSections.terminology && { marginBottom: 0 },
+            ]}
+            onPress={() => toggleSection("terminology")}
           >
-            <View
-              style={[
-                styles.actionIconWrapper,
-                {
-                  backgroundColor:
-                    theme.colors.dangerLight || "rgba(255, 59, 48, 0.15)",
-                },
-              ]}
-            >
-              <Ionicons
-                name="trash-outline"
-                size={24}
-                color={theme.colors.danger || "#ff3b30"}
-              />
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.iconWrapper}>
+                <Ionicons
+                  name="text-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.sectionTitle}>
+                {t(language, "terminology") || "Terminology"}
+              </Text>
             </View>
-            <View style={styles.actionTextContainer}>
-              <Text
-                style={[
-                  styles.actionTitle,
-                  { color: theme.colors.danger || "#ff3b30" },
+            <Ionicons
+              name={openSections.terminology ? "chevron-up" : "chevron-down"}
+              size={24}
+              color={theme.colors.textMuted}
+            />
+          </Pressable>
+
+          {openSections.terminology && (
+            <>
+              <Text style={styles.subLabel}>
+                {t(language, "x3Multiplier") || "X3 Multiplier"}
+              </Text>
+              <AnimatedSegmentedControl
+                theme={theme}
+                activeOption={localTriple}
+                onSelect={(val) => {
+                  setLocalTriple(val as "Triple" | "Treble");
+                  setTimeout(
+                    () => setTripleTerm(val as "Triple" | "Treble"),
+                    50,
+                  );
+                }}
+                options={[
+                  { id: "Triple", label: t(language, "triple") || "Triple" },
+                  { id: "Treble", label: t(language, "treble") || "Treble" },
                 ]}
-              >
-                {t(language, "hardReset") || "Wipe All Data"}
+              />
+
+              <Text style={[styles.subLabel, { marginTop: 16 }]}>
+                {t(language, "miss") || "Miss"}
               </Text>
-              <Text style={styles.actionDesc}>
-                {t(language, "hardResetDesc") ||
-                  "Permanently delete all players, history, and settings"}
+              <AnimatedSegmentedControl
+                theme={theme}
+                activeOption={localMiss}
+                onSelect={(val) => {
+                  setLocalMiss(val as "0" | "Miss");
+                  setTimeout(() => setMissTerm(val as "0" | "Miss"), 50);
+                }}
+                options={[
+                  { id: "0", label: "0" },
+                  { id: "Miss", label: t(language, "miss") || "Miss" },
+                ]}
+              />
+
+              <Text style={[styles.subLabel, { marginTop: 16 }]}>
+                {t(language, "bullseye") || "Bullseye"}
+              </Text>
+              <AnimatedSegmentedControl
+                theme={theme}
+                activeOption={localBull}
+                onSelect={(val) => {
+                  setLocalBull(val as "25" | "Bull");
+                  setTimeout(() => setBullTerm(val as "25" | "Bull"), 50);
+                }}
+                options={[
+                  { id: "25", label: "25" },
+                  { id: "Bull", label: t(language, "bull") || "Bull" },
+                ]}
+              />
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Pressable
+            style={[
+              styles.cardHeader,
+              !openSections.multiplayer && { marginBottom: 0 },
+            ]}
+            onPress={() => toggleSection("multiplayer")}
+          >
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.iconWrapper}>
+                <Ionicons
+                  name="globe-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.sectionTitle}>
+                {t(language, "multiplayerOptions") || "Multiplayer options"}
               </Text>
             </View>
-          </AnimatedPressable>
+            <Ionicons
+              name={openSections.multiplayer ? "chevron-up" : "chevron-down"}
+              size={24}
+              color={theme.colors.textMuted}
+            />
+          </Pressable>
+
+          {openSections.multiplayer && (
+            <>
+              <AnimatedPressable
+                style={styles.actionButton}
+                onPress={openDeviceNameConfig}
+              >
+                <View style={styles.actionIconWrapper}>
+                  <Ionicons
+                    name="phone-portrait-outline"
+                    size={24}
+                    color={theme.colors.primary}
+                  />
+                </View>
+                <View style={styles.actionTextContainer}>
+                  <Text style={styles.actionTitle}>
+                    {t(language, "setDeviceName") || "Set device name"}
+                  </Text>
+                  <Text style={styles.actionDesc}>
+                    {t(language, "deviceNameDesc") ||
+                      "Enter the name under which other players will see this device in the Lobby."}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={[styles.actionButton, { borderBottomWidth: 0 }]}
+                onPress={openHostConfig}
+              >
+                <View style={styles.actionIconWrapper}>
+                  <Ionicons
+                    name="server-outline"
+                    size={24}
+                    color={theme.colors.primary}
+                  />
+                </View>
+                <View style={styles.actionTextContainer}>
+                  <Text style={styles.actionTitle}>
+                    {t(language, "configureHostServer") ||
+                      "Configure custom Host server"}
+                  </Text>
+                  <Text style={styles.actionDesc}>
+                    {t(language, "firebaseConfigDesc") ||
+                      "Paste your Firebase configuration code here so you can host games for others."}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Pressable
+            style={[
+              styles.cardHeader,
+              !openSections.dataManagement && { marginBottom: 0 },
+            ]}
+            onPress={() => toggleSection("dataManagement")}
+          >
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.iconWrapper}>
+                <Ionicons
+                  name="save-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.sectionTitle}>
+                {t(language, "dataManagement") || "Data Management"}
+              </Text>
+            </View>
+            <Ionicons
+              name={openSections.dataManagement ? "chevron-up" : "chevron-down"}
+              size={24}
+              color={theme.colors.textMuted}
+            />
+          </Pressable>
+
+          {openSections.dataManagement && (
+            <>
+              <AnimatedPressable
+                style={styles.actionButton}
+                onPress={handleExport}
+              >
+                <View style={styles.actionIconWrapper}>
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={24}
+                    color={theme.colors.primary}
+                  />
+                </View>
+                <View style={styles.actionTextContainer}>
+                  <Text style={styles.actionTitle}>
+                    {t(language, "exportData") || "Export Backup"}
+                  </Text>
+                  <Text style={styles.actionDesc}>
+                    {t(language, "exportDesc") || "Save a backup to a file"}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={styles.actionButton}
+                onPress={handleImport}
+              >
+                <View style={styles.actionIconWrapper}>
+                  <Ionicons
+                    name="cloud-download-outline"
+                    size={24}
+                    color={theme.colors.primary}
+                  />
+                </View>
+                <View style={styles.actionTextContainer}>
+                  <Text style={styles.actionTitle}>
+                    {t(language, "importData") || "Import Backup"}
+                  </Text>
+                  <Text style={styles.actionDesc}>
+                    {t(language, "importDesc") || "Restore data from file"}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={[styles.actionButton, { borderBottomWidth: 0 }]}
+                onPress={handleHardReset}
+              >
+                <View
+                  style={[
+                    styles.actionIconWrapper,
+                    {
+                      backgroundColor:
+                        theme.colors.dangerLight || "rgba(255, 59, 48, 0.15)",
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={24}
+                    color={theme.colors.danger || "#ff3b30"}
+                  />
+                </View>
+                <View style={styles.actionTextContainer}>
+                  <Text
+                    style={[
+                      styles.actionTitle,
+                      { color: theme.colors.danger || "#ff3b30" },
+                    ]}
+                  >
+                    {t(language, "hardReset") || "Wipe All Data"}
+                  </Text>
+                  <Text style={styles.actionDesc}>
+                    {t(language, "hardResetDesc") ||
+                      "Permanently delete all players, history, and settings"}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+            </>
+          )}
         </View>
 
         <View style={styles.infoFooter}>
@@ -666,6 +893,119 @@ export default function Settings() {
         </View>
       </Modal>
 
+      <Modal
+        visible={isDeviceNameModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlayCenter}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setDeviceNameModalVisible(false)}
+          />
+          <View style={styles.modalContentCenter}>
+            <Text style={styles.modalTitleCenter}>
+              {t(language, "deviceNameConfig") || "Device Configuration"}
+            </Text>
+            <Text style={styles.modalDescCenter}>
+              {t(language, "deviceNameDesc") ||
+                "Enter the name under which other players will see this device in the Lobby."}
+            </Text>
+            <TextInput
+              style={styles.deviceNameInput}
+              placeholder={
+                t(language, "deviceNamePlaceholder") || "e.g. Mike's iPad"
+              }
+              placeholderTextColor={theme.colors.textMuted}
+              value={deviceNameInput}
+              onChangeText={setDeviceNameInput}
+              maxLength={30}
+            />
+            <View style={styles.modalActions}>
+              <AnimatedPressable
+                style={styles.modalBtnCancel}
+                onPress={() => setDeviceNameModalVisible(false)}
+              >
+                <Text style={styles.modalBtnCancelText}>
+                  {t(language, "cancel") || "Cancel"}
+                </Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                style={styles.modalBtnSave}
+                onPress={saveDeviceNameConfig}
+              >
+                <Text style={styles.modalBtnSaveText}>
+                  {t(language, "save") || "Save"}
+                </Text>
+              </AnimatedPressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isConfigModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlayCenter}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setConfigModalVisible(false)}
+          />
+          <View style={styles.modalContentCenter}>
+            <Text style={styles.modalTitleCenter}>
+              {t(language, "databaseConfigHost") ||
+                "Database Configuration (Host)"}
+            </Text>
+            <Text style={styles.modalDescCenter}>
+              {t(language, "firebaseConfigDesc") ||
+                "Paste your Firebase configuration code here (the one you got in the console) so you can host games for others."}
+            </Text>
+            <TextInput
+              style={styles.configInput}
+              multiline
+              placeholder='{"apiKey": "...", "projectId": "..."}'
+              placeholderTextColor={theme.colors.textMuted}
+              value={firebaseConfigStr}
+              onChangeText={setFirebaseConfigStr}
+            />
+            <View style={styles.modalActions}>
+              <AnimatedPressable
+                style={styles.modalBtnTutorial}
+                onPress={() => Linking.openURL("https://example.com/tutorial")}
+              >
+                <Text style={styles.modalBtnTutorialText}>
+                  {t(language, "tutorial") || "Tutorial"}
+                </Text>
+              </AnimatedPressable>
+              <View style={styles.modalActionsRight}>
+                <AnimatedPressable
+                  style={styles.modalBtnCancel}
+                  onPress={() => setConfigModalVisible(false)}
+                >
+                  <Text style={styles.modalBtnCancelText}>
+                    {t(language, "cancel") || "Cancel"}
+                  </Text>
+                </AnimatedPressable>
+                <AnimatedPressable
+                  style={styles.modalBtnSave}
+                  onPress={saveHostConfig}
+                >
+                  <Text style={styles.modalBtnSaveText}>
+                    {t(language, "save") || "Save"}
+                  </Text>
+                </AnimatedPressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <CustomAlert
         visible={alertVisible}
         title={alertConfig.title}
@@ -702,7 +1042,12 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     cardHeader: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
       marginBottom: 16,
+    },
+    cardHeaderLeft: {
+      flexDirection: "row",
+      alignItems: "center",
     },
     iconWrapper: {
       width: 36,
@@ -849,4 +1194,70 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.primary,
       fontWeight: "800",
     },
+    modalOverlayCenter: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      justifyContent: "center",
+      padding: 20,
+    },
+    modalContentCenter: {
+      backgroundColor: theme.colors.card,
+      borderRadius: 16,
+      padding: 20,
+    },
+    modalTitleCenter: {
+      fontSize: 20,
+      fontWeight: "900",
+      color: theme.colors.textMain,
+      marginBottom: 10,
+    },
+    modalDescCenter: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      marginBottom: 20,
+    },
+    configInput: {
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+      borderRadius: 12,
+      padding: 12,
+      height: 150,
+      color: theme.colors.textMain,
+      textAlignVertical: "top",
+    },
+    deviceNameInput: {
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.cardBorder,
+      borderRadius: 12,
+      padding: 12,
+      color: theme.colors.textMain,
+      fontSize: 16,
+    },
+    modalActions: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 20,
+    },
+    modalActionsRight: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    modalBtnTutorial: { padding: 12, borderRadius: 8 },
+    modalBtnTutorialText: {
+      color: theme.colors.primary,
+      fontWeight: "700",
+      textDecorationLine: "underline",
+    },
+    modalBtnCancel: { padding: 12, borderRadius: 8 },
+    modalBtnCancelText: { color: theme.colors.textMuted, fontWeight: "700" },
+    modalBtnSave: {
+      backgroundColor: theme.colors.primary,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+    },
+    modalBtnSaveText: { color: "#fff", fontWeight: "700" },
   });
