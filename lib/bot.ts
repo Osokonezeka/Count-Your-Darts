@@ -476,7 +476,7 @@ const clampBotAverage = (avg: number): number =>
   Math.max(20, Math.min(120, Math.round(avg)));
 
 const resolveX01BotAverage = (
-  humans: BotPlayerState[],
+  humans: readonly BotPlayerState[],
   startPoints: number,
   baseline?: number,
 ) => {
@@ -499,7 +499,7 @@ const resolveX01BotAverage = (
 };
 
 const resolve100DartsBotAverage = (
-  humans: BotPlayerState[],
+  humans: readonly BotPlayerState[],
   baseline?: number,
 ) => {
   let maxDarts = 0;
@@ -517,7 +517,7 @@ const resolve100DartsBotAverage = (
 };
 
 const resolveCricketBotAverage = (
-  humans: BotPlayerState[],
+  humans: readonly BotPlayerState[],
   baseline?: number,
 ) => {
   let maxDarts = 0;
@@ -540,7 +540,7 @@ const resolveCricketBotAverage = (
 };
 
 const resolveClockBotAverage = (
-  humans: BotPlayerState[],
+  humans: readonly BotPlayerState[],
   baseline?: number,
 ) => {
   let maxDarts = 0;
@@ -558,7 +558,10 @@ const resolveClockBotAverage = (
   return clampBotAverage((smoothedAcc / 0.9) * 120 + 5);
 };
 
-const resolveBobsBotAverage = (humans: BotPlayerState[], baseline?: number) => {
+const resolveBobsBotAverage = (
+  humans: readonly BotPlayerState[],
+  baseline?: number,
+) => {
   let maxDarts = 0;
   let highestScore = -999;
   humans.forEach((h) => {
@@ -577,7 +580,7 @@ const resolveBobsBotAverage = (humans: BotPlayerState[], baseline?: number) => {
 
 export const resolveBotAverage = (
   botName: string,
-  playerStates: BotPlayerState[],
+  playerStates: readonly BotPlayerState[],
   mode: "X01" | "100 Darts" | "Cricket" | "Around the Clock" | "Bob's 27",
   settings?: BotMatchSettings,
   historicalBaseline?: number,

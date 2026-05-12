@@ -23,7 +23,6 @@ import { TimerBadge } from "../../components/common/TimerBadge";
 import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
 import { InputModeSelector } from "../../components/keyboards/InputModeSelector";
 import { InteractiveDartboard } from "../../components/keyboards/InteractiveDartboard";
-import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
 import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
@@ -35,21 +34,41 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import {
-  breakdownScoreToDarts,
   resolveBotAverage,
-  simulateBotTurn,
+  simulateBobsBotThrow,
+  simulateCricketBotThrow,
 } from "../../lib/bot";
-import { IMPOSSIBLE_SCORES, formatTime } from "../../lib/gameUtils";
+import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
-const MAX_DARTS = 100;
+type RoundTarget = {
+  name: string;
+  reqValue?: number;
+  reqMult?: number;
+};
+
+const BERMUDA_ROUNDS: RoundTarget[] = [
+  { name: "12", reqValue: 12 },
+  { name: "13", reqValue: 13 },
+  { name: "14", reqValue: 14 },
+  { name: "DOUBLE", reqMult: 2 },
+  { name: "15", reqValue: 15 },
+  { name: "16", reqValue: 16 },
+  { name: "17", reqValue: 17 },
+  { name: "TREBLE", reqMult: 3 },
+  { name: "18", reqValue: 18 },
+  { name: "19", reqValue: 19 },
+  { name: "20", reqValue: 20 },
+  { name: "BULL", reqValue: 25 },
+  { name: "D-BULL", reqValue: 25, reqMult: 2 },
+];
 
 type Throw = {
   value: number;
   multiplier: number;
-  darts?: number;
-  isScoreInput?: boolean;
+  pts: number;
+  isHit: boolean;
   coords?: { x: number; y: number };
 };
 
@@ -58,13 +77,9 @@ type PlayerState = {
   score: number;
   dartsCount: number;
   turnThrows: Throw[];
-  allTurns?: Throw[][];
+  halves: number;
   isFinished: boolean;
   rank?: number;
-  s60: number;
-  s100: number;
-  s140: number;
-  s180: number;
 };
 
 type GameState = {
@@ -76,13 +91,6 @@ type GameState = {
   isUndoing?: boolean;
 };
 
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
-};
-
 type Action =
   | {
       type: "ADD_THROW";
@@ -92,18 +100,20 @@ type Action =
         coords?: { x: number; y: number };
       };
     }
-  | { type: "ADD_DART_VISUAL"; payload: { value: number; multiplier: number } }
-  | {
-      type: "ADD_TURN_SCORE";
-      payload: {
-        score: number;
-        individualDarts?: { value: number; multiplier: number }[];
-      };
-    }
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
 
-const scoringReducer = produce((draft: GameState, action: Action) => {
+const checkHit = (val: number, mult: number, target: RoundTarget) => {
+  if (val === 0) return false;
+  if (target.reqValue !== undefined && target.reqMult !== undefined) {
+    return val === target.reqValue && mult === target.reqMult;
+  }
+  if (target.reqValue !== undefined) return val === target.reqValue;
+  if (target.reqMult !== undefined) return mult === target.reqMult;
+  return false;
+};
+
+const bermudaReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
@@ -113,34 +123,36 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
       draft.isUndoing = false;
 
       const player = draft.playerStates[draft.currentIndex];
+      const roundIdx = Math.floor(player.dartsCount / 3);
+      const target = BERMUDA_ROUNDS[roundIdx];
 
-      const hitPoints = value * multiplier;
-      player.score += hitPoints;
+      const isHit = checkHit(value, multiplier, target);
+      const pts = isHit ? value * multiplier : 0;
+
       player.dartsCount += 1;
-
       if (!player.turnThrows) player.turnThrows = [];
-      player.turnThrows.push({ value, multiplier, coords });
+      player.turnThrows.push({ value, multiplier, pts, isHit, coords });
+      draft.throwsThisTurn += 1;
 
       const isTurnOver =
-        draft.throwsThisTurn === 2 || player.dartsCount === MAX_DARTS;
+        draft.throwsThisTurn === 3 ||
+        player.dartsCount === BERMUDA_ROUNDS.length * 3;
 
       if (isTurnOver) {
-        const turnSum = player.turnThrows.reduce(
-          (sum, tr) => sum + tr.value * tr.multiplier,
-          0,
-        );
-        if (turnSum >= 180) player.s180++;
-        else if (turnSum >= 140) player.s140++;
-        else if (turnSum >= 100) player.s100++;
-        else if (turnSum >= 60) player.s60++;
+        const turnSum = player.turnThrows.reduce((sum, tr) => sum + tr.pts, 0);
 
-        if (player.dartsCount === MAX_DARTS) {
+        if (turnSum === 0) {
+          player.score = Math.floor(player.score / 2);
+          player.halves += 1;
+          draft.speechEvent = { text: "Halved", id: Date.now() };
+        } else {
+          player.score += turnSum;
+          draft.speechEvent = { text: turnSum.toString(), id: Date.now() };
+        }
+
+        if (player.dartsCount === BERMUDA_ROUNDS.length * 3) {
           player.isFinished = true;
         }
-        if (!player.allTurns) player.allTurns = [];
-        player.allTurns.push(player.turnThrows);
-
-        draft.speechEvent = { text: turnSum.toString(), id: Date.now() };
 
         const allDone = draft.playerStates.every((p) => p.isFinished);
         if (allDone) {
@@ -163,96 +175,12 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
         return;
       }
 
-      draft.throwsThisTurn += 1;
-      return;
-    }
-
-    case "ADD_DART_VISUAL": {
-      const { value, multiplier } = action.payload;
-      const player = draft.playerStates[draft.currentIndex];
-      if (!player.turnThrows) player.turnThrows = [];
-      player.turnThrows.push({
-        value,
-        multiplier,
-        darts: 1,
-        isScoreInput: false,
-      });
-      return;
-    }
-
-    case "ADD_TURN_SCORE": {
-      const { score, individualDarts = null } = action.payload;
-      const snapshot = current(draft);
-      draft.history.push({ ...snapshot, history: [] });
-      draft.isUndoing = false;
-
-      const player = draft.playerStates[draft.currentIndex];
-
-      player.score += score;
-      const dartsRemainingInTurn = 3 - draft.throwsThisTurn;
-      const maxDartsLeft = MAX_DARTS - player.dartsCount;
-      const dartsToLog = Math.min(dartsRemainingInTurn, maxDartsLeft);
-
-      player.dartsCount += dartsToLog;
-
-      if (individualDarts) {
-        player.turnThrows = individualDarts.map(
-          (d: { value: number; multiplier: number }) => ({
-            value: d.value,
-            multiplier: d.multiplier,
-            darts: 1,
-            isScoreInput: false,
-          }),
-        );
-      } else {
-        if (!player.turnThrows) player.turnThrows = [];
-        player.turnThrows.push({
-          value: score,
-          multiplier: 1,
-          darts: dartsToLog,
-          isScoreInput: true,
-        });
-      }
-
-      if (score >= 180) player.s180++;
-      else if (score >= 140) player.s140++;
-      else if (score >= 100) player.s100++;
-      else if (score >= 60) player.s60++;
-
-      if (player.dartsCount >= MAX_DARTS) {
-        player.isFinished = true;
-      }
-
-      if (!player.allTurns) player.allTurns = [];
-      player.allTurns.push(player.turnThrows);
-
-      draft.speechEvent = { text: score.toString(), id: Date.now() };
-
-      const allDone = draft.playerStates.every((p) => p.isFinished);
-      if (allDone) {
-        const finishers = draft.playerStates
-          .map((p, idx) => ({ ...p, originalIdx: idx }))
-          .sort((a, b) => b.score - a.score);
-        finishers.forEach((f, rankIdx) => {
-          draft.playerStates[f.originalIdx].rank = rankIdx + 1;
-        });
-        return;
-      }
-
-      let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
-      while (draft.playerStates[nextIdx].isFinished) {
-        nextIdx = (nextIdx + 1) % draft.playerStates.length;
-      }
-      draft.playerStates[nextIdx].turnThrows = [];
-      draft.currentIndex = nextIdx;
-      draft.throwsThisTurn = 0;
       return;
     }
 
     case "UNDO": {
       if (!draft.history || draft.history.length === 0) return;
       const prevState = draft.history[draft.history.length - 1];
-
       let restoredPlayers = prevState.playerStates;
       if (prevState.throwsThisTurn === 0) {
         restoredPlayers = restoredPlayers.map((p, idx) =>
@@ -272,9 +200,7 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
       if (draft.throwsThisTurn === 0) return;
       const turnStartIndex = draft.history.length - draft.throwsThisTurn;
       if (turnStartIndex < 0) return;
-
       const prevState = draft.history[turnStartIndex];
-
       let restoredPlayers = prevState.playerStates;
       if (prevState.throwsThisTurn === 0) {
         restoredPlayers = restoredPlayers.map((p, idx) =>
@@ -292,7 +218,14 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
   }
 });
 
-export default function OneHundredDarts() {
+const formatThrow = (t: Throw) => {
+  if (t.value === 0) return "0";
+  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
+  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
+  return `${prefix}${t.value}`;
+};
+
+export default function BermudaTriangle() {
   const { players } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
@@ -321,7 +254,7 @@ export default function OneHundredDarts() {
   );
 
   const [state, dispatch] = useReducer(
-    scoringReducer,
+    bermudaReducer,
     parsedResume
       ? parsedResume.gameState
       : {
@@ -330,12 +263,8 @@ export default function OneHundredDarts() {
             score: 0,
             dartsCount: 0,
             turnThrows: [],
-            allTurns: [],
+            halves: 0,
             isFinished: false,
-            s180: 0,
-            s140: 0,
-            s100: 0,
-            s60: 0,
           })),
           currentIndex: 0,
           throwsThisTurn: 0,
@@ -344,32 +273,23 @@ export default function OneHundredDarts() {
         },
   );
 
-  const [inputMode, setInputMode] = useState<"dart" | "score" | "board">(
-    "dart",
-  );
-  const [typedScore, setTypedScore] = useState("");
+  const [inputMode, setInputMode] = useState<"dart" | "board">("dart");
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const matchTimeRef = useRef<number>(
     parsedResume?.gameState?.savedMatchTime || 0,
   );
+
   const handleTimeUpdate = useCallback((time: number) => {
     matchTimeRef.current = time;
   }, []);
-  const {
-    GameAlerts,
-    showExitConfirm,
-    showUndoConfirm,
-    showInvalidScoreAlert,
-  } = useGameModals(language);
+  const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   useEffect(() => {
-    if (state.speechEvent) {
-      speak(state.speechEvent.text);
-    }
+    if (state.speechEvent) speak(state.speechEvent.text);
   }, [state.speechEvent]);
 
   const allDone = state.playerStates.every((p) => p.isFinished);
-  const { isFastBot, delay } = useBotDelay(state.isUndoing, 700);
+  const { delay } = useBotDelay(state.isUndoing, 1000);
   const activePlayer = state.playerStates[state.currentIndex];
 
   const [historicalBaseline, setHistoricalBaseline] = useState<
@@ -380,10 +300,7 @@ export default function OneHundredDarts() {
     const fetchBaseline = async () => {
       if (players) {
         const humanNames = players.filter((p: string) => !isBot(p));
-        const baseline = await getPlayersHistoricalBaseline(
-          humanNames,
-          "100 Darts",
-        );
+        const baseline = await getPlayersHistoricalBaseline(humanNames, "X01");
         setHistoricalBaseline(baseline);
         setIsBaselineLoaded(true);
       }
@@ -394,44 +311,64 @@ export default function OneHundredDarts() {
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
     state.playerStates,
-    "100 Darts",
+    "X01",
     undefined,
     historicalBaseline,
   );
 
   useBotTurn({
     condition:
-      isBaselineLoaded &&
-      !allDone &&
-      !state.isUndoing &&
-      state.throwsThisTurn === 0 &&
-      !!activePlayer,
+      isBaselineLoaded && !allDone && !state.isUndoing && !!activePlayer,
     botAvg,
     delay,
     historyLength: state.history.length,
     calculate: () => {
-      let botScore = simulateBotTurn(botAvg!, 9999);
-      let individualDarts = breakdownScoreToDarts(botScore, 3, false);
-      const maxDartsLeft = MAX_DARTS - activePlayer.dartsCount;
-      if (maxDartsLeft < 3) {
-        individualDarts = individualDarts.slice(0, maxDartsLeft);
-        botScore = individualDarts.reduce(
-          (sum: number, d: { value: number; multiplier: number }) =>
-            sum + d.value * d.multiplier,
-          0,
-        );
+      const roundIdx = Math.floor(activePlayer.dartsCount / 3);
+      const target = BERMUDA_ROUNDS[roundIdx];
+
+      let val = 0;
+      let mult = 1;
+
+      if (target.reqValue === 25) {
+        const hit = simulateBobsBotThrow(botAvg!, target.reqMult === 2);
+        if (hit) {
+          val = 25;
+          mult = target.reqMult || 1;
+        }
+      } else if (
+        target.reqMult !== undefined &&
+        target.reqValue === undefined
+      ) {
+        const aimValue = [20, 19, 18, 16][Math.floor(Math.random() * 4)];
+        if (target.reqMult === 2) {
+          const hit = simulateBobsBotThrow(botAvg!, false);
+          if (hit) {
+            val = aimValue;
+            mult = 2;
+          }
+        } else {
+          const res = simulateCricketBotThrow(botAvg!, aimValue);
+          if (res.hit && res.multiplier === 3) {
+            val = aimValue;
+            mult = 3;
+          } else {
+            val = res.missedValue || 0;
+            mult = 1;
+          }
+        }
+      } else if (target.reqValue !== undefined) {
+        const res = simulateCricketBotThrow(botAvg!, target.reqValue);
+        if (res.hit) {
+          val = target.reqValue;
+          mult = res.multiplier;
+        } else {
+          val = res.missedValue || 0;
+        }
       }
-      return { botScore, individualDarts };
+      return { value: val, multiplier: mult };
     },
-    execute: async ({ botScore, individualDarts }) => {
-      for (let i = 0; i < individualDarts.length; i++) {
-        dispatch({ type: "ADD_DART_VISUAL", payload: individualDarts[i] });
-        await new Promise((res) => setTimeout(res, isFastBot ? 50 : 200));
-      }
-      dispatch({
-        type: "ADD_TURN_SCORE",
-        payload: { score: botScore, individualDarts },
-      });
+    execute: (dart) => {
+      handleThrow(dart.value, dart.multiplier);
     },
   });
 
@@ -450,71 +387,24 @@ export default function OneHundredDarts() {
     try {
       if (navigateAway) isExiting.current = true;
       const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
-
       const isUnfinished = !allDone;
       const historyItem = {
         id: matchId,
         date: formattedDate,
         duration: formatTime(matchTimeRef.current),
-        mode: "100 Darts",
+        mode: "Bermuda Triangle",
         isUnfinished,
         gameState: isUnfinished
           ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
           : undefined,
         players: state.playerStates
-          .map((p, idx) => {
-            let validTurns = [];
-            if (p.allTurns) {
-              validTurns = [...p.allTurns];
-              if (
-                !p.isFinished &&
-                p.turnThrows &&
-                p.turnThrows.length > 0 &&
-                state.currentIndex === idx
-              ) {
-                validTurns.push(p.turnThrows);
-              }
-            } else {
-              const rawTurns = state.history
-                ? state.history.map((h) => h.playerStates[idx].turnThrows)
-                : [];
-              rawTurns.push(p.turnThrows);
-              validTurns = rawTurns.filter((turn, i, arr) => {
-                const nextTurn = arr[i + 1];
-                return (
-                  turn &&
-                  turn.length > 0 &&
-                  (!nextTurn || nextTurn.length < turn.length)
-                );
-              });
-            }
-
-            const validTurnsFormatted = validTurns.map((turn) =>
-              turn.map((t: Throw) => ({
-                v: t.value,
-                m: t.multiplier,
-                d: t.darts,
-                i: t.isScoreInput,
-                c: t.coords,
-              })),
-            );
-
-            return {
-              name: p.name,
-              score: p.score,
-              darts: p.dartsCount,
-              rank: p.rank,
-              avg:
-                p.dartsCount > 0
-                  ? ((p.score / p.dartsCount) * 3).toFixed(1)
-                  : "0.0",
-              s180: p.s180,
-              s140: p.s140,
-              s100: p.s100,
-              s60: p.s60,
-              allTurns: validTurnsFormatted,
-            };
-          })
+          .map((p) => ({
+            name: p.name,
+            score: p.score,
+            darts: p.dartsCount,
+            rank: p.rank,
+            halves: p.halves,
+          }))
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
 
@@ -528,11 +418,8 @@ export default function OneHundredDarts() {
       const existingIndex = existingHistory.findIndex(
         (h: { id: string }) => h.id === matchId,
       );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
+      if (existingIndex > -1) existingHistory[existingIndex] = historyItem;
+      else existingHistory.unshift(historyItem);
 
       await AsyncStorage.setItem(
         "@dart_match_history",
@@ -540,7 +427,7 @@ export default function OneHundredDarts() {
       );
       if (navigateAway) router.push("/play");
     } catch (e) {
-      console.error("Save 100 Darts error", e);
+      console.error("Save Bermuda error", e);
       if (navigateAway) router.push("/play");
     }
   };
@@ -571,7 +458,6 @@ export default function OneHundredDarts() {
     coords?: { x: number; y: number },
   ) => {
     if (allDone) return;
-
     const activeMult = overrideMultiplier || multiplier;
     if ((value === 25 && activeMult === 3) || (value === 0 && activeMult !== 1))
       return;
@@ -598,43 +484,8 @@ export default function OneHundredDarts() {
 
   const handleUndo = () => {
     triggerHaptic("heavy");
-    setTypedScore("");
     setMultiplier(1);
     dispatch({ type: "UNDO" });
-  };
-
-  const handleTypeScore = (num: string) => {
-    triggerHaptic("tap");
-    setTypedScore((prev) => {
-      const next = prev === "0" ? num : prev + num;
-      if (next.length > 3) return prev;
-      if (parseInt(next, 10) > 180) return prev;
-      return next;
-    });
-  };
-
-  const handleClearScore = () => {
-    if (typedScore.length > 0) {
-      triggerHaptic("heavy");
-      setTypedScore((prev) => prev.slice(0, -1));
-    } else {
-      if (state.history.length === 0) return;
-      const prevState = state.history[state.history.length - 1];
-      const prevPlayer = prevState.playerStates[prevState.currentIndex];
-      showUndoConfirm(prevPlayer.name, handleUndo);
-    }
-  };
-
-  const handleSubmitScore = () => {
-    if (typedScore === "") return;
-    const score = parseInt(typedScore, 10);
-    if (score > 180 || IMPOSSIBLE_SCORES.includes(score)) {
-      triggerHaptic("heavy");
-      showInvalidScoreAlert();
-      return;
-    }
-    dispatch({ type: "ADD_TURN_SCORE", payload: { score } });
-    setTypedScore("");
   };
 
   return (
@@ -647,12 +498,8 @@ export default function OneHundredDarts() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>
-            {t(language, "100Darts")?.toUpperCase() || "100 DARTS"}
-          </Text>
-          <Text style={styles.headerSub}>
-            {t(language, "highScore")?.toUpperCase() || "HIGH SCORE"}
-          </Text>
+          <Text style={styles.headerTitle}>BERMUDA</Text>
+          <Text style={styles.headerSub}>TRIANGLE</Text>
         </View>
         <View style={styles.headerRight}>
           <TimerBadge
@@ -671,11 +518,19 @@ export default function OneHundredDarts() {
       >
         {state.playerStates.map((p, i) => {
           const isActive = i === state.currentIndex && !p.isFinished;
-          const turnSum =
-            p.turnThrows?.reduce(
-              (sum, tr) => sum + tr.value * tr.multiplier,
-              0,
-            ) || 0;
+          const roundIdx = Math.min(
+            Math.floor(p.dartsCount / 3),
+            BERMUDA_ROUNDS.length - 1,
+          );
+          const targetReq = BERMUDA_ROUNDS[roundIdx];
+
+          let targetLabel = targetReq.name;
+          if (targetReq.name === "BULL") targetLabel = bullTerm;
+          if (targetReq.name === "D-BULL") targetLabel = `D${bullTerm}`;
+          if (targetReq.name === "TREBLE")
+            targetLabel = tripleTerm.toUpperCase();
+          if (targetReq.name === "DOUBLE")
+            targetLabel = t(language, "double")?.toUpperCase() || "DOUBLE";
 
           return (
             <View
@@ -701,73 +556,62 @@ export default function OneHundredDarts() {
 
               {!p.isFinished && (
                 <>
-                  {inputMode === "score" ? (
-                    <View style={styles.throwsCol}>
-                      <View
-                        style={[
-                          styles.typedScoreDisplayBox,
-                          isActive && styles.typedScoreDisplayBoxActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.typedScoreDisplayBoxText,
-                            isActive && styles.typedScoreDisplayBoxTextActive,
-                          ]}
-                        >
-                          {isActive
-                            ? typedScore || "0"
-                            : p.turnThrows && p.turnThrows.length > 0
-                              ? turnSum
-                              : "-"}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.throwsCol}>
-                      <View style={styles.throwsRow}>
-                        {[0, 1, 2].map((idx) => {
-                          const len = p.turnThrows.length;
-                          const throwIdx = len - 1 - ((len - 1) % 3) + idx;
-                          const t = p.turnThrows[throwIdx];
-
-                          return (
-                            <View
-                              key={idx}
+                  <View style={styles.throwsCol}>
+                    <View style={styles.throwsRow}>
+                      {[0, 1, 2].map((idx) => {
+                        const throwObj = p.turnThrows?.[idx];
+                        return (
+                          <View
+                            key={idx}
+                            style={[
+                              styles.throwBox,
+                              isActive &&
+                                state.throwsThisTurn === idx &&
+                                styles.throwBoxActive,
+                            ]}
+                          >
+                            <Text
                               style={[
-                                styles.throwBox,
-                                isActive &&
-                                  state.throwsThisTurn === idx &&
-                                  styles.throwBoxActive,
+                                styles.throwBoxText,
+                                throwObj?.isHit && {
+                                  color: theme.colors.success,
+                                },
+                                throwObj &&
+                                  !throwObj.isHit && {
+                                    color: theme.colors.textMuted,
+                                  },
                               ]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
                             >
-                              <Text
-                                style={styles.throwBoxText}
-                                numberOfLines={1}
-                                adjustsFontSizeToFit
-                              >
-                                {t ? formatThrow(t) : ""}
-                              </Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                      <Text style={styles.targetLabel}>
-                        {t(language, "thrown")?.toUpperCase() || "THROWN"}:{" "}
-                        {p.dartsCount} / {MAX_DARTS}
-                      </Text>
+                              {throwObj ? formatThrow(throwObj) : ""}
+                            </Text>
+                          </View>
+                        );
+                      })}
                     </View>
-                  )}
+                    <Text style={styles.targetLabel}>
+                      {t(language, "target")?.toUpperCase() || "TARGET"}:{" "}
+                      <Text style={{ color: theme.colors.textMain }}>
+                        {targetLabel}
+                      </Text>
+                    </Text>
+                  </View>
 
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
-                      <Text style={styles.statLabel}>
-                        {t(language, "avgShort") || "AVG"}
-                      </Text>
-                      <Text style={styles.statBold}>
-                        {p.dartsCount > 0
-                          ? ((p.score / p.dartsCount) * 3).toFixed(1)
-                          : "0.0"}
+                      <Ionicons
+                        name="warning-outline"
+                        size={14}
+                        color={theme.colors.danger}
+                      />
+                      <Text
+                        style={[
+                          styles.statBold,
+                          { color: theme.colors.danger },
+                        ]}
+                      >
+                        {p.halves}
                       </Text>
                     </View>
                   </View>
@@ -788,11 +632,13 @@ export default function OneHundredDarts() {
         >
           <InputModeSelector
             inputMode={inputMode}
-            setInputMode={setInputMode}
+            setInputMode={(mode) => {
+              if (mode === "score") return;
+              setInputMode(mode as "dart" | "board");
+            }}
             theme={theme}
             language={language}
             onReset={() => {
-              setTypedScore("");
               setMultiplier(1);
               dispatch({ type: "RESET_CURRENT_TURN" });
             }}
@@ -810,15 +656,6 @@ export default function OneHundredDarts() {
               missTerm={missTerm}
               tripleTerm={tripleTerm}
               language={language}
-            />
-          )}
-
-          {inputMode === "score" && (
-            <ScoreKeyboard
-              onKeyPress={handleTypeScore}
-              onDelete={handleClearScore}
-              onSubmit={handleSubmitScore}
-              theme={theme}
             />
           )}
 
@@ -861,29 +698,6 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
     targetLabel: {
       fontSize: 10,
       fontWeight: "800",
-      color: theme.colors.primary,
-    },
-
-    typedScoreDisplayBox: {
-      height: 44,
-      minWidth: 100,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: theme.colors.background,
-      borderWidth: 2,
-      borderColor: theme.colors.cardBorder,
-      borderRadius: 8,
-      paddingHorizontal: 20,
-    },
-    typedScoreDisplayBoxActive: {
-      borderColor: theme.colors.primary,
-    },
-    typedScoreDisplayBoxText: {
-      fontSize: 26,
-      fontWeight: "900",
-      color: theme.colors.textMuted,
-    },
-    typedScoreDisplayBoxTextActive: {
       color: theme.colors.primary,
     },
   });

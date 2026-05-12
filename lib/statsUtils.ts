@@ -45,6 +45,19 @@ export interface PlayerMatchStats {
   totalClosedTargets?: number;
   closedTargets?: number;
   rank?: number;
+  c2?: number;
+  c3?: number;
+  c4_6?: number;
+  fails?: number;
+  phase1?: number;
+  phase2?: number;
+  phase3?: number;
+  halves?: number;
+  shanghais?: number;
+  sHits?: number;
+  dHits?: number;
+  tHits?: number;
+  scorelessInnings?: number;
 }
 
 export interface LegLog {
@@ -137,6 +150,11 @@ export interface AggregatedStats {
   calculatedAvg?: number;
   calculatedFirst9?: number;
   calculatedCheckoutPct?: number;
+  c2?: number;
+  c3?: number;
+  c4_6?: number;
+  fails?: number;
+  targetAvg?: string;
 }
 
 export const DARTS_PER_TURN = 3;
@@ -307,9 +325,12 @@ const formatPlayerMap = (
     .map((s) => ({
       ...s,
       winPct: s.mPlayed > 0 ? (s.mWon / s.mPlayed) * 100 : 0,
-      calculatedAvg: s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * DARTS_PER_TURN : 0,
+      calculatedAvg:
+        s.totalDarts > 0 ? (s.totalPoints / s.totalDarts) * DARTS_PER_TURN : 0,
       calculatedFirst9:
-        s.first9Count > 0 ? (s.first9Points / s.first9Count) * DARTS_PER_TURN : 0,
+        s.first9Count > 0
+          ? (s.first9Points / s.first9Count) * DARTS_PER_TURN
+          : 0,
       calculatedCheckoutPct:
         s.checkoutDarts > 0 ? (s.checkoutHits / s.checkoutDarts) * 100 : 0,
     }));
@@ -448,7 +469,10 @@ const processX01MatchesIncremental = (
 const withIncrementalCache = async <TItem extends { id: string }>(
   cacheKey: string,
   history: TItem[],
-  processIncremental: (items: TItem[], existingMap?: Record<string, AggregatedStats>) => Record<string, AggregatedStats>
+  processIncremental: (
+    items: TItem[],
+    existingMap?: Record<string, AggregatedStats>,
+  ) => Record<string, AggregatedStats>,
 ): Promise<Record<string, AggregatedStats>> => {
   const aggStr = await AsyncStorage.getItem(cacheKey);
   let aggregate: {
@@ -491,7 +515,11 @@ export const getOverallStatisticsAsync = async (
   try {
     const CACHE_KEY = "@dart_overall_agg";
     const x01History = history.filter((h) => h.mode === "X01");
-    const playerMap = await withIncrementalCache(CACHE_KEY, x01History, processX01MatchesIncremental);
+    const playerMap = await withIncrementalCache(
+      CACHE_KEY,
+      x01History,
+      processX01MatchesIncremental,
+    );
     return formatPlayerMap(playerMap, appliedNames);
   } catch (e) {
     console.error("Aggregate overall error:", e);
@@ -665,8 +693,7 @@ const processTournamentMatchesIncremental = (
               draft[p2Name].lWon++;
 
             processStringThrows(draft[p1Name], leg.p1Throws || []);
-            if (p2Name)
-              processStringThrows(draft[p2Name], leg.p2Throws || []);
+            if (p2Name) processStringThrows(draft[p2Name], leg.p2Throws || []);
           });
         }
       });
@@ -695,7 +722,11 @@ export const getTournamentStatisticsAsync = async (
         ? t.settings?.teamSize === "team"
         : t.settings?.teamSize !== "team",
     );
-    const playerMap = await withIncrementalCache(CACHE_KEY, relevantHistory, processTournamentMatchesIncremental);
+    const playerMap = await withIncrementalCache(
+      CACHE_KEY,
+      relevantHistory,
+      processTournamentMatchesIncremental,
+    );
     return formatPlayerMap(playerMap, appliedNames);
   } catch (e) {
     console.error("Aggregate tourney error:", e);
@@ -794,7 +825,9 @@ export const calculateTrendData = (
     last10.forEach((match) => {
       const trend = getPlayerX01MatchTrend(match, playerName);
       if (trend && trend.darts > 0) {
-        dataPoints.push(Number(((trend.pts / trend.darts) * DARTS_PER_TURN).toFixed(1)));
+        dataPoints.push(
+          Number(((trend.pts / trend.darts) * DARTS_PER_TURN).toFixed(1)),
+        );
         const d = parseDateString(match.date || "");
         if (d.getTime() !== 0) {
           labels.push(dayjs(d).format("DD.MM"));
@@ -985,11 +1018,13 @@ export const getPlayersHistoricalBaseline = async (
 
       let playerAvg = 0;
       if (mode === "X01" || mode === "100 Darts") {
-        if (totalDarts > 0) playerAvg = (totalPts / totalDarts) * DARTS_PER_TURN;
+        if (totalDarts > 0)
+          playerAvg = (totalPts / totalDarts) * DARTS_PER_TURN;
       } else if (mode === "Bob's 27") {
         if (totalDarts > 0) playerAvg = totalPts / totalDarts;
       } else if (mode === "Cricket") {
-        if (totalDarts > 0) playerAvg = (totalMarks / totalDarts) * DARTS_PER_TURN;
+        if (totalDarts > 0)
+          playerAvg = (totalMarks / totalDarts) * DARTS_PER_TURN;
       } else if (mode === "Around the Clock") {
         if (totalDarts > 0) playerAvg = totalHits / totalDarts;
       }

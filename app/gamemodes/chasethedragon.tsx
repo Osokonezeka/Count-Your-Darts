@@ -30,13 +30,22 @@ import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
-import { resolveBotAverage, simulateClockBotThrow } from "../../lib/bot";
+import {
+  resolveBotAverage,
+  simulateClockBotThrow,
+  simulateBobsBotThrow,
+  simulateCricketBotThrow,
+} from "../../lib/bot";
 import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
 const TARGETS = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
+  ...Array.from({ length: 11 }, (_, i) => ({ value: 10 + i, multiplier: 1 })),
+  ...Array.from({ length: 11 }, (_, i) => ({ value: 10 + i, multiplier: 3 })),
+  ...Array.from({ length: 11 }, (_, i) => ({ value: 10 + i, multiplier: 2 })),
+  { value: 25, multiplier: 1 },
+  { value: 25, multiplier: 2 },
 ];
 
 type PlayerState = {
@@ -44,7 +53,7 @@ type PlayerState = {
   currentTargetIdx: number;
   darts: number;
   hits: number;
-  turnThrows: { target: number; hit: boolean }[];
+  turnThrows: { hit: boolean }[];
   isFinished: boolean;
   rank?: number;
 };
@@ -60,7 +69,7 @@ type GameState = {
 
 type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
 
-const clockReducer = produce((draft: GameState, action: Action) => {
+const dragonReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
     case "THROW": {
       const { hit } = action.payload;
@@ -70,13 +79,12 @@ const clockReducer = produce((draft: GameState, action: Action) => {
       draft.isUndoing = false;
 
       const player = draft.playerStates[draft.currentIndex];
-      const currentTarget = TARGETS[player.currentTargetIdx];
 
       player.darts += 1;
       if (hit) player.hits += 1;
 
       if (!player.turnThrows) player.turnThrows = [];
-      player.turnThrows.push({ target: currentTarget, hit });
+      player.turnThrows.push({ hit });
 
       if (hit) {
         if (player.currentTargetIdx === TARGETS.length - 1) {
@@ -122,12 +130,23 @@ const clockReducer = produce((draft: GameState, action: Action) => {
   }
 });
 
-export default function AroundTheClock() {
+const getTargetLabel = (
+  target: { value: number; multiplier: number },
+  bullTerm: string,
+  tripleTerm: string,
+) => {
+  let base = target.value === 25 ? bullTerm : target.value.toString();
+  if (target.multiplier === 2) return `D${base}`;
+  if (target.multiplier === 3) return `${tripleTerm.charAt(0)}${base}`;
+  return base;
+};
+
+export default function ChaseTheDragon() {
   const { players } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
-  const { bullTerm, missTerm } = useTerminology();
+  const { bullTerm, missTerm, tripleTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -150,7 +169,7 @@ export default function AroundTheClock() {
   );
 
   const [state, dispatch] = useReducer(
-    clockReducer,
+    dragonReducer,
     parsedResume
       ? parsedResume.gameState
       : {
@@ -178,13 +197,14 @@ export default function AroundTheClock() {
   const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   const allFinished = state.playerStates.every((p) => p.isFinished);
-  const { isFastBot, delay } = useBotDelay(state.isUndoing, 1200);
+  const { delay } = useBotDelay(state.isUndoing, 1200);
   const activePlayer = state.playerStates[state.currentIndex];
 
   const [historicalBaseline, setHistoricalBaseline] = useState<
     number | undefined
   >(undefined);
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
+
   useEffect(() => {
     const fetchBaseline = async () => {
       if (players) {
@@ -215,8 +235,20 @@ export default function AroundTheClock() {
     delay,
     historyLength: state.history.length,
     calculate: () => {
-      const isBull = TARGETS[activePlayer.currentTargetIdx] === 25;
-      return simulateClockBotThrow(botAvg!, isBull);
+      const targetReq = TARGETS[activePlayer.currentTargetIdx];
+      let hit = false;
+
+      if (targetReq.value === 25) {
+        hit = simulateBobsBotThrow(botAvg!, targetReq.multiplier === 2);
+      } else if (targetReq.multiplier === 2) {
+        hit = simulateBobsBotThrow(botAvg!, false);
+      } else if (targetReq.multiplier === 3) {
+        const res = simulateCricketBotThrow(botAvg!, targetReq.value);
+        hit = res.hit && res.multiplier === 3;
+      } else {
+        hit = simulateClockBotThrow(botAvg!, false);
+      }
+      return hit;
     },
     execute: (hit) => handleThrow(hit),
   });
@@ -242,7 +274,7 @@ export default function AroundTheClock() {
         id: matchId,
         date: formattedDate,
         duration: formatTime(matchTimeRef.current),
-        mode: "Around the Clock",
+        mode: "Chase the Dragon",
         isUnfinished,
         gameState: isUnfinished
           ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
@@ -252,7 +284,8 @@ export default function AroundTheClock() {
             name: p.name,
             darts: p.darts,
             rank: p.rank,
-            accuracy: ((p.hits / p.darts) * 100).toFixed(1) + "%",
+            accuracy:
+              p.darts > 0 ? ((p.hits / p.darts) * 100).toFixed(1) + "%" : "0%",
           }))
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
@@ -267,11 +300,8 @@ export default function AroundTheClock() {
       const existingIndex = existingHistory.findIndex(
         (h: { id: string }) => h.id === matchId,
       );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
+      if (existingIndex > -1) existingHistory[existingIndex] = historyItem;
+      else existingHistory.unshift(historyItem);
 
       await AsyncStorage.setItem(
         "@dart_match_history",
@@ -323,10 +353,11 @@ export default function AroundTheClock() {
         </AnimatedPressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
-            {t(language, "aroundTheClock")?.toUpperCase() || "AROUND THE CLOCK"}
+            {t(language, "chaseTheDragon")?.toUpperCase() || "CHASE THE DRAGON"}
           </Text>
           <Text style={styles.headerSub}>
-            1 ➔ 20 ➔ {bullTerm.toUpperCase()}
+            S ➔ {tripleTerm.charAt(0).toUpperCase()} ➔ D ➔{" "}
+            {bullTerm.toUpperCase()}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -346,7 +377,8 @@ export default function AroundTheClock() {
       >
         {state.playerStates.map((p, i) => {
           const isActive = i === state.currentIndex && !p.isFinished;
-          const target = TARGETS[p.currentTargetIdx];
+          const target =
+            TARGETS[Math.min(p.currentTargetIdx, TARGETS.length - 1)];
 
           return (
             <View
@@ -364,7 +396,7 @@ export default function AroundTheClock() {
                   <Text
                     style={[styles.targetValue, isActive && styles.activeText]}
                   >
-                    {target === 25 ? bullTerm : target}
+                    {getTargetLabel(target, bullTerm, tripleTerm)}
                   </Text>
                 )}
                 <Text style={styles.playerName}>{p.name}</Text>
@@ -445,11 +477,11 @@ export default function AroundTheClock() {
           <TrainingKeyboard
             playerName={currentPlayer.name}
             instructionText={(t(language, "hitLower") || "hit") + ":"}
-            targetValue={
-              TARGETS[currentPlayer.currentTargetIdx] === 25
-                ? bullTerm
-                : TARGETS[currentPlayer.currentTargetIdx].toString()
-            }
+            targetValue={getTargetLabel(
+              TARGETS[currentPlayer.currentTargetIdx],
+              bullTerm,
+              tripleTerm,
+            )}
             hitLabel={t(language, "hit")?.toUpperCase() || "HIT"}
             missLabel={missTerm}
             onHit={() => handleThrow(true)}
