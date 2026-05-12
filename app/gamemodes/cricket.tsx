@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { produce, current } from "immer";
 import React, {
   useCallback,
   useEffect,
@@ -102,45 +103,23 @@ const getMarkSymbol = (count: number) => {
   return "⦻";
 };
 
-function cricketReducer(
-  state: CricketGameState,
-  action: Action,
-): CricketGameState {
+const cricketReducer = produce((draft: CricketGameState, action: Action) => {
   switch (action.type) {
     case "ADD_MARK": {
       const { value, multiplier, cricketMode, throwLabel } = action.payload;
 
-      const snapshot: CricketGameState = {
-        playerStates: state.playerStates.map((p) => ({
-          ...p,
-          marks: { ...p.marks },
-        })),
-        settings: state.settings,
-        currentIndex: state.currentIndex,
-        startingPlayerIndex: state.startingPlayerIndex,
-        throwsThisTurn: state.throwsThisTurn,
-        currentTurnThrows: [...(state.currentTurnThrows || [])],
-        matchWinner: state.matchWinner,
-        legWinner: state.legWinner,
-        setWinner: state.setWinner,
-        turnPointsAdded: state.turnPointsAdded,
-        history: [],
-        isUndoing: false,
-      };
+      const snapshot = current(draft);
+      if (!draft.history) draft.history = [];
+      draft.history.push({ ...snapshot, history: [] });
+      draft.isUndoing = false;
 
-      const updatedPlayers = [...state.playerStates];
-      const currentPlayerIdx = state.currentIndex;
-
-      const player = {
-        ...updatedPlayers[currentPlayerIdx],
-        marks: { ...updatedPlayers[currentPlayerIdx].marks },
-      };
+      const player = draft.playerStates[draft.currentIndex];
 
       player.darts += 1;
       player.totalMatchDarts = (player.totalMatchDarts || 0) + 1;
 
-      const currentThrows = state.currentTurnThrows || [];
-      const newTurnThrows = [...currentThrows, throwLabel];
+      if (!draft.currentTurnThrows) draft.currentTurnThrows = [];
+      draft.currentTurnThrows.push(throwLabel);
 
       let pointsAdded = 0;
 
@@ -149,6 +128,7 @@ function cricketReducer(
         player.totalMatchMarks = (player.totalMatchMarks || 0) + multiplier;
 
         let hitsLeft = multiplier;
+        if (!player.marks) player.marks = {};
         const currentMarks = player.marks[value] || 0;
 
         if (currentMarks < 3) {
@@ -161,8 +141,8 @@ function cricketReducer(
         }
 
         if (hitsLeft > 0 && cricketMode === "standard") {
-          const anyoneElseOpen = updatedPlayers.some(
-            (p, idx) => idx !== currentPlayerIdx && (p.marks[value] || 0) < 3,
+          const anyoneElseOpen = draft.playerStates.some(
+            (p, idx) => idx !== draft.currentIndex && (p.marks[value] || 0) < 3,
           );
 
           if (anyoneElseOpen) {
@@ -174,35 +154,34 @@ function cricketReducer(
         }
       }
 
-      const newTurnPointsAdded =
-        state.throwsThisTurn === 0
+      draft.turnPointsAdded =
+        draft.throwsThisTurn === 0
           ? pointsAdded
-          : (state.turnPointsAdded || 0) + pointsAdded;
-
-      updatedPlayers[currentPlayerIdx] = player;
+          : (draft.turnPointsAdded || 0) + pointsAdded;
 
       const hasClosedAll = TARGETS.every(
         (num) => (player.marks[num] || 0) >= 3,
       );
-      const hasHighestScore = updatedPlayers.every(
+      const hasHighestScore = draft.playerStates.every(
         (p) => p.score <= player.score,
       );
 
       const isGameOver =
         hasClosedAll && (cricketMode === "no-score" || hasHighestScore);
-      const isTurnOver = state.throwsThisTurn === 2 || isGameOver;
+      const isTurnOver = draft.throwsThisTurn === 2 || isGameOver;
 
-      let newSpeechEvent = null;
-      if (isTurnOver && newTurnPointsAdded > 0) {
-        newSpeechEvent = {
-          text: newTurnPointsAdded.toString(),
+      if (isTurnOver && draft.turnPointsAdded > 0) {
+        draft.speechEvent = {
+          text: draft.turnPointsAdded.toString(),
           id: Date.now(),
         };
+      } else {
+        draft.speechEvent = null;
       }
 
       if (isGameOver) {
-        const targetLegs = state.settings?.legs || 1;
-        const targetSets = state.settings?.sets || 1;
+        const targetLegs = draft.settings?.legs || 1;
+        const targetSets = draft.settings?.sets || 1;
 
         player.legs += 1;
         const isSetWin = player.legs === targetLegs;
@@ -210,107 +189,67 @@ function cricketReducer(
 
         if (isMatchWin) {
           player.sets += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            currentTurnThrows: newTurnThrows,
-            matchWinner: player,
-            history: [...(state.history || []), snapshot],
-            speechEvent: newSpeechEvent,
-            turnPointsAdded: newTurnPointsAdded,
-            isUndoing: false,
-          };
+          draft.matchWinner = player;
         } else if (isSetWin) {
           player.sets += 1;
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            setWinner: player,
-            currentTurnThrows: newTurnThrows,
-            history: [...(state.history || []), snapshot],
-            speechEvent: newSpeechEvent,
-            turnPointsAdded: newTurnPointsAdded,
-            isUndoing: false,
-          };
+          draft.setWinner = player;
         } else {
-          return {
-            ...state,
-            playerStates: updatedPlayers,
-            legWinner: player,
-            currentTurnThrows: newTurnThrows,
-            history: [...(state.history || []), snapshot],
-            speechEvent: newSpeechEvent,
-            turnPointsAdded: newTurnPointsAdded,
-            isUndoing: false,
-          };
+          draft.legWinner = player;
         }
+        return;
       }
 
-      if (state.throwsThisTurn === 2) {
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          currentIndex: (state.currentIndex + 1) % state.playerStates.length,
-          throwsThisTurn: 0,
-          currentTurnThrows: [],
-          history: [...(state.history || []), snapshot],
-          speechEvent: newSpeechEvent,
-          turnPointsAdded: 0,
-          isUndoing: false,
-        };
+      if (draft.throwsThisTurn === 2) {
+        draft.currentIndex =
+          (draft.currentIndex + 1) % draft.playerStates.length;
+        draft.throwsThisTurn = 0;
+        draft.currentTurnThrows = [];
+        draft.turnPointsAdded = 0;
+        return;
       }
 
-      return {
-        ...state,
-        playerStates: updatedPlayers,
-        throwsThisTurn: state.throwsThisTurn + 1,
-        currentTurnThrows: newTurnThrows,
-        history: [...(state.history || []), snapshot],
-        speechEvent: null,
-        turnPointsAdded: newTurnPointsAdded,
-        isUndoing: false,
-      };
+      draft.throwsThisTurn += 1;
+      return;
     }
+
     case "START_NEXT_LEG": {
-      const isNewSet = state.setWinner !== null;
+      const isNewSet = draft.setWinner !== null;
       const nextStarter =
-        (state.startingPlayerIndex + 1) % state.playerStates.length;
+        (draft.startingPlayerIndex + 1) % draft.playerStates.length;
 
-      return {
-        ...state,
-        playerStates: state.playerStates.map((p) => ({
-          ...p,
-          marks: {},
-          score: 0,
-          darts: 0,
-          totalMarks: 0,
-          legs: isNewSet ? 0 : p.legs,
-        })),
-        currentIndex: nextStarter,
-        startingPlayerIndex: nextStarter,
-        throwsThisTurn: 0,
-        currentTurnThrows: [],
-        legWinner: null,
-        setWinner: null,
-        matchWinner: null,
-        speechEvent: null,
-        turnPointsAdded: 0,
-        isUndoing: false,
-      };
+      draft.playerStates.forEach((p) => {
+        p.marks = {};
+        p.score = 0;
+        p.darts = 0;
+        p.totalMarks = 0;
+        if (isNewSet) p.legs = 0;
+      });
+
+      draft.currentIndex = nextStarter;
+      draft.startingPlayerIndex = nextStarter;
+      draft.throwsThisTurn = 0;
+      draft.currentTurnThrows = [];
+      draft.legWinner = null;
+      draft.setWinner = null;
+      draft.matchWinner = null;
+      draft.speechEvent = null;
+      draft.turnPointsAdded = 0;
+      draft.isUndoing = false;
+      return;
     }
+
     case "UNDO": {
-      if (!state.history || state.history.length === 0) return state;
+      if (!draft.history || draft.history.length === 0) return;
+      const prevState = draft.history[draft.history.length - 1];
       return {
-        ...state.history[state.history.length - 1],
-        history: state.history.slice(0, -1),
+        ...prevState,
+        history: draft.history.slice(0, -1),
         speechEvent: null,
         isUndoing: true,
       };
     }
-    default:
-      return state;
   }
-}
+});
 
 export default function Cricket() {
   const { players, settings } = useGame();

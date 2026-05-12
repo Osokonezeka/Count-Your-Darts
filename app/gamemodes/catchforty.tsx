@@ -20,7 +20,7 @@ import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryBu
 import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
 import { getSharedGameStyles } from "../../components/common/SharedGameStyles";
 import { TimerBadge } from "../../components/common/TimerBadge";
-import { TrainingKeyboard } from "../../components/keyboards/TrainingKeyboard";
+import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
 import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
@@ -30,23 +30,30 @@ import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
-import { resolveBotAverage, simulateClockBotThrow } from "../../lib/bot";
+import {
+  resolveBotAverage,
+  simulateBotTurn,
+  breakdownScoreToDarts,
+} from "../../lib/bot";
 import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
-const TARGETS = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25,
-];
+const TARGETS = Array.from({ length: 40 }, (_, i) => 61 + i);
 
 type PlayerState = {
   name: string;
+  score: number;
   currentTargetIdx: number;
-  darts: number;
-  hits: number;
-  turnThrows: { target: number; hit: boolean }[];
+  currentLeft: number;
+  dartsUsedOnTarget: number;
+  dartsCount: number;
   isFinished: boolean;
   rank?: number;
+  c2: number;
+  c3: number;
+  c4_6: number;
+  fails: number;
 };
 
 type GameState = {
@@ -54,44 +61,77 @@ type GameState = {
   currentIndex: number;
   throwsThisTurn: number;
   history: GameState[];
-  finishedCount: number;
   isUndoing?: boolean;
 };
 
-type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
+type Action =
+  | { type: "ADD_THROW"; payload: { value: number; multiplier: number } }
+  | { type: "UNDO" };
 
-const clockReducer = produce((draft: GameState, action: Action) => {
+const catchFortyReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
-    case "THROW": {
-      const { hit } = action.payload;
+    case "ADD_THROW": {
+      const { value, multiplier } = action.payload;
 
       const snapshot = current(draft);
       draft.history.push({ ...snapshot, history: [] });
       draft.isUndoing = false;
 
       const player = draft.playerStates[draft.currentIndex];
-      const currentTarget = TARGETS[player.currentTargetIdx];
+      const hitPoints = value * multiplier;
 
-      player.darts += 1;
-      if (hit) player.hits += 1;
+      let newLeft = player.currentLeft - hitPoints;
 
-      if (!player.turnThrows) player.turnThrows = [];
-      player.turnThrows.push({ target: currentTarget, hit });
+      let isBust =
+        newLeft < 0 || newLeft === 1 || (newLeft === 0 && multiplier !== 2);
+      let isWin = newLeft === 0 && multiplier === 2;
 
-      if (hit) {
+      player.dartsCount += 1;
+      player.dartsUsedOnTarget += 1;
+      draft.throwsThisTurn += 1;
+
+      let targetCompleted = false;
+
+      if (isWin) {
+        if (player.dartsUsedOnTarget <= 2) {
+          player.score += 3;
+          player.c2 += 1;
+        } else if (player.dartsUsedOnTarget === 3) {
+          player.score += 2;
+          player.c3 += 1;
+        } else {
+          player.score += 1;
+          player.c4_6 += 1;
+        }
+        targetCompleted = true;
+      } else if (isBust) {
+        targetCompleted = true;
+        player.fails += 1;
+        player.dartsCount += 6 - player.dartsUsedOnTarget;
+      } else if (player.dartsUsedOnTarget >= 6) {
+        targetCompleted = true;
+        player.fails += 1;
+      } else {
+        player.currentLeft = newLeft;
+      }
+
+      if (targetCompleted) {
         if (player.currentTargetIdx === TARGETS.length - 1) {
           player.isFinished = true;
-          player.rank = draft.finishedCount + 1;
+          const finishersCount = draft.playerStates.filter(
+            (p) => p.isFinished,
+          ).length;
+          player.rank = finishersCount;
         } else {
           player.currentTargetIdx += 1;
+          player.currentLeft = TARGETS[player.currentTargetIdx];
+          player.dartsUsedOnTarget = 0;
         }
       }
 
-      const isTurnOver = draft.throwsThisTurn === 2 || player.isFinished;
+      const isTurnOver = draft.throwsThisTurn === 3 || targetCompleted;
 
       if (isTurnOver) {
-        if (player.isFinished) draft.finishedCount += 1;
-
         const allFinished = draft.playerStates.every((p) => p.isFinished);
         if (allFinished) return;
 
@@ -100,13 +140,10 @@ const clockReducer = produce((draft: GameState, action: Action) => {
           nextIdx = (nextIdx + 1) % draft.playerStates.length;
         }
 
-        draft.playerStates[nextIdx].turnThrows = [];
         draft.currentIndex = nextIdx;
         draft.throwsThisTurn = 0;
         return;
       }
-
-      draft.throwsThisTurn += 1;
       return;
     }
 
@@ -122,12 +159,12 @@ const clockReducer = produce((draft: GameState, action: Action) => {
   }
 });
 
-export default function AroundTheClock() {
+export default function CatchForty() {
   const { players } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
-  const { bullTerm, missTerm } = useTerminology();
+  const { bullTerm, missTerm, tripleTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -150,25 +187,30 @@ export default function AroundTheClock() {
   );
 
   const [state, dispatch] = useReducer(
-    clockReducer,
+    catchFortyReducer,
     parsedResume
       ? parsedResume.gameState
       : {
           playerStates: players.map((name) => ({
             name,
+            score: 0,
             currentTargetIdx: 0,
-            darts: 0,
-            hits: 0,
-            turnThrows: [],
+            currentLeft: TARGETS[0],
+            dartsUsedOnTarget: 0,
+            dartsCount: 0,
             isFinished: false,
+            c2: 0,
+            c3: 0,
+            c4_6: 0,
+            fails: 0,
           })),
           currentIndex: 0,
           throwsThisTurn: 0,
           history: [],
-          finishedCount: 0,
         },
   );
 
+  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const matchTimeRef = useRef<number>(
     parsedResume?.gameState?.savedMatchTime || 0,
   );
@@ -178,21 +220,19 @@ export default function AroundTheClock() {
   const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   const allFinished = state.playerStates.every((p) => p.isFinished);
-  const { isFastBot, delay } = useBotDelay(state.isUndoing, 1200);
+  const { isFastBot, delay } = useBotDelay(state.isUndoing, 1000);
   const activePlayer = state.playerStates[state.currentIndex];
 
   const [historicalBaseline, setHistoricalBaseline] = useState<
     number | undefined
   >(undefined);
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
+
   useEffect(() => {
     const fetchBaseline = async () => {
       if (players) {
         const humanNames = players.filter((p: string) => !isBot(p));
-        const baseline = await getPlayersHistoricalBaseline(
-          humanNames,
-          "Around the Clock",
-        );
+        const baseline = await getPlayersHistoricalBaseline(humanNames, "X01");
         setHistoricalBaseline(baseline);
         setIsBaselineLoaded(true);
       }
@@ -203,7 +243,7 @@ export default function AroundTheClock() {
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
     state.playerStates,
-    "Around the Clock",
+    "X01",
     undefined,
     historicalBaseline,
   );
@@ -215,10 +255,27 @@ export default function AroundTheClock() {
     delay,
     historyLength: state.history.length,
     calculate: () => {
-      const isBull = TARGETS[activePlayer.currentTargetIdx] === 25;
-      return simulateClockBotThrow(botAvg!, isBull);
+      const botScore = simulateBotTurn(
+        botAvg!,
+        activePlayer.currentLeft,
+        true,
+        "straight",
+        "double",
+      );
+      const individualDarts = breakdownScoreToDarts(
+        botScore,
+        3 - state.throwsThisTurn,
+        botScore === activePlayer.currentLeft,
+        true,
+        "straight",
+        "double",
+        activePlayer.currentLeft,
+      );
+      return individualDarts[0];
     },
-    execute: (hit) => handleThrow(hit),
+    execute: (dart) => {
+      handleThrow(dart.value, dart.multiplier);
+    },
   });
 
   useLayoutEffect(() => {
@@ -242,7 +299,7 @@ export default function AroundTheClock() {
         id: matchId,
         date: formattedDate,
         duration: formatTime(matchTimeRef.current),
-        mode: "Around the Clock",
+        mode: "Catch 40",
         isUnfinished,
         gameState: isUnfinished
           ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
@@ -250,11 +307,15 @@ export default function AroundTheClock() {
         players: state.playerStates
           .map((p) => ({
             name: p.name,
-            darts: p.darts,
+            score: p.score,
+            darts: p.dartsCount,
             rank: p.rank,
-            accuracy: ((p.hits / p.darts) * 100).toFixed(1) + "%",
+            c2: p.c2,
+            c3: p.c3,
+            c4_6: p.c4_6,
+            fails: p.fails,
           }))
-          .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
+          .sort((a, b) => (b.score || 0) - (a.score || 0)),
       };
 
       const existingHistoryStr = await AsyncStorage.getItem(
@@ -288,7 +349,7 @@ export default function AroundTheClock() {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
       if (isExiting.current || allFinished) return;
       e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.darts > 0);
+      const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
       if (!hasStarted) {
         isExiting.current = true;
         navigation.dispatch(e.data.action);
@@ -304,13 +365,34 @@ export default function AroundTheClock() {
     return unsubscribe;
   }, [navigation, allFinished, state]);
 
-  const handleThrow = (hit: boolean) => {
+  const handleThrow = (value: number, overrideMultiplier?: number) => {
     if (allFinished) return;
-    triggerHaptic(hit ? "tap" : "heavy");
-    dispatch({ type: "THROW", payload: { hit } });
+    const activeMult = overrideMultiplier || multiplier;
+    if ((value === 25 && activeMult === 3) || (value === 0 && activeMult !== 1))
+      return;
+
+    triggerHaptic("tap");
+    dispatch({ type: "ADD_THROW", payload: { value, multiplier: activeMult } });
+    setMultiplier(1);
   };
 
-  const currentPlayer = state.playerStates[state.currentIndex];
+  const handleMiss = () => {
+    if (multiplier === 1) {
+      triggerHaptic("heavy");
+      handleThrow(0);
+    }
+  };
+
+  const handleMultiplierToggle = (newMult: 2 | 3) => {
+    triggerHaptic("heavy");
+    setMultiplier((prev) => (prev === newMult ? 1 : newMult));
+  };
+
+  const handleUndo = () => {
+    triggerHaptic("heavy");
+    setMultiplier(1);
+    dispatch({ type: "UNDO" });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -322,12 +404,8 @@ export default function AroundTheClock() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>
-            {t(language, "aroundTheClock")?.toUpperCase() || "AROUND THE CLOCK"}
-          </Text>
-          <Text style={styles.headerSub}>
-            1 ➔ 20 ➔ {bullTerm.toUpperCase()}
-          </Text>
+          <Text style={styles.headerTitle}>CATCH 40</Text>
+          <Text style={styles.headerSub}>61 ➔ 100</Text>
         </View>
         <View style={styles.headerRight}>
           <TimerBadge
@@ -362,9 +440,9 @@ export default function AroundTheClock() {
                   <Text style={styles.rankText}>{p.rank}</Text>
                 ) : (
                   <Text
-                    style={[styles.targetValue, isActive && styles.activeText]}
+                    style={[styles.playerScore, isActive && styles.activeText]}
                   >
-                    {target === 25 ? bullTerm : target}
+                    {p.score}
                   </Text>
                 )}
                 <Text style={styles.playerName}>{p.name}</Text>
@@ -372,58 +450,32 @@ export default function AroundTheClock() {
 
               {!p.isFinished && (
                 <>
-                  <View style={styles.throwsCol}>
-                    <View style={styles.throwsRow}>
-                      {[0, 1, 2].map((idx) => {
-                        const isHit = p.turnThrows?.[idx]?.hit === true;
-                        const isMiss = p.turnThrows?.[idx]?.hit === false;
-
-                        return (
-                          <View
-                            key={idx}
-                            style={[
-                              styles.throwBox,
-                              isActive &&
-                                state.throwsThisTurn === idx &&
-                                styles.throwBoxActive,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.throwBoxText,
-                                isHit && { color: theme.colors.success },
-                                isMiss && { color: theme.colors.danger },
-                              ]}
-                            >
-                              {p.turnThrows?.[idx] ? (isHit ? "✔" : "✘") : ""}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                    <Text style={styles.targetLabel}>
-                      {t(language, "target")?.toUpperCase() || "TARGET"}
-                    </Text>
-                  </View>
-
-                  <View style={styles.statsCol}>
-                    <View style={styles.statRow}>
-                      <Ionicons
-                        name="locate-outline"
-                        size={14}
-                        color={theme.colors.textMuted}
-                      />
-                      <Text style={styles.statBold}>{p.darts}</Text>
-                    </View>
-                    <View style={styles.statRow}>
-                      <Text style={styles.statLabel}>
-                        {t(language, "accuracyShort") || "ACC"}:
+                  <View style={specificStyles.statsFlex}>
+                    <View style={specificStyles.statCell}>
+                      <Text style={specificStyles.statLabel}>
+                        {t(language, "target")?.toUpperCase() || "TARGET"}
                       </Text>
-                      <Text style={styles.statBold}>
-                        {p.darts > 0
-                          ? ((p.hits / p.darts) * 100).toFixed(0)
-                          : 0}
-                        %
+                      <Text style={specificStyles.statValueMain}>{target}</Text>
+                    </View>
+                    <View style={specificStyles.statCell}>
+                      <Text style={specificStyles.statLabel}>
+                        {t(language, "toGo")?.toUpperCase() || "LEFT"}
+                      </Text>
+                      <Text style={specificStyles.statValueMain}>
+                        {p.currentLeft}
+                      </Text>
+                    </View>
+                    <View style={specificStyles.statCell}>
+                      <Text style={specificStyles.statLabel}>
+                        {t(language, "darts")?.toUpperCase() || "DARTS"}
+                      </Text>
+                      <Text
+                        style={[
+                          specificStyles.statValueMain,
+                          { color: theme.colors.textMuted },
+                        ]}
+                      >
+                        {p.dartsUsedOnTarget} / 6
                       </Text>
                     </View>
                   </View>
@@ -436,26 +488,23 @@ export default function AroundTheClock() {
 
       {!allFinished && (
         <BotAwareKeyboard
-          playerName={currentPlayer?.name || ""}
-          onUndo={() => dispatch({ type: "UNDO" })}
+          playerName={activePlayer?.name || ""}
+          onUndo={handleUndo}
           theme={theme}
           language={language}
-          botStyle={[styles.keyboard, { padding: 16 }]}
+          style={styles.keyboard}
         >
-          <TrainingKeyboard
-            playerName={currentPlayer.name}
-            instructionText={(t(language, "hitLower") || "hit") + ":"}
-            targetValue={
-              TARGETS[currentPlayer.currentTargetIdx] === 25
-                ? bullTerm
-                : TARGETS[currentPlayer.currentTargetIdx].toString()
-            }
-            hitLabel={t(language, "hit")?.toUpperCase() || "HIT"}
-            missLabel={missTerm}
-            onHit={() => handleThrow(true)}
-            onMiss={() => handleThrow(false)}
-            onUndo={() => dispatch({ type: "UNDO" })}
+          <DartKeyboard
+            onThrow={handleThrow}
+            onMiss={handleMiss}
+            onMultiplierToggle={handleMultiplierToggle}
+            onUndo={handleUndo}
+            multiplier={multiplier}
             theme={theme}
+            bullTerm={bullTerm}
+            missTerm={missTerm}
+            tripleTerm={tripleTerm}
+            language={language}
           />
         </BotAwareKeyboard>
       )}
@@ -483,19 +532,32 @@ export default function AroundTheClock() {
   );
 }
 
+const specificStyles = StyleSheet.create({
+  statsFlex: {
+    flex: 3,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingLeft: 12,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#888",
+    marginBottom: 4,
+  },
+  statValueMain: {
+    fontSize: 22,
+    fontWeight: "900",
+  },
+});
+
 const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
-    targetValue: {
-      fontSize: 36,
-      fontWeight: "900",
-      color: theme.colors.textMain,
-      lineHeight: 40,
-    },
-    targetLabel: {
-      fontSize: 10,
-      fontWeight: "800",
-      color: theme.colors.primary,
-    },
     keyboard: {
       padding: 16,
       backgroundColor: theme.colors.cardBorder,

@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import cloneDeep from "lodash/cloneDeep";
+import { produce, current } from "immer";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { BotAwareKeyboard } from "../../components/common/BotAwareKeyboard";
@@ -156,61 +156,7 @@ type Action =
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
 
-const advanceToNextPlayer = (
-  state: GameState,
-  updatedPlayers: PlayerState[],
-  snapshot?: GameState,
-  speechEvent: any = null,
-): GameState => {
-  let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-  while (updatedPlayers[nextIdx].isFinished) {
-    nextIdx = (nextIdx + 1) % state.playerStates.length;
-  }
-  updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], turnThrows: [] };
-
-  return {
-    ...state,
-    playerStates: updatedPlayers,
-    currentIndex: nextIdx,
-    throwsThisTurn: 0,
-    history: snapshot ? [...state.history, snapshot] : state.history,
-    speechEvent,
-    isUndoing: false,
-  };
-};
-
-const handlePlayerWin = (
-  state: GameState,
-  updatedPlayers: PlayerState[],
-  playerIndex: number,
-  snapshot: GameState,
-  speechEvent: any = null,
-): GameState => {
-  const player = updatedPlayers[playerIndex];
-  const { legs: targetLegs = 1, sets: targetSets = 1 } = state.settings || {};
-
-  const isMatchWin =
-    player.sets + (player.legs + 1 === targetLegs ? 1 : 0) === targetSets;
-  const isSetWin = player.legs + 1 === targetLegs;
-
-  player.legs += 1;
-  if (isMatchWin || isSetWin) {
-    player.sets += 1;
-  }
-
-  return {
-    ...state,
-    playerStates: updatedPlayers,
-    matchWinner: isMatchWin ? player : null,
-    setWinner: !isMatchWin && isSetWin ? player : null,
-    legWinner: !isMatchWin && !isSetWin ? player : null,
-    history: [...state.history, snapshot],
-    speechEvent,
-    isUndoing: false,
-  };
-};
-
-function gameReducer(state: GameState, action: Action): GameState {
+const gameReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
@@ -219,14 +165,13 @@ function gameReducer(state: GameState, action: Action): GameState {
         outRule,
         legs: targetLegs = 1,
         sets: targetSets = 1,
-      } = state.settings || {};
+      } = draft.settings || {};
 
-      const snapshot = cloneDeep({ ...state, history: [] });
-      snapshot.isUndoing = false;
+      const snapshot = current(draft);
+      draft.history.push({ ...snapshot, history: [] });
+      draft.isUndoing = false;
 
-      const updatedPlayers = [...state.playerStates];
-      const playerIndex = state.currentIndex;
-      const player = { ...updatedPlayers[playerIndex] };
+      const player = draft.playerStates[draft.currentIndex];
 
       player.totalMatchDarts = (player.totalMatchDarts || 0) + 1;
 
@@ -236,7 +181,7 @@ function gameReducer(state: GameState, action: Action): GameState {
         player.checkoutDarts = (player.checkoutDarts || 0) + 1;
       }
 
-      if (state.throwsThisTurn === 0) {
+      if (draft.throwsThisTurn === 0) {
         player.roundStartScore = player.score;
         player.roundStartHasOpened = player.hasOpened;
       }
@@ -255,10 +200,8 @@ function gameReducer(state: GameState, action: Action): GameState {
 
       player.darts += 1;
       const newScore = player.score - hitPoints;
-      player.turnThrows = [
-        ...(player.turnThrows || []),
-        { value, multiplier, coords },
-      ];
+      if (!player.turnThrows) player.turnThrows = [];
+      player.turnThrows.push({ value, multiplier, coords });
 
       let isWin = false;
       let isBust = newScore < 0;
@@ -283,7 +226,7 @@ function gameReducer(state: GameState, action: Action): GameState {
       let newSpeechText: string | null = null;
       if (isBust) {
         newSpeechText = "0";
-      } else if (isWin || state.throwsThisTurn === 2) {
+      } else if (isWin || draft.throwsThisTurn === 2) {
         newSpeechText = turnSumTotal.toString();
       }
       const newSpeechEvent = newSpeechText
@@ -292,56 +235,62 @@ function gameReducer(state: GameState, action: Action): GameState {
 
       player.score = isWin ? 0 : isBust ? player.roundStartScore : newScore;
       if (isBust) player.hasOpened = player.roundStartHasOpened;
-      if (isWin || isBust || state.throwsThisTurn === 2) {
+
+      if (isWin || isBust || draft.throwsThisTurn === 2) {
         player.totalMatchScore =
           (player.totalMatchScore || 0) + (isBust ? 0 : turnSumTotal);
-        player.allTurns = [...(player.allTurns || []), player.turnThrows];
+        if (!player.allTurns) player.allTurns = [];
+        player.allTurns.push(player.turnThrows);
       }
-
-      updatedPlayers[playerIndex] = player;
 
       if (isWin) {
         if (isGameDart) player.checkoutHits = (player.checkoutHits || 0) + 1;
 
-        return handlePlayerWin(
-          state,
-          updatedPlayers,
-          playerIndex,
-          snapshot,
-          newSpeechEvent,
-        );
+        const isMatchWin =
+          player.sets + (player.legs + 1 === targetLegs ? 1 : 0) === targetSets;
+        const isSetWin = player.legs + 1 === targetLegs;
+
+        player.legs += 1;
+        if (isMatchWin || isSetWin) {
+          player.sets += 1;
+        }
+
+        if (isMatchWin) draft.matchWinner = player as any;
+        else if (isSetWin) draft.setWinner = player as any;
+        else draft.legWinner = player as any;
+
+        draft.speechEvent = newSpeechEvent;
+        return;
       }
 
-      if (isBust || state.throwsThisTurn === 2) {
-        return advanceToNextPlayer(
-          state,
-          updatedPlayers,
-          snapshot,
-          newSpeechEvent,
-        );
+      if (isBust || draft.throwsThisTurn === 2) {
+        draft.speechEvent = newSpeechEvent;
+        let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
+        while (draft.playerStates[nextIdx].isFinished) {
+          nextIdx = (nextIdx + 1) % draft.playerStates.length;
+        }
+        draft.playerStates[nextIdx].turnThrows = [];
+        draft.currentIndex = nextIdx;
+        draft.throwsThisTurn = 0;
+        return;
       }
 
-      return {
-        ...state,
-        playerStates: updatedPlayers,
-        throwsThisTurn: state.throwsThisTurn + 1,
-        history: [...state.history, snapshot],
-        speechEvent: newSpeechEvent,
-        isUndoing: false,
-      };
+      draft.throwsThisTurn += 1;
+      draft.speechEvent = newSpeechEvent;
+      return;
     }
 
     case "ADD_DART_VISUAL": {
       const { value, multiplier } = action.payload;
-      const updatedPlayers = [...state.playerStates];
-      const playerIndex = state.currentIndex;
-      const player = { ...updatedPlayers[playerIndex] };
-      player.turnThrows = [
-        ...(player.turnThrows || []),
-        { value, multiplier, darts: 1, isScoreInput: false },
-      ];
-      updatedPlayers[playerIndex] = player;
-      return { ...state, playerStates: updatedPlayers };
+      const player = draft.playerStates[draft.currentIndex];
+      if (!player.turnThrows) player.turnThrows = [];
+      player.turnThrows.push({
+        value,
+        multiplier,
+        darts: 1,
+        isScoreInput: false,
+      });
+      return;
     }
 
     case "ADD_TURN_SCORE": {
@@ -356,16 +305,15 @@ function gameReducer(state: GameState, action: Action): GameState {
         outRule,
         legs: targetLegs = 1,
         sets: targetSets = 1,
-      } = state.settings || {};
+      } = draft.settings || {};
 
-      const snapshot = cloneDeep({ ...state, history: [] });
-      snapshot.isUndoing = false;
+      const snapshot = current(draft);
+      draft.history.push({ ...snapshot, history: [] });
+      draft.isUndoing = false;
 
-      const updatedPlayers = [...state.playerStates];
-      const playerIndex = state.currentIndex;
-      const player = { ...updatedPlayers[playerIndex] };
+      const player = draft.playerStates[draft.currentIndex];
 
-      if (state.throwsThisTurn === 0) {
+      if (draft.throwsThisTurn === 0) {
         player.roundStartScore = player.score;
         player.roundStartHasOpened = player.hasOpened;
       }
@@ -395,7 +343,7 @@ function gameReducer(state: GameState, action: Action): GameState {
         isBust = true;
       }
 
-      let dartsToLog = 3 - state.throwsThisTurn;
+      let dartsToLog = 3 - draft.throwsThisTurn;
       if (isWin && dartsAtDouble > 0) {
         dartsToLog = dartsAtDouble;
       }
@@ -416,15 +364,13 @@ function gameReducer(state: GameState, action: Action): GameState {
           }),
         );
       } else {
-        player.turnThrows = [
-          ...(player.turnThrows || []),
-          {
-            value: turnScore,
-            multiplier: 1,
-            darts: dartsToLog,
-            isScoreInput: true,
-          },
-        ];
+        if (!player.turnThrows) player.turnThrows = [];
+        player.turnThrows.push({
+          value: turnScore,
+          multiplier: 1,
+          darts: dartsToLog,
+          isScoreInput: true,
+        });
       }
 
       const itemsAdded = individualDarts ? individualDarts.length : 1;
@@ -446,137 +392,149 @@ function gameReducer(state: GameState, action: Action): GameState {
       player.score = isWin ? 0 : isBust ? player.roundStartScore : newScore;
       if (isBust) player.hasOpened = player.roundStartHasOpened;
 
-      if (isWin || isBust || state.throwsThisTurn === 2) {
+      if (isWin || isBust || draft.throwsThisTurn === 2) {
         player.totalMatchScore =
           (player.totalMatchScore || 0) + (isBust ? 0 : turnSumTotal);
+        if (!player.allTurns) player.allTurns = [];
+        player.allTurns.push(player.turnThrows);
       }
-
-      player.allTurns = [...(player.allTurns || []), player.turnThrows];
-
-      updatedPlayers[playerIndex] = player;
 
       if (isWin) {
-        return handlePlayerWin(
-          state,
-          updatedPlayers,
-          playerIndex,
-          snapshot,
-          newSpeechEvent,
-        );
+        const isMatchWin =
+          player.sets + (player.legs + 1 === targetLegs ? 1 : 0) === targetSets;
+        const isSetWin = player.legs + 1 === targetLegs;
+
+        player.legs += 1;
+        if (isMatchWin || isSetWin) {
+          player.sets += 1;
+        }
+
+        if (isMatchWin) draft.matchWinner = player as any;
+        else if (isSetWin) draft.setWinner = player as any;
+        else draft.legWinner = player as any;
+
+        draft.speechEvent = newSpeechEvent;
+        return;
       }
 
-      return advanceToNextPlayer(
-        state,
-        updatedPlayers,
-        snapshot,
-        newSpeechEvent,
-      );
+      draft.speechEvent = newSpeechEvent;
+      let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
+      while (draft.playerStates[nextIdx].isFinished) {
+        nextIdx = (nextIdx + 1) % draft.playerStates.length;
+      }
+      draft.playerStates[nextIdx].turnThrows = [];
+      draft.currentIndex = nextIdx;
+      draft.throwsThisTurn = 0;
+      return;
     }
 
     case "START_NEXT_LEG": {
-      const snapshot = cloneDeep({ ...state, history: [] });
+      const snapshot = current(draft);
+      draft.history.push({ ...snapshot, history: [] });
+      draft.isUndoing = false;
 
-      const isNewSet = state.setWinner !== null;
+      const isNewSet = draft.setWinner !== null;
       const nextStarter =
-        (state.startingPlayerIndex + 1) % state.playerStates.length;
-      const isStraightIn = state.settings?.inRule === "straight";
+        (draft.startingPlayerIndex + 1) % draft.playerStates.length;
+      const isStraightIn = draft.settings?.inRule === "straight";
 
-      return {
-        ...state,
-        playerStates: state.playerStates.map((p) => ({
-          ...p,
-          score: state.settings?.startPoints || 501,
-          roundStartScore: state.settings?.startPoints || 501,
-          hasOpened: isStraightIn,
-          roundStartHasOpened: isStraightIn,
-          darts: 0,
-          turnThrows: [],
-          legs: isNewSet ? 0 : p.legs,
-        })),
-        currentIndex: nextStarter,
-        startingPlayerIndex: nextStarter,
-        throwsThisTurn: 0,
-        history: [...state.history, snapshot],
-        legWinner: null,
-        setWinner: null,
-        matchWinner: null,
-        speechEvent: null,
-        isUndoing: false,
-      };
+      draft.playerStates.forEach((p) => {
+        p.score = draft.settings?.startPoints || 501;
+        p.roundStartScore = draft.settings?.startPoints || 501;
+        p.hasOpened = isStraightIn;
+        p.roundStartHasOpened = isStraightIn;
+        p.darts = 0;
+        p.turnThrows = [];
+        if (isNewSet) p.legs = 0;
+      });
+
+      draft.currentIndex = nextStarter;
+      draft.startingPlayerIndex = nextStarter;
+      draft.throwsThisTurn = 0;
+      draft.legWinner = null;
+      draft.setWinner = null;
+      draft.matchWinner = null;
+      draft.speechEvent = null;
+      return;
     }
 
     case "CONTINUE_AFTER_WIN": {
-      const updatedPlayers = [...state.playerStates];
-      const winnerIndex = updatedPlayers.findIndex(
-        (p) => p.name === state.matchWinner?.name,
+      const winnerIndex = draft.playerStates.findIndex(
+        (p) => p.name === draft.matchWinner?.name,
       );
-      if (winnerIndex === -1) return state;
+      if (winnerIndex === -1) return;
 
-      const winner = { ...updatedPlayers[winnerIndex] };
-      const newFinishedCount = state.finishedPlayersCount + 1;
-
+      const winner = draft.playerStates[winnerIndex];
+      draft.finishedPlayersCount += 1;
       winner.isFinished = true;
-      winner.rank = newFinishedCount;
-      updatedPlayers[winnerIndex] = winner;
+      winner.rank = draft.finishedPlayersCount;
 
-      let activeLeft = updatedPlayers.filter((p) => !p.isFinished).length;
-      if (activeLeft === 0)
-        return {
-          ...state,
-          playerStates: updatedPlayers,
-          finishedPlayersCount: newFinishedCount,
-          matchWinner: null,
-          speechEvent: null,
-          isUndoing: false,
-        };
+      let activeLeft = draft.playerStates.filter((p) => !p.isFinished).length;
+      if (activeLeft === 0) {
+        draft.matchWinner = null;
+        draft.speechEvent = null;
+        draft.isUndoing = false;
+        return;
+      }
 
-      const nextState = advanceToNextPlayer(
-        state,
-        updatedPlayers,
-        undefined,
-        null,
-      );
-      return {
-        ...nextState,
-        finishedPlayersCount: newFinishedCount,
-        matchWinner: null,
-      };
+      draft.matchWinner = null;
+      draft.speechEvent = null;
+
+      let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
+      while (draft.playerStates[nextIdx].isFinished) {
+        nextIdx = (nextIdx + 1) % draft.playerStates.length;
+      }
+      draft.playerStates[nextIdx].turnThrows = [];
+      draft.currentIndex = nextIdx;
+      draft.throwsThisTurn = 0;
+      draft.isUndoing = false;
+      return;
     }
 
     case "UNDO": {
-      if (state.history.length === 0) return state;
-      const prevState = state.history[state.history.length - 1];
+      if (!draft.history || draft.history.length === 0) return;
+      const prevState = draft.history[draft.history.length - 1];
+
+      let restoredPlayers = prevState.playerStates;
       if (prevState.throwsThisTurn === 0) {
-        prevState.playerStates[prevState.currentIndex].turnThrows = [];
+        restoredPlayers = restoredPlayers.map((p, idx) =>
+          idx === prevState.currentIndex ? { ...p, turnThrows: [] } : p,
+        );
       }
+
       return {
         ...prevState,
-        history: state.history.slice(0, -1),
+        playerStates: restoredPlayers,
+        history: draft.history.slice(0, -1),
         speechEvent: null,
         isUndoing: true,
       };
     }
 
     case "RESET_CURRENT_TURN": {
-      if (state.throwsThisTurn === 0) return state;
-      const turnStartIndex = state.history.length - state.throwsThisTurn;
-      if (turnStartIndex < 0) return state;
-      const prevState = state.history[turnStartIndex];
+      if (draft.throwsThisTurn === 0) return;
+      const turnStartIndex = draft.history.length - draft.throwsThisTurn;
+      if (turnStartIndex < 0) return;
+
+      const prevState = draft.history[turnStartIndex];
+
+      let restoredPlayers = prevState.playerStates;
       if (prevState.throwsThisTurn === 0) {
-        prevState.playerStates[prevState.currentIndex].turnThrows = [];
+        restoredPlayers = restoredPlayers.map((p, idx) =>
+          idx === prevState.currentIndex ? { ...p, turnThrows: [] } : p,
+        );
       }
+
       return {
         ...prevState,
-        history: state.history.slice(0, turnStartIndex),
+        playerStates: restoredPlayers,
+        history: draft.history.slice(0, turnStartIndex),
         speechEvent: null,
         isUndoing: true,
       };
     }
-
-    default:
-      return state;
   }
-}
+});
 
 const formatThrow = (t: Throw) => {
   if (t.value === 0) return "0";

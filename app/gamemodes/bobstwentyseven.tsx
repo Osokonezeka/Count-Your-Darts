@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import cloneDeep from "lodash/cloneDeep";
+import { produce, current } from "immer";
 import React, {
   useCallback,
   useEffect,
@@ -64,63 +64,23 @@ type GameState = {
 
 type Action = { type: "THROW"; payload: { hit: boolean } } | { type: "UNDO" };
 
-const handleTurnOver = (
-  state: GameState,
-  updatedPlayers: PlayerState[],
-  snapshot: GameState,
-  speechEvent: any = null,
-): GameState => {
-  const allDone = updatedPlayers.every((p) => p.isBust || p.isFinished);
-  if (allDone) {
-    const finishers = updatedPlayers
-      .map((p, idx) => ({ ...p, originalIdx: idx }))
-      .sort((a, b) => b.score - a.score || a.darts - b.darts);
-
-    finishers.forEach((f, rankIdx) => {
-      updatedPlayers[f.originalIdx].rank = rankIdx + 1;
-    });
-    return {
-      ...state,
-      playerStates: updatedPlayers,
-      history: [...state.history, snapshot],
-      speechEvent,
-      isUndoing: false,
-    };
-  }
-
-  let nextIdx = (state.currentIndex + 1) % state.playerStates.length;
-  while (updatedPlayers[nextIdx].isBust || updatedPlayers[nextIdx].isFinished) {
-    nextIdx = (nextIdx + 1) % state.playerStates.length;
-  }
-
-  updatedPlayers[nextIdx].turnThrows = [];
-
-  return {
-    ...state,
-    playerStates: updatedPlayers,
-    currentIndex: nextIdx,
-    throwsThisTurn: 0,
-    history: [...state.history, snapshot],
-    speechEvent,
-    isUndoing: false,
-  };
-};
-
-function bobsReducer(state: GameState, action: Action): GameState {
+const bobsReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
     case "THROW": {
       const { hit } = action.payload;
-      const snapshot = cloneDeep({ ...state, history: [] });
-      snapshot.isUndoing = false;
 
-      const updatedPlayers = [...state.playerStates];
-      const player = { ...updatedPlayers[state.currentIndex] };
+      const snapshot = current(draft);
+      draft.history.push({ ...snapshot, history: [] });
+      draft.isUndoing = false;
+
+      const player = draft.playerStates[draft.currentIndex];
       const currentTargetValue = TARGETS[player.currentTargetIdx];
 
       player.darts += 1;
-      player.turnThrows = [...player.turnThrows, hit];
+      if (!player.turnThrows) player.turnThrows = [];
+      player.turnThrows.push(hit);
 
-      const isTurnOver = state.throwsThisTurn === 2;
+      const isTurnOver = draft.throwsThisTurn === 2;
 
       if (isTurnOver) {
         const hitsCount = player.turnThrows.filter((h) => h).length;
@@ -149,7 +109,7 @@ function bobsReducer(state: GameState, action: Action): GameState {
           newSpeechText = turnPoints.toString();
         }
 
-        const newSpeechEvent = newSpeechText
+        draft.speechEvent = newSpeechText
           ? { text: newSpeechText, id: Date.now() }
           : null;
 
@@ -159,35 +119,51 @@ function bobsReducer(state: GameState, action: Action): GameState {
           player.currentTargetIdx += 1;
         }
 
-        updatedPlayers[state.currentIndex] = player;
-        return handleTurnOver(state, updatedPlayers, snapshot, newSpeechEvent);
+        const allDone = draft.playerStates.every(
+          (p) => p.isBust || p.isFinished,
+        );
+        if (allDone) {
+          const finishers = draft.playerStates
+            .map((p, idx) => ({ ...p, originalIdx: idx }))
+            .sort((a, b) => b.score - a.score || a.darts - b.darts);
+
+          finishers.forEach((f, rankIdx) => {
+            draft.playerStates[f.originalIdx].rank = rankIdx + 1;
+          });
+          return;
+        }
+
+        let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
+        while (
+          draft.playerStates[nextIdx].isBust ||
+          draft.playerStates[nextIdx].isFinished
+        ) {
+          nextIdx = (nextIdx + 1) % draft.playerStates.length;
+        }
+
+        draft.playerStates[nextIdx].turnThrows = [];
+        draft.currentIndex = nextIdx;
+        draft.throwsThisTurn = 0;
+        return;
       }
 
-      updatedPlayers[state.currentIndex] = player;
-      return {
-        ...state,
-        playerStates: updatedPlayers,
-        throwsThisTurn: state.throwsThisTurn + 1,
-        history: [...state.history, snapshot],
-        speechEvent: null,
-        isUndoing: false,
-      };
+      draft.throwsThisTurn += 1;
+      draft.speechEvent = null;
+      return;
     }
 
     case "UNDO": {
-      if (state.history.length === 0) return state;
+      if (draft.history.length === 0) return;
+      const prevState = draft.history[draft.history.length - 1];
       return {
-        ...state.history[state.history.length - 1],
-        history: state.history.slice(0, -1),
+        ...prevState,
+        history: draft.history.slice(0, -1),
         speechEvent: null,
         isUndoing: true,
       };
     }
-
-    default:
-      return state;
   }
-}
+});
 
 export default function BobsTwentySeven() {
   const { players } = useGame();

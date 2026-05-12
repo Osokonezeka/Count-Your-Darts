@@ -50,6 +50,79 @@ const shufflePlayers = (list: string[]) => {
   return arr;
 };
 
+const TRAINING_CONFIG = [
+  {
+    id: "around_the_clock",
+    tKey: "aroundTheClock",
+    dKey: "aroundTheClockDesc",
+    icon: "time-outline",
+    route: "/gamemodes/aroundtheclock",
+  },
+  {
+    id: "100_darts",
+    tKey: "100Darts",
+    dKey: "100DartsDesc",
+    icon: "stats-chart-outline",
+    route: "/gamemodes/hundreddarts",
+  },
+  {
+    id: "bobs_27",
+    tKey: "bobs27",
+    dKey: "bobs27Desc",
+    icon: "disc-outline",
+    route: "/gamemodes/bobstwentyseven",
+  },
+  {
+    id: "catch_40",
+    tKey: "catch40",
+    dKey: "catch40Desc",
+    icon: "flash-outline",
+    route: "/gamemodes/catchforty",
+  },
+  {
+    id: "jdc_challenge",
+    tKey: "jdcChallenge",
+    dKey: "jdcChallengeDesc",
+    icon: "star-outline",
+    route: "/gamemodes/jdcchallenge",
+  },
+  {
+    id: "bermuda_triangle",
+    tKey: "bermudaTriangle",
+    dKey: "bermudaTriangleDesc",
+    icon: "boat-outline",
+    route: "/gamemodes/bermudatriangle",
+  },
+  {
+    id: "shanghai",
+    tKey: "shanghai",
+    dKey: "shanghaiDesc",
+    icon: "medal-outline",
+    route: "/gamemodes/shanghai",
+  },
+  {
+    id: "halve_it",
+    tKey: "halveIt",
+    dKey: "halveItDesc",
+    icon: "star-half-outline",
+    route: "/gamemodes/halveit",
+  },
+  {
+    id: "baseball",
+    tKey: "baseball",
+    dKey: "baseballDesc",
+    icon: "baseball-outline",
+    route: "/gamemodes/baseball",
+  },
+  {
+    id: "chase_the_dragon",
+    tKey: "chaseTheDragon",
+    dKey: "chaseTheDragonDesc",
+    icon: "footsteps-outline",
+    route: "/gamemodes/chasethedragon",
+  },
+] as const;
+
 export default function Play() {
   const { setPlayers, setSettings } = useGame();
   const router = useRouter();
@@ -72,7 +145,16 @@ export default function Play() {
     "X01",
   );
   const [trainingMode, setTrainingMode] = useState<
-    "around_the_clock" | "100_darts" | "bobs_27"
+    | "around_the_clock"
+    | "100_darts"
+    | "bobs_27"
+    | "catch_40"
+    | "jdc_challenge"
+    | "bermuda_triangle"
+    | "shanghai"
+    | "halve_it"
+    | "baseball"
+    | "chase_the_dragon"
   >("around_the_clock");
 
   const [points, setPoints] = useState(501);
@@ -304,11 +386,38 @@ export default function Play() {
                   setGameMode(val as "X01" | "Cricket" | "Training")
                 }
                 options={[
-                  { id: "X01", label: t(language, "x01") || "X01" },
-                  { id: "Cricket", label: t(language, "cricket") || "Cricket" },
+                  {
+                    id: "X01",
+                    label: t(language, "x01") || "X01",
+                    icon: (isActive: boolean) => (
+                      <Ionicons
+                        name="contract-outline"
+                        size={16}
+                        color={isActive ? "#fff" : theme.colors.textMuted}
+                      />
+                    ),
+                  },
+                  {
+                    id: "Cricket",
+                    label: t(language, "cricket") || "Cricket",
+                    icon: (isActive: boolean) => (
+                      <Ionicons
+                        name="close-circle-outline"
+                        size={16}
+                        color={isActive ? "#fff" : theme.colors.textMuted}
+                      />
+                    ),
+                  },
                   {
                     id: "Training",
                     label: t(language, "training") || "Training",
+                    icon: (isActive: boolean) => (
+                      <Ionicons
+                        name="barbell-outline"
+                        size={16}
+                        color={isActive ? "#fff" : theme.colors.textMuted}
+                      />
+                    ),
                   },
                 ]}
               />
@@ -323,7 +432,17 @@ export default function Play() {
                     activeOption={trainingMode}
                     onSelect={(val: string) =>
                       setTrainingMode(
-                        val as "around_the_clock" | "100_darts" | "bobs_27",
+                        val as
+                          | "around_the_clock"
+                          | "100_darts"
+                          | "bobs_27"
+                          | "catch_40"
+                          | "jdc_challenge"
+                          | "bermuda_triangle"
+                          | "shanghai"
+                          | "halve_it"
+                          | "baseball"
+                          | "chase_the_dragon",
                       )
                     }
                     options={[
@@ -334,6 +453,17 @@ export default function Play() {
                         desc:
                           t(language, "aroundTheClockDesc") ||
                           "Hit numbers 1-20 sequentially.",
+                        icon: (
+                          <Ionicons
+                            name="time-outline"
+                            size={24}
+                            color={
+                              trainingMode === "around_the_clock"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
                       },
                       {
                         id: "100_darts",
@@ -341,6 +471,17 @@ export default function Play() {
                         desc:
                           t(language, "100DartsDesc") ||
                           "Throw 100 darts for highest score.",
+                        icon: (
+                          <Ionicons
+                            name="stats-chart-outline"
+                            size={24}
+                            color={
+                              trainingMode === "100_darts"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
                       },
                       {
                         id: "bobs_27",
@@ -348,6 +489,145 @@ export default function Play() {
                         desc:
                           t(language, "bobs27Desc") ||
                           "Double training game by Bob Anderson.",
+                        icon: (
+                          <Ionicons
+                            name="disc-outline"
+                            size={24}
+                            color={
+                              trainingMode === "bobs_27"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "catch_40",
+                        title: t(language, "catch40") || "Catch 40",
+                        desc:
+                          t(language, "catch40Desc") ||
+                          "Checkout numbers 61 to 100 with max 6 darts each.",
+                        icon: (
+                          <Ionicons
+                            name="flash-outline"
+                            size={24}
+                            color={
+                              trainingMode === "catch_40"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "jdc_challenge",
+                        title: t(language, "jdcChallenge") || "JDC Challenge",
+                        desc:
+                          t(language, "jdcChallengeDesc") ||
+                          "Official JDC 57-dart routine: Scoring, Doubles, Scoring.",
+                        icon: (
+                          <Ionicons
+                            name="star-outline"
+                            size={24}
+                            color={
+                              trainingMode === "jdc_challenge"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "bermuda_triangle",
+                        title:
+                          t(language, "bermudaTriangle") || "Bermuda Triangle",
+                        desc:
+                          t(language, "bermudaTriangleDesc") ||
+                          "Hit specific targets. Miss with all 3 darts and your score is halved!",
+                        icon: (
+                          <Ionicons
+                            name="boat-outline"
+                            size={24}
+                            color={
+                              trainingMode === "bermuda_triangle"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "shanghai",
+                        title: t(language, "shanghai") || "Shanghai",
+                        desc:
+                          t(language, "shanghaiDesc") ||
+                          "Hit 1-20 in order. Hit S, D, T in one round for an instant win!",
+                        icon: (
+                          <Ionicons
+                            name="medal-outline"
+                            size={24}
+                            color={
+                              trainingMode === "shanghai"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "halve_it",
+                        title: t(language, "halveIt") || "Halve-It",
+                        desc:
+                          t(language, "halveItDesc") ||
+                          "Start with 40 pts. Hit the target or your score is halved!",
+                        icon: (
+                          <Ionicons
+                            name="star-half-outline"
+                            size={24}
+                            color={
+                              trainingMode === "halve_it"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "baseball",
+                        title: t(language, "baseball") || "Baseball",
+                        desc:
+                          t(language, "baseballDesc") ||
+                          "Play 9 innings (targets 1-9). Single=1, Double=2, Treble=3 runs.",
+                        icon: (
+                          <Ionicons
+                            name="baseball-outline"
+                            size={24}
+                            color={
+                              trainingMode === "baseball"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "chase_the_dragon",
+                        title:
+                          t(language, "chaseTheDragon") || "Chase the Dragon",
+                        desc:
+                          t(language, "chaseTheDragonDesc") ||
+                          "Hit 10-20 Singles, then Trebles, Doubles, and Bulls in order.",
+                        icon: (
+                          <Ionicons
+                            name="footsteps-outline"
+                            size={24}
+                            color={
+                              trainingMode === "chase_the_dragon"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
                       },
                     ]}
                   />
@@ -458,12 +738,10 @@ export default function Play() {
                 else if (gameMode === "Cricket")
                   router.push("/gamemodes/cricket");
                 else if (gameMode === "Training") {
-                  if (trainingMode === "around_the_clock")
-                    router.push("/gamemodes/aroundtheclock");
-                  else if (trainingMode === "100_darts")
-                    router.push("/gamemodes/hundreddarts");
-                  else if (trainingMode === "bobs_27")
-                    router.push("/gamemodes/bobstwentyseven");
+                  const route = TRAINING_CONFIG.find(
+                    (tc) => tc.id === trainingMode,
+                  )?.route;
+                  if (route) router.push(route as any);
                 }
               }}
             />

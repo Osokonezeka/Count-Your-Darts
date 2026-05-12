@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/en";
 import "dayjs/locale/pl";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useRef } from "react";
 import {
   Dimensions,
   FlatList,
@@ -16,11 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, {
-  FadeIn,
-  FadeOut,
-  LinearTransition,
-} from "react-native-reanimated";
+import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
 
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
@@ -50,14 +46,75 @@ export type MatchHistory = {
   gameState?: Record<string, unknown>;
 };
 
-const MODE_COLORS: Record<string, { bg: string; text: string; label: string }> =
-  {
-    X01: { bg: "#e6f4ea", text: "#10b981", label: "X01" },
-    Cricket: { bg: "#f5f3ff", text: "#8b5cf6", label: "CRICKET" },
-    "Bob's 27": { bg: "#fffbeb", text: "#f59e0b", label: "BOB'S" },
-    "100 Darts": { bg: "#f0f9ff", text: "#0ea5e9", label: "100" },
-    "Around the Clock": { bg: "#fdf2f8", text: "#ec4899", label: "CLOCK" },
-  };
+const MODE_CONFIG: Record<
+  string,
+  { bg?: string; text?: string; label: string; route: string }
+> = {
+  X01: { label: "X01", route: "/gamemodes/dart" },
+  Cricket: { label: "CRICKET", route: "/gamemodes/cricket" },
+  "Bob's 27": {
+    bg: "#fffbeb",
+    text: "#f59e0b",
+    label: "BOB'S",
+    route: "/gamemodes/bobstwentyseven",
+  },
+  "100 Darts": {
+    bg: "#f0f9ff",
+    text: "#0ea5e9",
+    label: "100",
+    route: "/gamemodes/hundreddarts",
+  },
+  "Around the Clock": {
+    bg: "#fdf2f8",
+    text: "#ec4899",
+    label: "CLOCK",
+    route: "/gamemodes/aroundtheclock",
+  },
+  "Catch 40": {
+    bg: "#f5f3ff",
+    text: "#8b5cf6",
+    label: "C40",
+    route: "/gamemodes/catchforty",
+  },
+  "JDC Challenge": {
+    bg: "#e0e7ff",
+    text: "#4f46e5",
+    label: "JDC",
+    route: "/gamemodes/jdcchallenge",
+  },
+  "Bermuda Triangle": {
+    bg: "#ccfbf1",
+    text: "#0d9488",
+    label: "BERMUDA",
+    route: "/gamemodes/bermudatriangle",
+  },
+  Shanghai: {
+    bg: "#fff7ed",
+    text: "#ea580c",
+    label: "SHANGHAI",
+    route: "/gamemodes/shanghai",
+  },
+  "Halve-It": {
+    bg: "#cffafe",
+    text: "#0891b2",
+    label: "HALVE-IT",
+    route: "/gamemodes/halveit",
+  },
+  Baseball: {
+    bg: "#ecfccb",
+    text: "#65a30d",
+    label: "BASEBALL",
+    route: "/gamemodes/baseball",
+  },
+  "Chase the Dragon": {
+    bg: "#fae8ff",
+    text: "#c026d3",
+    label: "DRAGON",
+    route: "/gamemodes/chasethedragon",
+  },
+};
+
+const ASCENDING_SCORE_MODES = ["Around the Clock"];
 
 export interface ParsedMatchStat {
   name: string;
@@ -85,6 +142,22 @@ export interface ParsedMatchStat {
   mPlayed?: number;
   mWon?: number;
   isBust?: boolean;
+  c2?: number;
+  c3?: number;
+  c4_6?: number;
+  fails?: number;
+  targetAvg?: string;
+  phase1?: number;
+  phase2?: number;
+  phase3?: number;
+  halves?: number;
+  shanghais?: number;
+  sHits?: number;
+  dHits?: number;
+  tHits?: number;
+  accuracy?: string;
+  reached?: number;
+  scorelessInnings?: number;
 }
 
 interface MatchStatCardProps {
@@ -213,6 +286,70 @@ const MatchStatCard = React.memo(
             valA = a.status || "";
             valB = b.status || "";
             break;
+          case "targetAvg":
+            valA = parseFloat(a.targetAvg || "0");
+            valB = parseFloat(b.targetAvg || "0");
+            break;
+          case "c2":
+            valA = a.c2 || 0;
+            valB = b.c2 || 0;
+            break;
+          case "c3":
+            valA = a.c3 || 0;
+            valB = b.c3 || 0;
+            break;
+          case "c4_6":
+            valA = a.c4_6 || 0;
+            valB = b.c4_6 || 0;
+            break;
+          case "fails":
+            valA = a.fails || 0;
+            valB = b.fails || 0;
+            break;
+          case "phase1":
+            valA = a.phase1 || 0;
+            valB = b.phase1 || 0;
+            break;
+          case "phase2":
+            valA = a.phase2 || 0;
+            valB = b.phase2 || 0;
+            break;
+          case "phase3":
+            valA = a.phase3 || 0;
+            valB = b.phase3 || 0;
+            break;
+          case "halves":
+            valA = a.halves || 0;
+            valB = b.halves || 0;
+            break;
+          case "shanghais":
+            valA = a.shanghais || 0;
+            valB = b.shanghais || 0;
+            break;
+          case "sHits":
+            valA = a.sHits || 0;
+            valB = b.sHits || 0;
+            break;
+          case "dHits":
+            valA = a.dHits || 0;
+            valB = b.dHits || 0;
+            break;
+          case "tHits":
+            valA = a.tHits || 0;
+            valB = b.tHits || 0;
+            break;
+          case "accuracy":
+            valA = parseFloat(a.accuracy || "0");
+            valB = parseFloat(b.accuracy || "0");
+            break;
+          case "reached":
+            valA = a.reached || 0;
+            valB = b.reached || 0;
+            break;
+          case "scorelessInnings":
+            valA = a.scorelessInnings || 0;
+            valB = b.scorelessInnings || 0;
+            break;
         }
 
         if (valA === valB) return 0;
@@ -289,11 +426,7 @@ const MatchStatCard = React.memo(
           </Pressable>
 
           {isOpen && (
-            <Animated.View
-              entering={FadeIn.duration(200)}
-              exiting={FadeOut.duration(200)}
-              style={styles.table}
-            >
+            <Animated.View entering={FadeIn.duration(200)} style={styles.table}>
               {item.id === "performance" && (
                 <>
                   <View style={styles.rowHeader}>
@@ -452,10 +585,7 @@ const MatchStatCard = React.memo(
                           />
                         </Pressable>
                         {!isCollapsed && (
-                          <Animated.View
-                            entering={FadeIn.duration(200)}
-                            exiting={FadeOut.duration(200)}
-                          >
+                          <Animated.View entering={FadeIn.duration(200)}>
                             <View style={styles.rowHeader}>
                               <View style={styles.colNameWrap}>
                                 <Text style={styles.colText}>
@@ -531,10 +661,7 @@ const MatchStatCard = React.memo(
                           />
                         </Pressable>
                         {!isCollapsed && (
-                          <Animated.View
-                            entering={FadeIn.duration(200)}
-                            exiting={FadeOut.duration(200)}
-                          >
+                          <Animated.View entering={FadeIn.duration(200)}>
                             <HeatmapBoard
                               coords={s.coords}
                               theme={theme}
@@ -699,6 +826,427 @@ const MatchStatCard = React.memo(
                   ))}
                 </>
               )}
+              {item.id === "catch40_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("PTS", "score")}
+                    {renderSortableHeader(
+                      t(language, "avgShort") || "AVG",
+                      "targetAvg",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text style={styles.cell}>{s.targetAvg}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "catch40_details" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("3P", "c2")}
+                    {renderSortableHeader("2P", "c3")}
+                    {renderSortableHeader("1P", "c4_6")}
+                    {renderSortableHeader("0P", "fails")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.c2}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.c3}
+                      </Text>
+                      <Text style={styles.cell}>{s.c4_6}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.danger }]}
+                      >
+                        {s.fails}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "jdc_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("PTS", "score")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "jdc_details" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("10-15", "phase1")}
+                    {renderSortableHeader("DOUBLES", "phase2")}
+                    {renderSortableHeader("15-20", "phase3")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text style={styles.cell}>{s.phase1}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.phase2}
+                      </Text>
+                      <Text style={styles.cell}>{s.phase3}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "bermuda_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("PTS", "score")}
+                    {renderSortableHeader("ERRORS", "halves")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          {
+                            color:
+                              s.halves && s.halves > 0
+                                ? theme.colors.danger
+                                : theme.colors.success,
+                          },
+                        ]}
+                      >
+                        {s.halves}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "halveit_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("PTS", "score")}
+                    {renderSortableHeader("ERRORS", "halves")}
+                    {renderSortableHeader(
+                      t(language, "accuracyShort") || "ACC",
+                      "accuracy",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          {
+                            color:
+                              s.halves && s.halves > 0
+                                ? theme.colors.danger
+                                : theme.colors.success,
+                          },
+                        ]}
+                      >
+                        {s.halves}
+                      </Text>
+                      <Text style={[styles.cell, { fontWeight: "bold" }]}>
+                        {s.accuracy}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "halveit_details" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("S", "sHits")}
+                    {renderSortableHeader("D", "dHits")}
+                    {renderSortableHeader("T", "tHits")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.sHits}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.dHits}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.tHits}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "shanghai_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("PTS", "score")}
+                    {renderSortableHeader(
+                      t(language, "target") || "Target",
+                      "reached",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "accuracyShort") || "ACC",
+                      "accuracy",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>
+                        {s.name} {s.shanghais && s.shanghais > 0 ? "🏆" : ""}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text style={styles.cell}>{s.reached}</Text>
+                      <Text style={[styles.cell, { fontWeight: "bold" }]}>
+                        {s.accuracy}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "shanghai_details" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("S", "sHits")}
+                    {renderSortableHeader("D", "dHits")}
+                    {renderSortableHeader("T", "tHits")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.sHits}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.dHits}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.tHits}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "dragon_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "darts") || "Darts",
+                      "darts",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "accuracyShort") || "ACC",
+                      "accuracy",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text style={styles.cell}>{s.darts}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.success },
+                        ]}
+                      >
+                        {s.accuracy}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "baseball_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "runs")?.toUpperCase() || "RUNS",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "scoreless")?.toUpperCase() || "0 RUNS",
+                      "scorelessInnings",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          {
+                            color:
+                              s.scorelessInnings && s.scorelessInnings > 0
+                                ? theme.colors.danger
+                                : theme.colors.success,
+                          },
+                        ]}
+                      >
+                        {s.scorelessInnings}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "baseball_details" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader("S", "sHits")}
+                    {renderSortableHeader("D", "dHits")}
+                    {renderSortableHeader("T", "tHits")}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.sHits}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.dHits}
+                      </Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.tHits}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
             </Animated.View>
           )}
         </Animated.View>
@@ -718,7 +1266,19 @@ export default function HistoryScreen() {
   const [history, setHistory] = useState<MatchHistory[]>([]);
   const [visibleCount, setVisibleCount] = useState(10);
   const [filterMode, setFilterMode] = useState<
-    "All" | "X01" | "Cricket" | "Around the Clock" | "Bob's 27" | "100 Darts"
+    | "All"
+    | "X01"
+    | "Cricket"
+    | "Around the Clock"
+    | "Bob's 27"
+    | "100 Darts"
+    | "Catch 40"
+    | "JDC Challenge"
+    | "Bermuda Triangle"
+    | "Shanghai"
+    | "Halve-It"
+    | "Baseball"
+    | "Chase the Dragon"
   >("All");
   const [scrollLayout, setScrollLayout] = useState({
     width: 0,
@@ -726,6 +1286,10 @@ export default function HistoryScreen() {
     offset: 0,
   });
   const [selectedMatch, setSelectedMatch] = useState<MatchHistory | null>(null);
+
+  const lastSelectedMatch = useRef<MatchHistory | null>(null);
+  if (selectedMatch) lastSelectedMatch.current = selectedMatch;
+  const matchToDisplay = selectedMatch || lastSelectedMatch.current;
 
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -743,6 +1307,18 @@ export default function HistoryScreen() {
     aroundtheclock_summary: true,
     bob27_summary: true,
     hundreddarts_summary: true,
+    catch40_summary: true,
+    catch40_details: true,
+    jdc_summary: true,
+    jdc_details: true,
+    bermuda_summary: true,
+    shanghai_summary: true,
+    shanghai_details: true,
+    halveit_summary: true,
+    halveit_details: true,
+    baseball_summary: true,
+    baseball_details: true,
+    dragon_summary: true,
     heatmap: true,
   });
   const [collapsedPlayers, setCollapsedPlayers] = useState<
@@ -863,10 +1439,10 @@ export default function HistoryScreen() {
     scrollLayout.offset + scrollLayout.width < scrollLayout.contentWidth - 5;
 
   const singleMatchStats = useMemo(() => {
-    if (!selectedMatch) return [];
+    if (!matchToDisplay) return [];
 
-    if (selectedMatch.mode === "Cricket") {
-      return selectedMatch.players.map((p) => {
+    if (matchToDisplay.mode === "Cricket") {
+      return matchToDisplay.players.map((p) => {
         const closedCount =
           p.totalClosedTargets !== undefined
             ? p.totalClosedTargets
@@ -901,8 +1477,116 @@ export default function HistoryScreen() {
       });
     }
 
-    if (selectedMatch.mode === "Around the Clock") {
-      return selectedMatch.players.map((p) => ({
+    if (matchToDisplay.mode === "Catch 40") {
+      return matchToDisplay.players.map((p) => {
+        const targetsPlayed =
+          (p.c2 || 0) + (p.c3 || 0) + (p.c4_6 || 0) + (p.fails || 0);
+        const avg =
+          targetsPlayed > 0
+            ? ((p.dartsCount || p.darts || 0) / targetsPlayed).toFixed(1)
+            : "0.0";
+        return {
+          name: p.name,
+          score: p.score || 0,
+          darts: p.dartsCount || p.darts || 0,
+          c2: p.c2 || 0,
+          c3: p.c3 || 0,
+          c4_6: p.c4_6 || 0,
+          fails: p.fails || 0,
+          targetAvg: avg,
+        };
+      });
+    }
+
+    if (matchToDisplay.mode === "JDC Challenge") {
+      return matchToDisplay.players.map((p) => ({
+        name: p.name,
+        score: p.score || 0,
+        darts: p.dartsCount || p.darts || 0,
+        phase1: p.phase1 || 0,
+        phase2: p.phase2 || 0,
+        phase3: p.phase3 || 0,
+      }));
+    }
+
+    if (matchToDisplay.mode === "Bermuda Triangle") {
+      return matchToDisplay.players.map((p) => ({
+        name: p.name,
+        score: p.score || 0,
+        halves: p.halves || 0,
+      }));
+    }
+
+    if (matchToDisplay.mode === "Halve-It") {
+      return matchToDisplay.players.map((p) => {
+        const darts = p.dartsCount || p.darts || 0;
+        return {
+          name: p.name,
+          score: p.score || 0,
+          halves: p.halves || 0,
+          sHits: p.sHits || 0,
+          dHits: p.dHits || 0,
+          tHits: p.tHits || 0,
+          accuracy:
+            darts > 0
+              ? ((((p.hits as number) || 0) / darts) * 100).toFixed(1) + "%"
+              : "0%",
+        };
+      });
+    }
+
+    if (matchToDisplay.mode === "Shanghai") {
+      return matchToDisplay.players.map((p) => {
+        const darts = p.dartsCount || p.darts || 0;
+        const reached = Math.min(
+          20,
+          Math.floor(Math.max(0, darts - 1) / 3) + 1,
+        );
+        return {
+          name: p.name,
+          score: p.score || 0,
+          shanghais: p.shanghais || 0,
+          sHits: p.sHits || 0,
+          dHits: p.dHits || 0,
+          tHits: p.tHits || 0,
+          accuracy:
+            darts > 0
+              ? ((((p.hits as number) || 0) / darts) * 100).toFixed(1) + "%"
+              : "0%",
+          reached,
+        };
+      });
+    }
+
+    if (matchToDisplay.mode === "Baseball") {
+      return matchToDisplay.players.map((p) => {
+        return {
+          name: p.name,
+          score: p.score || 0,
+          sHits: p.sHits || 0,
+          dHits: p.dHits || 0,
+          tHits: p.tHits || 0,
+          scorelessInnings: p.scorelessInnings || 0,
+          accuracy:
+            p.dartsCount && p.dartsCount > 0
+              ? ((((p.hits as number) || 0) / p.dartsCount) * 100).toFixed(1) +
+                "%"
+              : "0%",
+        };
+      });
+    }
+
+    if (matchToDisplay.mode === "Chase the Dragon") {
+      return matchToDisplay.players.map((p) => ({
+        name: p.name,
+        score: p.score || 0,
+        darts: p.darts || 0,
+        accuracy: p.accuracy || "0%",
+      }));
+    }
+
+    if (matchToDisplay.mode === "Around the Clock") {
+      return matchToDisplay.players.map((p) => ({
         name: p.name,
         score: p.score || 0,
         darts: p.darts || 0,
@@ -910,8 +1594,8 @@ export default function HistoryScreen() {
       }));
     }
 
-    if (selectedMatch.mode === "Bob's 27") {
-      return selectedMatch.players.map((p) => ({
+    if (matchToDisplay.mode === "Bob's 27") {
+      return matchToDisplay.players.map((p) => ({
         name: p.name,
         score: p.score || 0,
         darts: p.darts || 0,
@@ -924,8 +1608,8 @@ export default function HistoryScreen() {
       }));
     }
 
-    if (selectedMatch.mode === "100 Darts") {
-      return selectedMatch.players.map((p) => {
+    if (matchToDisplay.mode === "100 Darts") {
+      return matchToDisplay.players.map((p) => {
         const hits: Record<number, { S: number; D: number; T: number }> = {};
         [...Array(20)].forEach((_, i) => (hits[i + 1] = { S: 0, D: 0, T: 0 }));
         hits[25] = { S: 0, D: 0, T: 0 };
@@ -961,14 +1645,14 @@ export default function HistoryScreen() {
     }
 
     const playerMap: Record<string, ParsedMatchStat> = {};
-    const winner = [...selectedMatch.players].sort(
+    const winner = [...matchToDisplay.players].sort(
       (a, b) =>
         (b.sets || 0) - (a.sets || 0) ||
         (b.legs || 0) - (a.legs || 0) ||
         (a.score || 0) - (b.score || 0),
     )[0];
 
-    selectedMatch.players.forEach((p: PlayerMatchStats) => {
+    matchToDisplay.players.forEach((p: PlayerMatchStats) => {
       playerMap[p.name] = {
         name: p.name,
         mPlayed: 1,
@@ -1066,15 +1750,11 @@ export default function HistoryScreen() {
       }
     });
     return Object.values(playerMap);
-  }, [selectedMatch]);
+  }, [matchToDisplay]);
 
   const renderGameCard = ({ item }: { item: MatchHistory }) => {
     const isCricket = item.mode === "Cricket";
-    const isAroundTheClock = item.mode === "Around the Clock";
-    const isBob27 = item.mode === "Bob's 27";
-    const isHundredDarts = item.mode === "100 Darts";
-    const isSpecialMode =
-      isCricket || isAroundTheClock || isBob27 || isHundredDarts;
+    const isSpecialMode = item.mode !== "X01";
 
     let displayDate = item.date;
     const parsedDate = parseDateString(item.date || "");
@@ -1091,15 +1771,10 @@ export default function HistoryScreen() {
       if (a.rank) return -1;
       if (b.rank) return 1;
 
-      if (
-        item.mode === "100 Darts" ||
-        item.mode === "Bob's 27" ||
-        item.mode === "Cricket"
-      ) {
+      if (isSpecialMode) {
+        if (ASCENDING_SCORE_MODES.includes(item.mode))
+          return (a.darts || 0) - (b.darts || 0);
         return (b.score || 0) - (a.score || 0);
-      }
-      if (item.mode === "Around the Clock") {
-        return (a.darts || 0) - (b.darts || 0);
       }
       return (
         (b.sets || 0) - (a.sets || 0) ||
@@ -1108,26 +1783,17 @@ export default function HistoryScreen() {
       );
     });
 
-    let badgeBg = isCricket
-      ? theme.colors.dangerLight
-      : theme.colors.primaryLight;
-    let badgeText = isCricket ? theme.colors.danger : theme.colors.primary;
-    let badgeLabel = item.mode;
-    if (item.mode === "Bob's 27") {
-      badgeBg = "#fffbeb";
-      badgeText = "#f59e0b";
-      badgeLabel = "BOB'S";
-    }
-    if (item.mode === "100 Darts") {
-      badgeBg = "#f0f9ff";
-      badgeText = "#0ea5e9";
-      badgeLabel = "100";
-    }
-    if (item.mode === "Around the Clock") {
-      badgeBg = "#fdf2f8";
-      badgeText = "#ec4899";
-      badgeLabel = "CLOCK";
-    }
+    const modeConfig = MODE_CONFIG[item.mode] || {
+      label: item.mode.toUpperCase(),
+      route: "/gamemodes/dart",
+    };
+    let badgeBg =
+      modeConfig.bg ||
+      (isCricket ? theme.colors.dangerLight : theme.colors.primaryLight);
+    let badgeText =
+      modeConfig.text ||
+      (isCricket ? theme.colors.danger : theme.colors.primary);
+    let badgeLabel = modeConfig.label;
 
     let settingsStr = "";
     if (item.mode === "X01")
@@ -1143,29 +1809,40 @@ export default function HistoryScreen() {
       >
         <View style={styles.cardHeader}>
           <View style={styles.dateRow}>
-            <Ionicons
-              name="calendar-outline"
-              size={16}
-              color={theme.colors.textMuted}
-            />
-            <Text style={styles.dateText}>{displayDate}</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 6,
+                flexShrink: 1,
+              }}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={16}
+                color={theme.colors.textMuted}
+                style={{ marginTop: 1 }}
+              />
+              <Text style={styles.dateText} numberOfLines={2}>
+                {displayDate}
+              </Text>
+            </View>
             {item.duration && (
-              <>
-                <Text
-                  style={{
-                    color: theme.colors.cardBorder,
-                    marginHorizontal: 4,
-                  }}
-                >
-                  •
-                </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 6,
+                }}
+              >
                 <Ionicons
                   name="time-outline"
                   size={16}
                   color={theme.colors.textMuted}
                 />
                 <Text style={styles.dateText}>{item.duration}</Text>
-              </>
+              </View>
             )}
           </View>
           <View style={styles.cardHeaderActions}>
@@ -1269,7 +1946,7 @@ export default function HistoryScreen() {
   };
 
   const activeSections = useMemo(() => {
-    if (!selectedMatch) return [];
+    if (!matchToDisplay) return [];
 
     const hasAnyHits = singleMatchStats.some((s: ParsedMatchStat) => {
       if (!s.hits) return false;
@@ -1279,7 +1956,7 @@ export default function HistoryScreen() {
       );
     });
 
-    if (selectedMatch.mode === "Cricket") {
+    if (matchToDisplay.mode === "Cricket") {
       return [
         {
           id: "cricket_summary",
@@ -1288,7 +1965,7 @@ export default function HistoryScreen() {
       ];
     }
 
-    if (selectedMatch.mode === "Around the Clock") {
+    if (matchToDisplay.mode === "Around the Clock") {
       return [
         {
           id: "aroundtheclock_summary",
@@ -1297,13 +1974,75 @@ export default function HistoryScreen() {
       ];
     }
 
-    if (selectedMatch.mode === "Bob's 27") {
+    if (matchToDisplay.mode === "Bob's 27") {
       return [
         { id: "bob27_summary", title: t(language, "bobs27") || "Bob's 27" },
       ];
     }
 
-    if (selectedMatch.mode === "100 Darts") {
+    if (matchToDisplay.mode === "Catch 40") {
+      return [
+        { id: "catch40_summary", title: t(language, "catch40") || "Catch 40" },
+        { id: "catch40_details", title: t(language, "scoring") || "Scoring" },
+      ];
+    }
+
+    if (matchToDisplay.mode === "JDC Challenge") {
+      return [
+        {
+          id: "jdc_summary",
+          title: t(language, "jdcChallenge") || "JDC Challenge",
+        },
+        { id: "jdc_details", title: t(language, "scoring") || "Scoring" },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Bermuda Triangle") {
+      return [
+        {
+          id: "bermuda_summary",
+          title: t(language, "bermudaTriangle") || "Bermuda Triangle",
+        },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Halve-It") {
+      return [
+        { id: "halveit_summary", title: t(language, "halveIt") || "Halve-It" },
+        { id: "halveit_details", title: t(language, "scoring") || "Scoring" },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Shanghai") {
+      return [
+        {
+          id: "shanghai_summary",
+          title: t(language, "shanghai") || "Shanghai",
+        },
+        { id: "shanghai_details", title: t(language, "scoring") || "Scoring" },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Baseball") {
+      return [
+        {
+          id: "baseball_summary",
+          title: t(language, "baseball") || "Baseball",
+        },
+        { id: "baseball_details", title: t(language, "scoring") || "Scoring" },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Chase the Dragon") {
+      return [
+        {
+          id: "dragon_summary",
+          title: t(language, "chaseTheDragon") || "Chase the Dragon",
+        },
+      ];
+    }
+
+    if (matchToDisplay.mode === "100 Darts") {
       const sections = [
         {
           id: "hundreddarts_summary",
@@ -1360,7 +2099,7 @@ export default function HistoryScreen() {
       });
 
     return sections;
-  }, [selectedMatch, singleMatchStats, language]);
+  }, [matchToDisplay, singleMatchStats, language]);
 
   return (
     <View style={styles.container}>
@@ -1398,16 +2137,30 @@ export default function HistoryScreen() {
                   | "Cricket"
                   | "Around the Clock"
                   | "Bob's 27"
-                  | "100 Darts",
+                  | "100 Darts"
+                  | "Catch 40"
+                  | "JDC Challenge"
+                  | "Bermuda Triangle"
+                  | "Shanghai"
+                  | "Halve-It"
+                  | "Baseball"
+                  | "Chase the Dragon",
               )
             }
-            style={[styles.filterContainer, { width: 580 }]}
+            style={[styles.filterContainer, { width: 1240 }]}
             options={[
               { id: "All", label: t(language, "all") || "All" },
               { id: "X01", label: "X01" },
               { id: "Cricket", label: t(language, "cricket") || "Cricket" },
               { id: "Bob's 27", label: t(language, "bobsShort") || "Bob's" },
               { id: "100 Darts", label: "100" },
+              { id: "Catch 40", label: "C40" },
+              { id: "JDC Challenge", label: "JDC" },
+              { id: "Bermuda Triangle", label: "Bermuda" },
+              { id: "Shanghai", label: "Shanghai" },
+              { id: "Halve-It", label: "Halve-It" },
+              { id: "Baseball", label: "Baseball" },
+              { id: "Chase the Dragon", label: "Dragon" },
               {
                 id: "Around the Clock",
                 label: t(language, "clockShort") || "Clock",
@@ -1466,6 +2219,7 @@ export default function HistoryScreen() {
         visible={!!selectedMatch}
         animationType="slide"
         presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedMatch(null)}
         statusBarTranslucent
         navigationBarTranslucent
       >
@@ -1478,37 +2232,26 @@ export default function HistoryScreen() {
                 {t(language, "matchStatsTitle") || "Match Statistics"}
               </Text>
               <Text style={styles.modalHeaderSubtitle}>
-                {selectedMatch?.date}{" "}
-                {selectedMatch?.duration && `• ⏱ ${selectedMatch.duration}`}
+                {matchToDisplay?.date}{" "}
+                {matchToDisplay?.duration && `• ⏱ ${matchToDisplay.duration}`}
               </Text>
             </View>
 
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
             >
-              {selectedMatch?.isUnfinished && (
+              {matchToDisplay?.isUnfinished && (
                 <AnimatedPressable
                   onPress={() => {
                     setSelectedMatch(null);
 
-                    let targetPath:
-                      | "/gamemodes/dart"
-                      | "/gamemodes/cricket"
-                      | "/gamemodes/hundreddarts"
-                      | "/gamemodes/bobstwentyseven"
-                      | "/gamemodes/aroundtheclock" = "/gamemodes/dart";
-                    if (selectedMatch.mode === "Cricket")
-                      targetPath = "/gamemodes/cricket";
-                    else if (selectedMatch.mode === "100 Darts")
-                      targetPath = "/gamemodes/hundreddarts";
-                    else if (selectedMatch.mode === "Bob's 27")
-                      targetPath = "/gamemodes/bobstwentyseven";
-                    else if (selectedMatch.mode === "Around the Clock")
-                      targetPath = "/gamemodes/aroundtheclock";
+                    const targetPath =
+                      MODE_CONFIG[matchToDisplay.mode]?.route ||
+                      "/gamemodes/dart";
 
                     router.push({
-                      pathname: targetPath,
-                      params: { resumeData: JSON.stringify(selectedMatch) },
+                      pathname: targetPath as any,
+                      params: { resumeData: JSON.stringify(matchToDisplay) },
                     });
                   }}
                   style={styles.resumeBtnModal}
@@ -1548,7 +2291,7 @@ export default function HistoryScreen() {
                 bullTerm={bullTerm}
                 language={language}
                 theme={theme}
-                mode={selectedMatch?.mode}
+                mode={matchToDisplay?.mode}
               />
             ))}
           </ScrollView>
@@ -1622,16 +2365,20 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     cardHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
+      alignItems: "flex-start",
       marginBottom: 12,
     },
-    dateRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    dateRow: {
+      flex: 1,
+      marginRight: 10,
+    },
     dateText: {
       color: theme.colors.textMuted,
       fontSize: 13,
       fontWeight: "600",
+      flexShrink: 1,
     },
-    cardHeaderActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+    cardHeaderActions: { flexDirection: "row", alignItems: "center", gap: 8 },
     modeBadge: {
       paddingHorizontal: 10,
       paddingVertical: 4,

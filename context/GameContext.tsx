@@ -8,7 +8,17 @@ export type Settings = {
   sets: number;
   gameMode: "X01" | "Cricket" | "Training";
   cricketMode?: "standard" | "no-score";
-  trainingMode?: "around_the_clock" | "100_darts" | "bobs_27";
+  trainingMode?:
+    | "around_the_clock"
+    | "100_darts"
+    | "bobs_27"
+    | "catch_40"
+    | "jdc_challenge"
+    | "bermuda_triangle"
+    | "shanghai"
+    | "halve_it"
+    | "baseball"
+    | "chase_the_dragon";
 };
 
 type GameContextType = {
