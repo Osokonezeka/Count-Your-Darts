@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/en";
 import "dayjs/locale/pl";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState, useRef } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   FlatList,
@@ -15,8 +15,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
@@ -111,6 +111,24 @@ const MODE_CONFIG: Record<
     text: "#c026d3",
     label: "DRAGON",
     route: "/gamemodes/chasethedragon",
+  },
+  "121_checkout": {
+    bg: "#dcfce7",
+    text: "#0f766e",
+    label: "121",
+    route: "/gamemodes/onetwoone",
+  },
+  Killer: {
+    bg: "#fee2e2",
+    text: "#b91c1c",
+    label: "KILLER",
+    route: "/gamemodes/killer",
+  },
+  "Score Clash": {
+    bg: "#ffedd5",
+    text: "#c2410c",
+    label: "CLASH",
+    route: "/gamemodes/scoreclash",
   },
 };
 
@@ -1247,6 +1265,145 @@ const MatchStatCard = React.memo(
                   ))}
                 </>
               )}
+              {item.id === "121_checkout_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "highestReached") || "Highest",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "darts") || "Darts",
+                      "darts",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "hitPercent") || "Hit %",
+                      "accuracy",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text style={styles.cell}>{s.darts}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.success },
+                        ]}
+                      >
+                        {s.accuracy}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "killer_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "lives") || "Lives",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "darts") || "Darts",
+                      "darts",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "status") || "Status",
+                      "status",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "bold", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text style={styles.cell}>{s.darts}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          {
+                            color:
+                              s.status === "ELIMINATED"
+                                ? theme.colors.danger
+                                : theme.colors.success,
+                            fontSize: 11,
+                            fontWeight: "bold",
+                          },
+                        ]}
+                      >
+                        {s.status}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+              {item.id === "score_clash_summary" && (
+                <>
+                  <View style={styles.rowHeader}>
+                    {renderSortableHeader(
+                      t(language, "player") || "Player",
+                      "name",
+                      true,
+                    )}
+                    {renderSortableHeader(
+                      t(language, "points") || "Points",
+                      "score",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "score") || "Score",
+                      "totalPoints",
+                    )}
+                    {renderSortableHeader(
+                      t(language, "average") || "Average",
+                      "avg",
+                    )}
+                  </View>
+                  {sortedStats.map((s: ParsedMatchStat) => (
+                    <View key={s.name} style={styles.row}>
+                      <Text style={styles.cellName}>{s.name}</Text>
+                      <Text
+                        style={[
+                          styles.cell,
+                          { fontWeight: "900", color: theme.colors.primary },
+                        ]}
+                      >
+                        {s.score}
+                      </Text>
+                      <Text style={styles.cell}>{s.totalPoints}</Text>
+                      <Text
+                        style={[styles.cell, { color: theme.colors.success }]}
+                      >
+                        {s.avg}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
             </Animated.View>
           )}
         </Animated.View>
@@ -1279,6 +1436,9 @@ export default function HistoryScreen() {
     | "Halve-It"
     | "Baseball"
     | "Chase the Dragon"
+    | "121_checkout"
+    | "Killer"
+    | "Score Clash"
   >("All");
   const [scrollLayout, setScrollLayout] = useState({
     width: 0,
@@ -1319,6 +1479,9 @@ export default function HistoryScreen() {
     baseball_summary: true,
     baseball_details: true,
     dragon_summary: true,
+    "121_checkout_summary": true,
+    killer_summary: true,
+    score_clash_summary: true,
     heatmap: true,
   });
   const [collapsedPlayers, setCollapsedPlayers] = useState<
@@ -1605,6 +1768,40 @@ export default function HistoryScreen() {
             ? (t(language, "bust") || "BUST").toUpperCase()
             : (t(language, "cleared") || "CLEARED").toUpperCase()),
         isBust: p.isBust,
+      }));
+    }
+
+    if (matchToDisplay.mode === "121_checkout") {
+      return matchToDisplay.players.map((p) => ({
+        name: p.name,
+        score: p.score || 120,
+        darts: p.totalMatchDarts || p.darts || 0,
+        accuracy:
+          p.checkoutDarts && p.checkoutDarts > 0
+            ? (((p.checkoutHits || 0) / p.checkoutDarts) * 100).toFixed(1) + "%"
+            : "0%",
+      }));
+    }
+
+    if (matchToDisplay.mode === "Killer") {
+      return matchToDisplay.players.map((p) => ({
+        name: p.name,
+        score: p.score || 0,
+        darts: p.darts || 0,
+        status: p.status || "UNKNOWN",
+      }));
+    }
+
+    if (matchToDisplay.mode === "Score Clash") {
+      return matchToDisplay.players.map((p) => ({
+        name: p.name,
+        score: p.score || 0,
+        totalPoints: p.totalMatchScore || 0,
+        darts: p.darts || 0,
+        avg:
+          p.darts && p.darts > 0
+            ? (((p.totalMatchScore || 0) / p.darts) * 3).toFixed(1)
+            : "0.0",
       }));
     }
 
@@ -2042,6 +2239,33 @@ export default function HistoryScreen() {
       ];
     }
 
+    if (matchToDisplay.mode === "121_checkout") {
+      return [
+        {
+          id: "121_checkout_summary",
+          title: t(language, "121Checkout") || "121 Checkout",
+        },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Killer") {
+      return [
+        {
+          id: "killer_summary",
+          title: t(language, "killer") || "Killer",
+        },
+      ];
+    }
+
+    if (matchToDisplay.mode === "Score Clash") {
+      return [
+        {
+          id: "score_clash_summary",
+          title: t(language, "scoreClash") || "Score Clash",
+        },
+      ];
+    }
+
     if (matchToDisplay.mode === "100 Darts") {
       const sections = [
         {
@@ -2161,6 +2385,12 @@ export default function HistoryScreen() {
               { id: "Halve-It", label: "Halve-It" },
               { id: "Baseball", label: "Baseball" },
               { id: "Chase the Dragon", label: "Dragon" },
+              { id: "121_checkout", label: "121" },
+              { id: "Killer", label: t(language, "killer") || "Killer" },
+              {
+                id: "Score Clash",
+                label: t(language, "scoreClash") || "Score Clash",
+              },
               {
                 id: "Around the Clock",
                 label: t(language, "clockShort") || "Clock",

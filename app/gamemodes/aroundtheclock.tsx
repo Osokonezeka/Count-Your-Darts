@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { produce, current } from "immer";
+import { current, produce } from "immer";
 import React, {
   useCallback,
   useEffect,
@@ -228,7 +228,6 @@ export default function AroundTheClock() {
   useEffect(() => {
     if (allFinished) {
       triggerHaptic("success");
-      saveTrainingStats();
     }
   }, [allFinished]);
 
@@ -473,7 +472,7 @@ export default function AroundTheClock() {
           <AnimatedPrimaryButton
             title={t(language, "endMatch") || "End"}
             theme={theme}
-            onPress={() => router.push("/play")}
+            onPress={() => saveTrainingStats(true)}
           />
         </View>
       </FinishModal>

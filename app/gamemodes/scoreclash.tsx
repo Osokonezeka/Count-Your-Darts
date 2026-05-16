@@ -4,13 +4,13 @@ import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { current, produce } from "immer";
 import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useReducer,
+    useRef,
+    useState,
 } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -35,15 +35,13 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import {
-  breakdownScoreToDarts,
-  resolveBotAverage,
-  simulateBotTurn,
+    breakdownScoreToDarts,
+    resolveBotAverage,
+    simulateBotTurn,
 } from "../../lib/bot";
 import { IMPOSSIBLE_SCORES, formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
-
-const MAX_DARTS = 100;
 
 type Throw = {
   value: number;
@@ -56,31 +54,31 @@ type Throw = {
 type PlayerState = {
   name: string;
   score: number;
+  currentRoundScore: number;
+  totalMatchScore: number;
   dartsCount: number;
+  roundDarts: number;
   turnThrows: Throw[];
   allTurns?: Throw[][];
   isFinished: boolean;
   rank?: number;
-  s60: number;
-  s100: number;
-  s140: number;
-  s180: number;
 };
 
 type GameState = {
+  settings: {
+    dartsPerRound: number;
+    targetPoints: number;
+    scoreClashTieRule: "points" | "tiebreaker";
+  };
   playerStates: PlayerState[];
   currentIndex: number;
   throwsThisTurn: number;
+  roundNumber: number;
+  activeTiebreaker: number[] | null;
   history: GameState[];
+  matchWinner: PlayerState | null;
   speechEvent?: { text: string; id: number } | null;
   isUndoing?: boolean;
-};
-
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
 };
 
 type Action =
@@ -103,67 +101,155 @@ type Action =
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
 
-const scoringReducer = produce((draft: GameState, action: Action) => {
+const formatThrow = (t: Throw) => {
+  if (t.value === 0) return "0";
+  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
+  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
+  return `${prefix}${t.value}`;
+};
+
+const scoreClashReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
-    case "ADD_THROW": {
-      const { value, multiplier, coords } = action.payload;
+    case "ADD_THROW":
+    case "ADD_TURN_SCORE": {
+      const isTurnScore = action.type === "ADD_TURN_SCORE";
+      const payload = action.payload as any;
 
       const snapshot = current(draft);
       draft.history.push({ ...snapshot, history: [] });
       draft.isUndoing = false;
 
       const player = draft.playerStates[draft.currentIndex];
+      const activePool =
+        draft.activeTiebreaker || draft.playerStates.map((_, i) => i);
 
-      const hitPoints = value * multiplier;
-      player.score += hitPoints;
-      player.dartsCount += 1;
+      let turnSum = 0;
+      let addedDartsCount = 0;
 
       if (!player.turnThrows) player.turnThrows = [];
-      player.turnThrows.push({ value, multiplier, coords });
 
-      const isTurnOver =
-        draft.throwsThisTurn === 2 || player.dartsCount === MAX_DARTS;
+      if (isTurnScore) {
+        const dartsRemainingInTurn = 3 - draft.throwsThisTurn;
+        turnSum = payload.score;
+        addedDartsCount = dartsRemainingInTurn;
+        player.dartsCount += addedDartsCount;
+        draft.throwsThisTurn = 3;
+
+        if (payload.individualDarts) {
+          player.turnThrows = payload.individualDarts.map((d: any) => ({
+            ...d,
+            darts: 1,
+            isScoreInput: false,
+          }));
+        } else {
+          player.turnThrows.push({
+            value: turnSum,
+            multiplier: 1,
+            darts: addedDartsCount,
+            isScoreInput: true,
+          });
+        }
+      } else {
+        const { value, multiplier, coords } = payload;
+        turnSum = value * multiplier;
+        addedDartsCount = 1;
+        player.dartsCount += addedDartsCount;
+        draft.throwsThisTurn += 1;
+        player.turnThrows.push({ value, multiplier, coords });
+      }
+
+      player.roundDarts = (player.roundDarts || 0) + addedDartsCount;
+      player.currentRoundScore += turnSum;
+      player.totalMatchScore += turnSum;
+
+      const isTurnOver = draft.throwsThisTurn === 3;
 
       if (isTurnOver) {
-        const turnSum = player.turnThrows.reduce(
-          (sum, tr) => sum + tr.value * tr.multiplier,
-          0,
-        );
-        if (turnSum >= 180) player.s180++;
-        else if (turnSum >= 140) player.s140++;
-        else if (turnSum >= 100) player.s100++;
-        else if (turnSum >= 60) player.s60++;
-
-        if (player.dartsCount === MAX_DARTS) {
-          player.isFinished = true;
-        }
         if (!player.allTurns) player.allTurns = [];
         player.allTurns.push(player.turnThrows);
 
-        draft.speechEvent = { text: turnSum.toString(), id: Date.now() };
+        const currentTurnSumTotal = player.turnThrows.reduce(
+          (sum, tr) =>
+            sum + (tr.isScoreInput ? tr.value : tr.value * tr.multiplier),
+          0,
+        );
+        draft.speechEvent = {
+          text: currentTurnSumTotal.toString(),
+          id: Date.now(),
+        };
 
-        const allDone = draft.playerStates.every((p) => p.isFinished);
-        if (allDone) {
-          const finishers = draft.playerStates
-            .map((p, idx) => ({ ...p, originalIdx: idx }))
-            .sort((a, b) => b.score - a.score);
-          finishers.forEach((f, rankIdx) => {
-            draft.playerStates[f.originalIdx].rank = rankIdx + 1;
+        const isRoundOver = activePool.every(
+          (idx) =>
+            (draft.playerStates[idx].roundDarts || 0) >=
+            draft.settings.dartsPerRound,
+        );
+
+        if (isRoundOver) {
+          const maxScore = Math.max(
+            ...activePool.map(
+              (idx) => draft.playerStates[idx].currentRoundScore,
+            ),
+          );
+          const tiedPlayers = activePool.filter(
+            (idx) => draft.playerStates[idx].currentRoundScore === maxScore,
+          );
+
+          if (
+            tiedPlayers.length === 1 ||
+            draft.settings.scoreClashTieRule !== "tiebreaker"
+          ) {
+            if (maxScore > 0 || tiedPlayers.length === 1) {
+              tiedPlayers.forEach((idx) => {
+                draft.playerStates[idx].score += 1;
+              });
+            }
+            draft.activeTiebreaker = null;
+            draft.roundNumber += 1;
+          } else {
+            draft.activeTiebreaker = tiedPlayers;
+          }
+
+          const matchWinners = draft.playerStates.filter(
+            (p) => p.score >= draft.settings.targetPoints,
+          );
+
+          if (matchWinners.length > 0) {
+            draft.playerStates.forEach((p) => (p.isFinished = true));
+            const sorted = [...draft.playerStates].sort(
+              (a, b) =>
+                b.score - a.score || b.totalMatchScore - a.totalMatchScore,
+            );
+            sorted.forEach((p, idx) => {
+              const original = draft.playerStates.find(
+                (op) => op.name === p.name,
+              )!;
+              original.rank = idx + 1;
+            });
+            draft.matchWinner = draft.playerStates.find(
+              (p) => p.name === sorted[0].name,
+            ) as any;
+            return;
+          }
+
+          draft.playerStates.forEach((p) => {
+            p.currentRoundScore = 0;
+            p.roundDarts = 0;
+            p.turnThrows = [];
           });
-          return;
-        }
 
-        let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
-        while (draft.playerStates[nextIdx].isFinished) {
-          nextIdx = (nextIdx + 1) % draft.playerStates.length;
+          const nextActivePool =
+            draft.activeTiebreaker || draft.playerStates.map((_, i) => i);
+          draft.currentIndex = nextActivePool[0];
+          draft.throwsThisTurn = 0;
+        } else {
+          let currentPoolIdx = activePool.indexOf(draft.currentIndex);
+          let nextPoolIdx = (currentPoolIdx + 1) % activePool.length;
+          draft.currentIndex = activePool[nextPoolIdx];
+          draft.playerStates[draft.currentIndex].turnThrows = [];
+          draft.throwsThisTurn = 0;
         }
-        draft.playerStates[nextIdx].turnThrows = [];
-        draft.currentIndex = nextIdx;
-        draft.throwsThisTurn = 0;
         return;
       }
-
-      draft.throwsThisTurn += 1;
       return;
     }
 
@@ -180,101 +266,16 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
       return;
     }
 
-    case "ADD_TURN_SCORE": {
-      const { score, individualDarts = null } = action.payload;
-      const snapshot = current(draft);
-      draft.history.push({ ...snapshot, history: [] });
-      draft.isUndoing = false;
-
-      const player = draft.playerStates[draft.currentIndex];
-
-      player.score += score;
-      const dartsRemainingInTurn = 3 - draft.throwsThisTurn;
-      const maxDartsLeft = MAX_DARTS - player.dartsCount;
-      const dartsToLog = Math.min(dartsRemainingInTurn, maxDartsLeft);
-
-      player.dartsCount += dartsToLog;
-
-      if (individualDarts) {
-        player.turnThrows = individualDarts.map(
-          (d: { value: number; multiplier: number }) => ({
-            value: d.value,
-            multiplier: d.multiplier,
-            darts: 1,
-            isScoreInput: false,
-          }),
-        );
-      } else {
-        if (!player.turnThrows) player.turnThrows = [];
-        player.turnThrows.push({
-          value: score,
-          multiplier: 1,
-          darts: dartsToLog,
-          isScoreInput: true,
-        });
-      }
-
-      if (score >= 180) player.s180++;
-      else if (score >= 140) player.s140++;
-      else if (score >= 100) player.s100++;
-      else if (score >= 60) player.s60++;
-
-      if (player.dartsCount >= MAX_DARTS) {
-        player.isFinished = true;
-      }
-
-      if (!player.allTurns) player.allTurns = [];
-      player.allTurns.push(player.turnThrows);
-
-      draft.speechEvent = { text: score.toString(), id: Date.now() };
-
-      const allDone = draft.playerStates.every((p) => p.isFinished);
-      if (allDone) {
-        const finishers = draft.playerStates
-          .map((p, idx) => ({ ...p, originalIdx: idx }))
-          .sort((a, b) => b.score - a.score);
-        finishers.forEach((f, rankIdx) => {
-          draft.playerStates[f.originalIdx].rank = rankIdx + 1;
-        });
-        return;
-      }
-
-      let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
-      while (draft.playerStates[nextIdx].isFinished) {
-        nextIdx = (nextIdx + 1) % draft.playerStates.length;
-      }
-      draft.playerStates[nextIdx].turnThrows = [];
-      draft.currentIndex = nextIdx;
-      draft.throwsThisTurn = 0;
-      return;
-    }
-
-    case "UNDO": {
-      if (!draft.history || draft.history.length === 0) return;
-      const prevState = draft.history[draft.history.length - 1];
-
-      let restoredPlayers = prevState.playerStates;
-      if (prevState.throwsThisTurn === 0) {
-        restoredPlayers = restoredPlayers.map((p, idx) =>
-          idx === prevState.currentIndex ? { ...p, turnThrows: [] } : p,
-        );
-      }
-      return {
-        ...prevState,
-        playerStates: restoredPlayers,
-        history: draft.history.slice(0, -1),
-        speechEvent: null,
-        isUndoing: true,
-      };
-    }
-
+    case "UNDO":
     case "RESET_CURRENT_TURN": {
-      if (draft.throwsThisTurn === 0) return;
-      const turnStartIndex = draft.history.length - draft.throwsThisTurn;
-      if (turnStartIndex < 0) return;
-
+      if (draft.history.length === 0) return;
+      let turnStartIndex = draft.history.length - 1;
+      if (action.type === "RESET_CURRENT_TURN") {
+        if (draft.throwsThisTurn === 0) return;
+        turnStartIndex = draft.history.length - draft.throwsThisTurn;
+        if (turnStartIndex < 0) return;
+      }
       const prevState = draft.history[turnStartIndex];
-
       let restoredPlayers = prevState.playerStates;
       if (prevState.throwsThisTurn === 0) {
         restoredPlayers = restoredPlayers.map((p, idx) =>
@@ -292,8 +293,8 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
   }
 });
 
-export default function OneHundredDarts() {
-  const { players } = useGame();
+export default function ScoreClash() {
+  const { players, settings } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
@@ -313,33 +314,43 @@ export default function OneHundredDarts() {
   const isExiting = useRef(false);
 
   const styles = useMemo(
-    () => ({
-      ...getSharedGameStyles(theme),
-      ...getSpecificStyles(theme),
-    }),
+    () => ({ ...getSharedGameStyles(theme), ...getSpecificStyles(theme) }),
     [theme],
   );
+  const {
+    GameAlerts,
+    showExitConfirm,
+    showUndoConfirm,
+    showInvalidScoreAlert,
+  } = useGameModals(language);
 
   const [state, dispatch] = useReducer(
-    scoringReducer,
+    scoreClashReducer,
     parsedResume
       ? parsedResume.gameState
       : {
+          settings: {
+            dartsPerRound: settings?.scoreClashDartsPerRound || 3,
+            targetPoints: settings?.scoreClashTargetPoints || 3,
+            scoreClashTieRule: settings?.scoreClashTieRule || "points",
+          },
           playerStates: players.map((name) => ({
             name,
             score: 0,
+            currentRoundScore: 0,
+            totalMatchScore: 0,
             dartsCount: 0,
+            roundDarts: 0,
             turnThrows: [],
             allTurns: [],
             isFinished: false,
-            s180: 0,
-            s140: 0,
-            s100: 0,
-            s60: 0,
           })),
           currentIndex: 0,
           throwsThisTurn: 0,
+          roundNumber: 1,
+          activeTiebreaker: null,
           history: [],
+          matchWinner: null,
           speechEvent: null,
         },
   );
@@ -352,23 +363,16 @@ export default function OneHundredDarts() {
   const matchTimeRef = useRef<number>(
     parsedResume?.gameState?.savedMatchTime || 0,
   );
+
   const handleTimeUpdate = useCallback((time: number) => {
     matchTimeRef.current = time;
   }, []);
-  const {
-    GameAlerts,
-    showExitConfirm,
-    showUndoConfirm,
-    showInvalidScoreAlert,
-  } = useGameModals(language);
 
   useEffect(() => {
-    if (state.speechEvent) {
-      speak(state.speechEvent.text);
-    }
+    if (state.speechEvent) speak(state.speechEvent.text);
   }, [state.speechEvent]);
 
-  const allDone = state.playerStates.every((p) => p.isFinished);
+  const isGameOver = !!state.matchWinner;
   const { isFastBot, delay } = useBotDelay(state.isUndoing, 700);
   const activePlayer = state.playerStates[state.currentIndex];
 
@@ -402,7 +406,7 @@ export default function OneHundredDarts() {
   useBotTurn({
     condition:
       isBaselineLoaded &&
-      !allDone &&
+      !isGameOver &&
       !state.isUndoing &&
       state.throwsThisTurn === 0 &&
       !!activePlayer,
@@ -410,17 +414,8 @@ export default function OneHundredDarts() {
     delay,
     historyLength: state.history.length,
     calculate: () => {
-      let botScore = simulateBotTurn(botAvg!, 9999);
-      let individualDarts = breakdownScoreToDarts(botScore, 3, false);
-      const maxDartsLeft = MAX_DARTS - activePlayer.dartsCount;
-      if (maxDartsLeft < 3) {
-        individualDarts = individualDarts.slice(0, maxDartsLeft);
-        botScore = individualDarts.reduce(
-          (sum: number, d: { value: number; multiplier: number }) =>
-            sum + d.value * d.multiplier,
-          0,
-        );
-      }
+      const botScore = simulateBotTurn(botAvg!, 9999);
+      const individualDarts = breakdownScoreToDarts(botScore, 3, false);
       return { botScore, individualDarts };
     },
     execute: async ({ botScore, individualDarts }) => {
@@ -440,80 +435,35 @@ export default function OneHundredDarts() {
   }, [navigation]);
 
   useEffect(() => {
-    if (allDone) {
+    if (isGameOver) {
       triggerHaptic("success");
     }
-  }, [allDone]);
+  }, [isGameOver]);
 
   const saveScoringStats = async (navigateAway: boolean = true) => {
     try {
       if (navigateAway) isExiting.current = true;
       const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
 
-      const isUnfinished = !allDone;
+      const isUnfinished = !isGameOver;
       const historyItem = {
         id: matchId,
         date: formattedDate,
         duration: formatTime(matchTimeRef.current),
-        mode: "100 Darts",
+        mode: "Score Clash",
+        settings: state.settings,
         isUnfinished,
         gameState: isUnfinished
           ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
           : undefined,
         players: state.playerStates
-          .map((p, idx) => {
-            let validTurns = [];
-            if (p.allTurns) {
-              validTurns = [...p.allTurns];
-              if (
-                !p.isFinished &&
-                p.turnThrows &&
-                p.turnThrows.length > 0 &&
-                state.currentIndex === idx
-              ) {
-                validTurns.push(p.turnThrows);
-              }
-            } else {
-              const rawTurns = state.history
-                ? state.history.map((h) => h.playerStates[idx].turnThrows)
-                : [];
-              rawTurns.push(p.turnThrows);
-              validTurns = rawTurns.filter((turn, i, arr) => {
-                const nextTurn = arr[i + 1];
-                return (
-                  turn &&
-                  turn.length > 0 &&
-                  (!nextTurn || nextTurn.length < turn.length)
-                );
-              });
-            }
-
-            const validTurnsFormatted = validTurns.map((turn) =>
-              turn.map((t: Throw) => ({
-                v: t.value,
-                m: t.multiplier,
-                d: t.darts,
-                i: t.isScoreInput,
-                c: t.coords,
-              })),
-            );
-
-            return {
-              name: p.name,
-              score: p.score,
-              darts: p.dartsCount,
-              rank: p.rank,
-              avg:
-                p.dartsCount > 0
-                  ? ((p.score / p.dartsCount) * 3).toFixed(1)
-                  : "0.0",
-              s180: p.s180,
-              s140: p.s140,
-              s100: p.s100,
-              s60: p.s60,
-              allTurns: validTurnsFormatted,
-            };
-          })
+          .map((p) => ({
+            name: p.name,
+            score: p.score,
+            totalMatchScore: p.totalMatchScore,
+            darts: p.dartsCount,
+            rank: p.rank,
+          }))
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
 
@@ -523,15 +473,12 @@ export default function OneHundredDarts() {
       const existingHistory = existingHistoryStr
         ? JSON.parse(existingHistoryStr)
         : [];
-
       const existingIndex = existingHistory.findIndex(
         (h: { id: string }) => h.id === matchId,
       );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
+
+      if (existingIndex > -1) existingHistory[existingIndex] = historyItem;
+      else existingHistory.unshift(historyItem);
 
       await AsyncStorage.setItem(
         "@dart_match_history",
@@ -539,14 +486,14 @@ export default function OneHundredDarts() {
       );
       if (navigateAway) router.push("/play");
     } catch (e) {
-      console.error("Save 100 Darts error", e);
+      console.error("Save Score Clash error", e);
       if (navigateAway) router.push("/play");
     }
   };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || allDone) return;
+      if (isExiting.current || isGameOver) return;
       e.preventDefault();
       const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
       if (!hasStarted) {
@@ -562,19 +509,17 @@ export default function OneHundredDarts() {
       });
     });
     return unsubscribe;
-  }, [navigation, allDone, state]);
+  }, [navigation, isGameOver, state]);
 
   const handleThrow = (
     value: number,
     overrideMultiplier?: number,
     coords?: { x: number; y: number },
   ) => {
-    if (allDone) return;
-
+    if (isGameOver) return;
     const activeMult = overrideMultiplier || multiplier;
     if ((value === 25 && activeMult === 3) || (value === 0 && activeMult !== 1))
       return;
-
     triggerHaptic("tap");
     dispatch({
       type: "ADD_THROW",
@@ -606,8 +551,7 @@ export default function OneHundredDarts() {
     triggerHaptic("tap");
     setTypedScore((prev) => {
       const next = prev === "0" ? num : prev + num;
-      if (next.length > 3) return prev;
-      if (parseInt(next, 10) > 180) return prev;
+      if (next.length > 3 || parseInt(next, 10) > 180) return prev;
       return next;
     });
   };
@@ -646,17 +590,20 @@ export default function OneHundredDarts() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>
-            {t(language, "100Darts")?.toUpperCase() || "100 DARTS"}
+          <Text style={styles.headerGameType}>
+            {t(language, "scoreClash")?.toUpperCase() || "SCORE CLASH"}
           </Text>
-          <Text style={styles.headerSub}>
-            {t(language, "highScore")?.toUpperCase() || "HIGH SCORE"}
+          <Text style={styles.headerSubInfo}>
+            ROUND {state.roundNumber} • FIRST TO {state.settings.targetPoints}
+            {state.activeTiebreaker
+              ? ` • ${t(language, "tiebreakerBadge") || "TIEBREAKER"}`
+              : ""}
           </Text>
         </View>
         <View style={styles.headerRight}>
           <TimerBadge
             initialTime={matchTimeRef.current}
-            isRunning={!allDone}
+            isRunning={!isGameOver}
             onTimeUpdate={handleTimeUpdate}
             theme={theme}
             styles={styles}
@@ -670,9 +617,13 @@ export default function OneHundredDarts() {
       >
         {state.playerStates.map((p, i) => {
           const isActive = i === state.currentIndex && !p.isFinished;
+          const isTiebreakerActive = state.activeTiebreaker !== null;
+          const isEliminatedFromTiebreaker =
+            isTiebreakerActive && !state.activeTiebreaker.includes(i);
           const turnSum =
             p.turnThrows?.reduce(
-              (sum, tr) => sum + tr.value * tr.multiplier,
+              (sum, tr) =>
+                sum + (tr.isScoreInput ? tr.value : tr.value * tr.multiplier),
               0,
             ) || 0;
 
@@ -683,6 +634,7 @@ export default function OneHundredDarts() {
                 styles.playerRow,
                 isActive && styles.activePlayerRow,
                 p.isFinished && styles.finishedPlayerRow,
+                isEliminatedFromTiebreaker && { opacity: 0.3 },
               ]}
             >
               <View style={styles.scoreCol}>
@@ -692,7 +644,8 @@ export default function OneHundredDarts() {
                   <Text
                     style={[styles.playerScore, isActive && styles.activeText]}
                   >
-                    {p.score}
+                    {" "}
+                    {p.score}{" "}
                   </Text>
                 )}
                 <Text style={styles.playerName}>{p.name}</Text>
@@ -728,8 +681,7 @@ export default function OneHundredDarts() {
                         {[0, 1, 2].map((idx) => {
                           const len = p.turnThrows.length;
                           const throwIdx = len - 1 - ((len - 1) % 3) + idx;
-                          const t = p.turnThrows[throwIdx];
-
+                          const tObj = p.turnThrows[throwIdx];
                           return (
                             <View
                               key={idx}
@@ -745,30 +697,47 @@ export default function OneHundredDarts() {
                                 numberOfLines={1}
                                 adjustsFontSizeToFit
                               >
-                                {t ? formatThrow(t) : ""}
+                                {tObj ? formatThrow(tObj) : ""}
                               </Text>
                             </View>
                           );
                         })}
                       </View>
-                      <Text style={styles.targetLabel}>
-                        {t(language, "thrown")?.toUpperCase() || "THROWN"}:{" "}
-                        {p.dartsCount} / {MAX_DARTS}
+                      <Text
+                        style={[
+                          styles.turnSumText,
+                          (!p.turnThrows || p.turnThrows.length === 0) && {
+                            opacity: 0,
+                          },
+                        ]}
+                      >
+                        Σ {turnSum}
                       </Text>
                     </View>
                   )}
 
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
-                      <Text style={styles.statLabel}>
-                        {t(language, "avgShort") || "AVG"}
-                      </Text>
-                      <Text style={styles.statBold}>
-                        {p.dartsCount > 0
-                          ? ((p.score / p.dartsCount) * 3).toFixed(1)
-                          : "0.0"}
+                      <Text style={styles.statLabel}>RND Pts</Text>
+                      <Text
+                        style={[
+                          styles.statBold,
+                          { fontSize: 16, color: theme.colors.primary },
+                        ]}
+                      >
+                        {p.currentRoundScore}
                       </Text>
                     </View>
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        fontWeight: "700",
+                        color: theme.colors.textMuted,
+                        marginTop: 4,
+                      }}
+                    >
+                      {p.roundDarts || 0} / {state.settings.dartsPerRound} 🎯
+                    </Text>
                   </View>
                 </>
               )}
@@ -777,7 +746,7 @@ export default function OneHundredDarts() {
         })}
       </ScrollView>
 
-      {!allDone && (
+      {!isGameOver && (
         <BotAwareKeyboard
           playerName={activePlayer?.name || ""}
           onUndo={handleUndo}
@@ -796,7 +765,6 @@ export default function OneHundredDarts() {
               dispatch({ type: "RESET_CURRENT_TURN" });
             }}
           />
-
           {inputMode === "dart" && (
             <DartKeyboard
               onThrow={handleThrow}
@@ -811,7 +779,6 @@ export default function OneHundredDarts() {
               language={language}
             />
           )}
-
           {inputMode === "score" && (
             <ScoreKeyboard
               onKeyPress={handleTypeScore}
@@ -820,7 +787,6 @@ export default function OneHundredDarts() {
               theme={theme}
             />
           )}
-
           {inputMode === "board" && (
             <InteractiveDartboard
               onThrow={handleThrow}
@@ -833,8 +799,8 @@ export default function OneHundredDarts() {
       )}
 
       <FinishModal
-        visible={allDone}
-        title={t(language, "trainingFinished") || "Training Finished!"}
+        visible={isGameOver}
+        title={`${state.matchWinner?.name || "Player"} wins! 🏆`}
         subtitle={
           t(language, "trainingSaved") ||
           "Your results have been saved to history."
@@ -849,7 +815,6 @@ export default function OneHundredDarts() {
           />
         </View>
       </FinishModal>
-
       {GameAlerts}
     </SafeAreaView>
   );
@@ -857,12 +822,22 @@ export default function OneHundredDarts() {
 
 const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
-    targetLabel: {
+    headerGameType: {
+      fontSize: 18,
+      fontWeight: "900",
+      color: theme.colors.textMain,
+      marginBottom: 2,
+    },
+    headerSubInfo: {
       fontSize: 10,
+      fontWeight: "700",
+      color: theme.colors.textMuted,
+    },
+    turnSumText: {
+      fontSize: 12,
       fontWeight: "800",
       color: theme.colors.primary,
     },
-
     typedScoreDisplayBox: {
       height: 44,
       minWidth: 100,
@@ -874,15 +849,11 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       borderRadius: 8,
       paddingHorizontal: 20,
     },
-    typedScoreDisplayBoxActive: {
-      borderColor: theme.colors.primary,
-    },
+    typedScoreDisplayBoxActive: { borderColor: theme.colors.primary },
     typedScoreDisplayBoxText: {
       fontSize: 26,
       fontWeight: "900",
       color: theme.colors.textMuted,
     },
-    typedScoreDisplayBoxTextActive: {
-      color: theme.colors.primary,
-    },
+    typedScoreDisplayBoxTextActive: { color: theme.colors.primary },
   });

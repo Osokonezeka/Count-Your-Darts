@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { produce, current } from "immer";
+import { current, produce } from "immer";
 import React, {
   useCallback,
   useEffect,
@@ -276,7 +276,6 @@ export default function BobsTwentySeven() {
   useEffect(() => {
     if (allDone) {
       triggerHaptic(isGameOver ? "heavy" : "success");
-      saveBobsStats();
     }
   }, [allDone, isGameOver]);
 
@@ -559,7 +558,7 @@ export default function BobsTwentySeven() {
             title={t(language, "endMatch") || "End"}
             theme={theme}
             color={isGameOver ? theme.colors.danger : undefined}
-            onPress={() => router.push("/play")}
+            onPress={() => saveBobsStats(true)}
           />
         </View>
       </FinishModal>

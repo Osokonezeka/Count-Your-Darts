@@ -8,6 +8,13 @@ export type Settings = {
   sets: number;
   gameMode: "X01" | "Cricket" | "Training";
   cricketMode?: "standard" | "no-score";
+  lives?: number;
+  killerAssignMode?: "random" | "throw";
+  killerMode?: "double" | "treble" | "any";
+  killerSelfPenalty?: boolean;
+  scoreClashDartsPerRound?: number;
+  scoreClashTargetPoints?: number;
+  scoreClashTieRule?: "points" | "tiebreaker";
   trainingMode?:
     | "around_the_clock"
     | "100_darts"
@@ -18,7 +25,10 @@ export type Settings = {
     | "shanghai"
     | "halve_it"
     | "baseball"
-    | "chase_the_dragon";
+    | "chase_the_dragon"
+    | "121_checkout"
+    | "killer"
+    | "score_clash";
 };
 
 type GameContextType = {
@@ -42,6 +52,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
     sets: 1,
     gameMode: "X01",
     cricketMode: "standard",
+    lives: 3,
+    killerAssignMode: "random",
+    killerMode: "double",
+    killerSelfPenalty: false,
+    scoreClashDartsPerRound: 3,
+    scoreClashTargetPoints: 3,
+    scoreClashTieRule: "points",
   });
 
   const value = useMemo(

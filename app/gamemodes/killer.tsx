@@ -4,13 +4,13 @@ import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { current, produce } from "immer";
 import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useReducer,
+    useRef,
+    useState,
 } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -34,59 +34,44 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import {
-  resolveBotAverage,
-  simulateBobsBotThrow,
-  simulateCricketBotThrow,
+    resolveBotAverage,
+    simulateBobsBotThrow,
+    simulateCricketBotThrow,
 } from "../../lib/bot";
 import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
-type RoundTarget = {
-  name: string;
-  reqValue?: number;
-  reqMult?: number;
-};
-
-const BERMUDA_ROUNDS: RoundTarget[] = [
-  { name: "12", reqValue: 12 },
-  { name: "13", reqValue: 13 },
-  { name: "14", reqValue: 14 },
-  { name: "DOUBLE", reqMult: 2 },
-  { name: "15", reqValue: 15 },
-  { name: "16", reqValue: 16 },
-  { name: "17", reqValue: 17 },
-  { name: "TREBLE", reqMult: 3 },
-  { name: "18", reqValue: 18 },
-  { name: "19", reqValue: 19 },
-  { name: "20", reqValue: 20 },
-  { name: "BULL", reqValue: 25 },
-  { name: "D-BULL", reqValue: 25, reqMult: 2 },
-];
-
 type Throw = {
   value: number;
   multiplier: number;
-  pts: number;
-  isHit: boolean;
   coords?: { x: number; y: number };
 };
 
 type PlayerState = {
   name: string;
-  score: number;
-  dartsCount: number;
-  turnThrows: Throw[];
-  halves: number;
+  target: number | null;
+  lives: number;
+  isKiller: boolean;
   isFinished: boolean;
   rank?: number;
+  dartsCount: number;
+  turnThrows: Throw[];
 };
 
 type GameState = {
+  settings: {
+    lives: number;
+    killerAssignMode: "random" | "throw";
+    killerMode: "double" | "treble" | "any";
+    killerSelfPenalty: boolean;
+  };
   playerStates: PlayerState[];
   currentIndex: number;
   throwsThisTurn: number;
   history: GameState[];
+  matchWinner: PlayerState | null;
+  finishedCount: number;
   speechEvent?: { text: string; id: number } | null;
   isUndoing?: boolean;
 };
@@ -103,68 +88,106 @@ type Action =
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
 
-const checkHit = (val: number, mult: number, target: RoundTarget) => {
-  if (val === 0) return false;
-  if (target.reqValue !== undefined && target.reqMult !== undefined) {
-    return val === target.reqValue && mult === target.reqMult;
+const assignRandomTargets = (playerCount: number) => {
+  const available = Array.from({ length: 20 }, (_, i) => i + 1);
+  for (let i = available.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [available[i], available[j]] = [available[j], available[i]];
   }
-  if (target.reqValue !== undefined) return val === target.reqValue;
-  if (target.reqMult !== undefined) return mult === target.reqMult;
-  return false;
+  return available.slice(0, playerCount);
 };
 
-const bermudaReducer = produce((draft: GameState, action: Action) => {
+const killerReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
-
       const snapshot = current(draft);
       draft.history.push({ ...snapshot, history: [] });
       draft.isUndoing = false;
 
       const player = draft.playerStates[draft.currentIndex];
-      const roundIdx = Math.floor(player.dartsCount / 3);
-      const target = BERMUDA_ROUNDS[roundIdx];
-
-      const isHit = checkHit(value, multiplier, target);
-      const pts = isHit ? value * multiplier : 0;
-
       player.dartsCount += 1;
       if (!player.turnThrows) player.turnThrows = [];
-      player.turnThrows.push({ value, multiplier, pts, isHit, coords });
+      player.turnThrows.push({ value, multiplier, coords });
       draft.throwsThisTurn += 1;
 
-      const isTurnOver =
-        draft.throwsThisTurn === 3 ||
-        player.dartsCount === BERMUDA_ROUNDS.length * 3;
+      let points = value * multiplier;
+      let speechText = points.toString();
+
+      if (player.target === null) {
+        if (value > 0 && value <= 25) {
+          const isTaken = draft.playerStates.some((p) => p.target === value);
+          if (!isTaken) {
+            player.target = value;
+          }
+        }
+      } else {
+        if (!player.isKiller) {
+          if (value === player.target) {
+            const becomesKiller =
+              draft.settings.killerMode === "any" ||
+              (draft.settings.killerMode === "double" && multiplier === 2) ||
+              (draft.settings.killerMode === "treble" && multiplier === 3);
+            if (becomesKiller) {
+              player.isKiller = true;
+              speechText = "Killer";
+            }
+          }
+        } else {
+          const hitOpponents = draft.playerStates.filter(
+            (p) =>
+              p.target === value && p.name !== player.name && !p.isFinished,
+          );
+
+          if (hitOpponents.length > 0) {
+            hitOpponents.forEach((opp) => {
+              opp.lives -= multiplier;
+              if (opp.lives <= 0) {
+                opp.lives = 0;
+                opp.isFinished = true;
+                draft.finishedCount += 1;
+                opp.rank = draft.playerStates.length - draft.finishedCount + 1;
+              }
+            });
+          } else if (
+            value === player.target &&
+            draft.settings.killerSelfPenalty
+          ) {
+            player.lives -= multiplier;
+            player.isKiller = false;
+
+            if (player.lives <= 0) {
+              player.lives = 0;
+              player.isFinished = true;
+              draft.finishedCount += 1;
+              player.rank = draft.playerStates.length - draft.finishedCount + 1;
+            }
+          }
+        }
+      }
+
+      draft.speechEvent = { text: speechText, id: Date.now() };
+
+      const alivePlayers = draft.playerStates.filter((p) => !p.isFinished);
+      const allHaveTargets = draft.playerStates.every((p) => p.target !== null);
+
+      if (
+        alivePlayers.length === 1 &&
+        draft.playerStates.length > 1 &&
+        allHaveTargets
+      ) {
+        alivePlayers[0].isFinished = true;
+        alivePlayers[0].rank = 1;
+        draft.matchWinner = alivePlayers[0];
+        return;
+      } else if (alivePlayers.length === 0) {
+        draft.matchWinner = draft.playerStates[0];
+        return;
+      }
+
+      const isTurnOver = draft.throwsThisTurn === 3 || player.isFinished;
 
       if (isTurnOver) {
-        const turnSum = player.turnThrows.reduce((sum, tr) => sum + tr.pts, 0);
-
-        if (turnSum === 0) {
-          player.score = Math.floor(player.score / 2);
-          player.halves += 1;
-          draft.speechEvent = { text: "Halved", id: Date.now() };
-        } else {
-          player.score += turnSum;
-          draft.speechEvent = { text: turnSum.toString(), id: Date.now() };
-        }
-
-        if (player.dartsCount === BERMUDA_ROUNDS.length * 3) {
-          player.isFinished = true;
-        }
-
-        const allDone = draft.playerStates.every((p) => p.isFinished);
-        if (allDone) {
-          const finishers = draft.playerStates
-            .map((p, idx) => ({ ...p, originalIdx: idx }))
-            .sort((a, b) => b.score - a.score);
-          finishers.forEach((f, rankIdx) => {
-            draft.playerStates[f.originalIdx].rank = rankIdx + 1;
-          });
-          return;
-        }
-
         let nextIdx = (draft.currentIndex + 1) % draft.playerStates.length;
         while (draft.playerStates[nextIdx].isFinished) {
           nextIdx = (nextIdx + 1) % draft.playerStates.length;
@@ -225,8 +248,8 @@ const formatThrow = (t: Throw) => {
   return `${prefix}${t.value}`;
 };
 
-export default function BermudaTriangle() {
-  const { players } = useGame();
+export default function Killer() {
+  const { players, settings } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
@@ -254,23 +277,39 @@ export default function BermudaTriangle() {
   );
 
   const [state, dispatch] = useReducer(
-    bermudaReducer,
+    killerReducer,
     parsedResume
       ? parsedResume.gameState
-      : {
-          playerStates: players.map((name) => ({
-            name,
-            score: 0,
-            dartsCount: 0,
-            turnThrows: [],
-            halves: 0,
-            isFinished: false,
-          })),
-          currentIndex: 0,
-          throwsThisTurn: 0,
-          history: [],
-          speechEvent: null,
-        },
+      : (() => {
+          const isRandom = settings?.killerAssignMode === "random";
+          const initialTargets = isRandom
+            ? assignRandomTargets(players.length)
+            : Array(players.length).fill(null);
+
+          return {
+            settings: {
+              lives: settings?.lives || 3,
+              killerAssignMode: settings?.killerAssignMode || "random",
+              killerMode: settings?.killerMode || "double",
+              killerSelfPenalty: settings?.killerSelfPenalty || false,
+            },
+            playerStates: players.map((name, i) => ({
+              name,
+              target: initialTargets[i],
+              lives: settings?.lives || 3,
+              isKiller: false,
+              isFinished: false,
+              dartsCount: 0,
+              turnThrows: [],
+            })),
+            currentIndex: 0,
+            throwsThisTurn: 0,
+            history: [],
+            matchWinner: null,
+            finishedCount: 0,
+            speechEvent: null,
+          };
+        })(),
   );
 
   const [inputMode, setInputMode] = useState<"dart" | "board">("dart");
@@ -288,14 +327,18 @@ export default function BermudaTriangle() {
     if (state.speechEvent) speak(state.speechEvent.text);
   }, [state.speechEvent]);
 
-  const allDone = state.playerStates.every((p) => p.isFinished);
-  const { delay } = useBotDelay(state.isUndoing, 1000);
+  const isGameOver = !!state.matchWinner;
+  const { isFastBot, delay } = useBotDelay(state.isUndoing, 1000);
   const activePlayer = state.playerStates[state.currentIndex];
+
+  const currentDelay =
+    state.throwsThisTurn === 0 ? delay : isFastBot ? 50 : 350;
 
   const [historicalBaseline, setHistoricalBaseline] = useState<
     number | undefined
   >(undefined);
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
+
   useEffect(() => {
     const fetchBaseline = async () => {
       if (players) {
@@ -318,54 +361,77 @@ export default function BermudaTriangle() {
 
   useBotTurn({
     condition:
-      isBaselineLoaded && !allDone && !state.isUndoing && !!activePlayer,
+      isBaselineLoaded && !isGameOver && !state.isUndoing && !!activePlayer,
     botAvg,
-    delay,
+    delay: currentDelay,
     historyLength: state.history.length,
     calculate: () => {
-      const roundIdx = Math.floor(activePlayer.dartsCount / 3);
-      const target = BERMUDA_ROUNDS[roundIdx];
+      if (activePlayer.target === null) {
+        const assigned = state.playerStates
+          .map((p) => p.target)
+          .filter((t) => t !== null);
+        const available = Array.from({ length: 20 }, (_, i) => i + 1).filter(
+          (t) => !assigned.includes(t),
+        );
+        const aim =
+          available[Math.floor(Math.random() * available.length)] || 20;
+        const res = simulateCricketBotThrow(botAvg!, aim);
+        return {
+          value: res.hit ? aim : res.missedValue || 0,
+          multiplier: res.multiplier,
+        };
+      }
 
-      let val = 0;
-      let mult = 1;
-
-      if (target.reqValue === 25) {
-        const hit = simulateBobsBotThrow(botAvg!, target.reqMult === 2);
-        if (hit) {
-          val = 25;
-          mult = target.reqMult || 1;
-        }
-      } else if (
-        target.reqMult !== undefined &&
-        target.reqValue === undefined
-      ) {
-        const aimValue = [20, 19, 18, 16][Math.floor(Math.random() * 4)];
-        if (target.reqMult === 2) {
-          const hit = simulateBobsBotThrow(botAvg!, false);
-          if (hit) {
-            val = aimValue;
-            mult = 2;
-          }
+      if (!activePlayer.isKiller) {
+        if (state.settings.killerMode === "any") {
+          const res = simulateCricketBotThrow(botAvg!, activePlayer.target);
+          return {
+            value: res.hit ? activePlayer.target : res.missedValue || 0,
+            multiplier: res.multiplier,
+          };
+        } else if (state.settings.killerMode === "treble") {
+          const res = simulateCricketBotThrow(botAvg!, activePlayer.target);
+          if (res.hit && res.multiplier === 3)
+            return { value: activePlayer.target, multiplier: 3 };
+          return {
+            value: res.missedValue || 0,
+            multiplier: 1,
+          };
         } else {
-          const res = simulateCricketBotThrow(botAvg!, aimValue);
-          if (res.hit && res.multiplier === 3) {
-            val = aimValue;
-            mult = 3;
-          } else {
-            val = res.missedValue || 0;
-            mult = 1;
-          }
-        }
-      } else if (target.reqValue !== undefined) {
-        const res = simulateCricketBotThrow(botAvg!, target.reqValue);
-        if (res.hit) {
-          val = target.reqValue;
-          mult = res.multiplier;
-        } else {
-          val = res.missedValue || 0;
+          const hit = simulateBobsBotThrow(botAvg!, activePlayer.target === 25);
+          if (hit) return { value: activePlayer.target, multiplier: 2 };
+          const res = simulateCricketBotThrow(botAvg!, activePlayer.target);
+          return { value: res.missedValue || 0, multiplier: 1 };
         }
       }
-      return { value: val, multiplier: mult };
+
+      const opponents = state.playerStates.filter(
+        (p) =>
+          !p.isFinished && p.name !== activePlayer.name && p.target !== null,
+      );
+
+      if (opponents.length > 0) {
+        const opp = opponents[Math.floor(Math.random() * opponents.length)];
+        const aim = opp.target!;
+
+        const tryTrebleFirst = Math.random() < 0.6;
+        if (tryTrebleFirst && aim !== 25) {
+          const res = simulateCricketBotThrow(botAvg!, aim);
+          if (res.hit && res.multiplier === 3)
+            return { value: aim, multiplier: 3 };
+        }
+
+        const hitDouble = simulateBobsBotThrow(botAvg!, aim === 25);
+        if (hitDouble) return { value: aim, multiplier: 2 };
+
+        const res = simulateCricketBotThrow(botAvg!, aim);
+        return {
+          value: res.hit ? aim : res.missedValue || 0,
+          multiplier: res.multiplier,
+        };
+      }
+
+      return { value: 0, multiplier: 1 };
     },
     execute: (dart) => {
       handleThrow(dart.value, dart.multiplier);
@@ -377,21 +443,21 @@ export default function BermudaTriangle() {
   }, [navigation]);
 
   useEffect(() => {
-    if (allDone) {
+    if (isGameOver) {
       triggerHaptic("success");
     }
-  }, [allDone]);
+  }, [isGameOver]);
 
-  const saveScoringStats = async (navigateAway: boolean = true) => {
+  const saveMatchStats = async (navigateAway: boolean = true) => {
     try {
       if (navigateAway) isExiting.current = true;
       const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
-      const isUnfinished = !allDone;
+      const isUnfinished = !isGameOver;
       const historyItem = {
         id: matchId,
         date: formattedDate,
         duration: formatTime(matchTimeRef.current),
-        mode: "Bermuda Triangle",
+        mode: "Killer",
         isUnfinished,
         gameState: isUnfinished
           ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
@@ -399,10 +465,15 @@ export default function BermudaTriangle() {
         players: state.playerStates
           .map((p) => ({
             name: p.name,
-            score: p.score,
+            score: p.lives,
             darts: p.dartsCount,
             rank: p.rank,
-            halves: p.halves,
+            status:
+              state.matchWinner?.name === p.name
+                ? "WINNER"
+                : p.lives <= 0
+                  ? "ELIMINATED"
+                  : "ALIVE",
           }))
           .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
       };
@@ -426,14 +497,14 @@ export default function BermudaTriangle() {
       );
       if (navigateAway) router.push("/play");
     } catch (e) {
-      console.error("Save Bermuda error", e);
+      console.error("Save Killer error", e);
       if (navigateAway) router.push("/play");
     }
   };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || allDone) return;
+      if (isExiting.current || isGameOver) return;
       e.preventDefault();
       const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
       if (!hasStarted) {
@@ -442,21 +513,21 @@ export default function BermudaTriangle() {
         return;
       }
       showExitConfirm(() => {
-        saveScoringStats(false).then(() => {
+        saveMatchStats(false).then(() => {
           isExiting.current = true;
           navigation.dispatch(e.data.action);
         });
       });
     });
     return unsubscribe;
-  }, [navigation, allDone, state]);
+  }, [navigation, isGameOver, state]);
 
   const handleThrow = (
     value: number,
     overrideMultiplier?: number,
     coords?: { x: number; y: number },
   ) => {
-    if (allDone) return;
+    if (isGameOver) return;
     const activeMult = overrideMultiplier || multiplier;
     if ((value === 25 && activeMult === 3) || (value === 0 && activeMult !== 1))
       return;
@@ -497,13 +568,21 @@ export default function BermudaTriangle() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>BERMUDA</Text>
-          <Text style={styles.headerSub}>TRIANGLE</Text>
+          <Text style={styles.headerTitle}>
+            {t(language, "killer")?.toUpperCase() || "KILLER"}
+          </Text>
+          <Text style={styles.headerSub}>
+            {state.settings.killerMode === "double"
+              ? t(language, "double")?.toUpperCase() || "DOUBLE"
+              : state.settings.killerMode === "treble"
+                ? tripleTerm.toUpperCase()
+                : t(language, "anyHit")?.toUpperCase() || "ANY HIT"}
+          </Text>
         </View>
         <View style={styles.headerRight}>
           <TimerBadge
             initialTime={matchTimeRef.current}
-            isRunning={!allDone}
+            isRunning={!isGameOver}
             onTimeUpdate={handleTimeUpdate}
             theme={theme}
             styles={styles}
@@ -517,19 +596,18 @@ export default function BermudaTriangle() {
       >
         {state.playerStates.map((p, i) => {
           const isActive = i === state.currentIndex && !p.isFinished;
-          const roundIdx = Math.min(
-            Math.floor(p.dartsCount / 3),
-            BERMUDA_ROUNDS.length - 1,
-          );
-          const targetReq = BERMUDA_ROUNDS[roundIdx];
+          const targetLabel = p.target !== null ? p.target : "?";
 
-          let targetLabel = targetReq.name;
-          if (targetReq.name === "BULL") targetLabel = bullTerm;
-          if (targetReq.name === "D-BULL") targetLabel = `D${bullTerm}`;
-          if (targetReq.name === "TREBLE")
-            targetLabel = tripleTerm.toUpperCase();
-          if (targetReq.name === "DOUBLE")
-            targetLabel = t(language, "double")?.toUpperCase() || "DOUBLE";
+          let heartDisplay = null;
+          if (p.lives > 5) {
+            heartDisplay = <Text style={styles.heartText}>❤️ x {p.lives}</Text>;
+          } else if (p.lives > 0) {
+            heartDisplay = (
+              <Text style={styles.heartText}>{"❤️".repeat(p.lives)}</Text>
+            );
+          } else {
+            heartDisplay = <Text style={styles.heartText}>💀</Text>;
+          }
 
           return (
             <View
@@ -538,6 +616,11 @@ export default function BermudaTriangle() {
                 styles.playerRow,
                 isActive && styles.activePlayerRow,
                 p.isFinished && styles.finishedPlayerRow,
+                p.isKiller &&
+                  !p.isFinished && {
+                    borderColor: theme.colors.danger,
+                    borderWidth: 2,
+                  },
               ]}
             >
               <View style={styles.scoreCol}>
@@ -545,9 +628,13 @@ export default function BermudaTriangle() {
                   <Text style={styles.rankText}>{p.rank}</Text>
                 ) : (
                   <Text
-                    style={[styles.playerScore, isActive && styles.activeText]}
+                    style={[
+                      styles.playerScore,
+                      isActive && styles.activeText,
+                      p.isKiller && { color: theme.colors.danger },
+                    ]}
                   >
-                    {p.score}
+                    {p.isKiller ? "💀" : targetLabel}
                   </Text>
                 )}
                 <Text style={styles.playerName}>{p.name}</Text>
@@ -572,13 +659,7 @@ export default function BermudaTriangle() {
                             <Text
                               style={[
                                 styles.throwBoxText,
-                                throwObj?.isHit && {
-                                  color: theme.colors.success,
-                                },
-                                throwObj &&
-                                  !throwObj.isHit && {
-                                    color: theme.colors.textMuted,
-                                  },
+                                throwObj && { color: theme.colors.textMain },
                               ]}
                               numberOfLines={1}
                               adjustsFontSizeToFit
@@ -590,29 +671,14 @@ export default function BermudaTriangle() {
                       })}
                     </View>
                     <Text style={styles.targetLabel}>
-                      {t(language, "target")?.toUpperCase() || "TARGET"}:{" "}
-                      <Text style={{ color: theme.colors.textMain }}>
-                        {targetLabel}
-                      </Text>
+                      {p.target !== null
+                        ? `${t(language, "target")?.toUpperCase() || "TARGET"}: ${p.target}`
+                        : `${t(language, "assignNumbers")?.toUpperCase() || "ASSIGN TARGET"}`}
                     </Text>
                   </View>
 
                   <View style={styles.statsCol}>
-                    <View style={styles.statRow}>
-                      <Ionicons
-                        name="warning-outline"
-                        size={14}
-                        color={theme.colors.danger}
-                      />
-                      <Text
-                        style={[
-                          styles.statBold,
-                          { color: theme.colors.danger },
-                        ]}
-                      >
-                        {p.halves}
-                      </Text>
-                    </View>
+                    <View style={styles.statRow}>{heartDisplay}</View>
                   </View>
                 </>
               )}
@@ -621,7 +687,7 @@ export default function BermudaTriangle() {
         })}
       </ScrollView>
 
-      {!allDone && (
+      {!isGameOver && (
         <BotAwareKeyboard
           playerName={activePlayer?.name || ""}
           onUndo={handleUndo}
@@ -670,19 +736,20 @@ export default function BermudaTriangle() {
       )}
 
       <FinishModal
-        visible={allDone}
-        title={t(language, "trainingFinished") || "Training Finished!"}
+        visible={isGameOver}
+        title={`${state.matchWinner?.name || "Player"} wins! 🏆`}
         subtitle={
           t(language, "trainingSaved") ||
           "Your results have been saved to history."
         }
         theme={theme}
+        iconBgColor={theme.colors.danger}
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
             title={t(language, "endMatch") || "End"}
             theme={theme}
-            onPress={() => saveScoringStats(true)}
+            onPress={() => saveMatchStats(true)}
           />
         </View>
       </FinishModal>
@@ -698,5 +765,9 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       fontSize: 10,
       fontWeight: "800",
       color: theme.colors.primary,
+    },
+    heartText: {
+      fontSize: 16,
+      letterSpacing: 2,
     },
   });
