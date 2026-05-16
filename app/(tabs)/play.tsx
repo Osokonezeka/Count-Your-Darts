@@ -5,25 +5,25 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import DraggableFlatList, {
-  ScaleDecorator,
   RenderItemParams,
+  ScaleDecorator,
 } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { AnimatedPressable } from "../../components/common/AnimatedPressable";
+import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
+import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
+import { AnimatedStepper } from "../../components/common/AnimatedStepper";
+import { AnimatedVerticalSelect } from "../../components/common/AnimatedVerticalSelect";
+import { AddBotModal } from "../../components/modals/AddBotModal";
 import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
+import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
+import { PlayerModal } from "../../components/modals/PlayerModal";
+import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
 import { useGame } from "../../context/GameContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { usePlayers } from "../../context/PlayersContext";
-import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { useTheme } from "../../context/ThemeContext";
-import { PlayerModal } from "../../components/modals/PlayerModal";
-import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
-import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
-import { AnimatedVerticalSelect } from "../../components/common/AnimatedVerticalSelect";
-import { AnimatedStepper } from "../../components/common/AnimatedStepper";
-import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
-import { AnimatedPressable } from "../../components/common/AnimatedPressable";
-import { AddBotModal } from "../../components/modals/AddBotModal";
 import { t } from "../../lib/i18n";
 import { isBot } from "../../lib/statsUtils";
 
@@ -121,6 +121,27 @@ const TRAINING_CONFIG = [
     icon: "footsteps-outline",
     route: "/gamemodes/chasethedragon",
   },
+  {
+    id: "121_checkout",
+    tKey: "121Checkout",
+    dKey: "121CheckoutDesc",
+    icon: "arrow-up-circle-outline",
+    route: "/gamemodes/onetwoone",
+  },
+  {
+    id: "killer",
+    tKey: "killer",
+    dKey: "killerDesc",
+    icon: "skull-outline",
+    route: "/gamemodes/killer",
+  },
+  {
+    id: "score_clash",
+    tKey: "scoreClash",
+    dKey: "scoreClashDesc",
+    icon: "flame-outline",
+    route: "/gamemodes/scoreclash",
+  },
 ] as const;
 
 export default function Play() {
@@ -155,6 +176,9 @@ export default function Play() {
     | "halve_it"
     | "baseball"
     | "chase_the_dragon"
+    | "121_checkout"
+    | "killer"
+    | "score_clash"
   >("around_the_clock");
 
   const [points, setPoints] = useState(501);
@@ -169,6 +193,19 @@ export default function Play() {
   const [cricketMode, setCricketMode] = useState<"standard" | "no-score">(
     "standard",
   );
+  const [lives, setLives] = useState(3);
+  const [killerAssignMode, setKillerAssignMode] = useState<"random" | "throw">(
+    "random",
+  );
+  const [killerMode, setKillerMode] = useState<"double" | "treble" | "any">(
+    "double",
+  );
+  const [killerSelfPenalty, setKillerSelfPenalty] = useState(false);
+  const [scoreClashDartsPerRound, setScoreClashDartsPerRound] = useState(3);
+  const [scoreClashTargetPoints, setScoreClashTargetPoints] = useState(3);
+  const [scoreClashTieRule, setScoreClashTieRule] = useState<
+    "points" | "tiebreaker"
+  >("points");
 
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -300,6 +337,18 @@ export default function Play() {
           if (config.inRule) setInRule(config.inRule);
           if (config.outRule) setOutRule(config.outRule);
           if (config.cricketMode) setCricketMode(config.cricketMode);
+          if (config.lives) setLives(config.lives);
+          if (config.killerAssignMode)
+            setKillerAssignMode(config.killerAssignMode);
+          if (config.killerMode) setKillerMode(config.killerMode);
+          if (config.killerSelfPenalty !== undefined)
+            setKillerSelfPenalty(config.killerSelfPenalty);
+          if (config.scoreClashDartsPerRound)
+            setScoreClashDartsPerRound(config.scoreClashDartsPerRound);
+          if (config.scoreClashTargetPoints)
+            setScoreClashTargetPoints(config.scoreClashTargetPoints);
+          if (config.scoreClashTieRule)
+            setScoreClashTieRule(config.scoreClashTieRule);
           if (config.isRandomizeEnabled !== undefined)
             setIsRandomizeEnabled(config.isRandomizeEnabled);
         }
@@ -334,6 +383,13 @@ export default function Play() {
         inRule,
         outRule,
         cricketMode,
+        lives,
+        killerAssignMode,
+        killerMode,
+        killerSelfPenalty,
+        scoreClashDartsPerRound,
+        scoreClashTargetPoints,
+        scoreClashTieRule,
         isRandomizeEnabled,
       };
       try {
@@ -357,6 +413,13 @@ export default function Play() {
     inRule,
     outRule,
     cricketMode,
+    lives,
+    killerAssignMode,
+    killerMode,
+    killerSelfPenalty,
+    scoreClashDartsPerRound,
+    scoreClashTargetPoints,
+    scoreClashTieRule,
     isRandomizeEnabled,
     selectedPlayers,
   ]);
@@ -382,7 +445,7 @@ export default function Play() {
               <AnimatedSegmentedControl
                 theme={theme}
                 activeOption={gameMode}
-                onSelect={(val) =>
+                onSelect={(val: any) =>
                   setGameMode(val as "X01" | "Cricket" | "Training")
                 }
                 options={[
@@ -629,11 +692,187 @@ export default function Play() {
                           />
                         ),
                       },
+                      {
+                        id: "121_checkout",
+                        title: t(language, "121Checkout") || "121 Checkout",
+                        desc:
+                          t(language, "121CheckoutDesc") ||
+                          "Finish the score starting from 121 in 9 darts.",
+                        icon: (
+                          <Ionicons
+                            name="arrow-up-circle-outline"
+                            size={24}
+                            color={
+                              trainingMode === "121_checkout"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "killer",
+                        title: t(language, "killer") || "Killer",
+                        desc:
+                          t(language, "killerDesc") ||
+                          "Hit your double to become a Killer and eliminate others!",
+                        icon: (
+                          <Ionicons
+                            name="skull-outline"
+                            size={24}
+                            color={
+                              trainingMode === "killer"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        id: "score_clash",
+                        title: t(language, "scoreClash") || "Score Clash",
+                        desc:
+                          t(language, "scoreClashDesc") ||
+                          "Win rounds by scoring the most points.",
+                        icon: (
+                          <Ionicons
+                            name="flame-outline"
+                            size={24}
+                            color={
+                              trainingMode === "score_clash"
+                                ? "#fff"
+                                : theme.colors.textMuted
+                            }
+                          />
+                        ),
+                      },
                     ]}
                   />
                 </>
               )}
             </View>
+
+            {gameMode === "Training" && trainingMode === "killer" && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>
+                  {t(language, "matchRules") || "Match rules"}
+                </Text>
+                <View
+                  style={{ flexDirection: "row", justifyContent: "center" }}
+                >
+                  <AnimatedStepper
+                    theme={theme}
+                    value={lives}
+                    setValue={setLives}
+                    label={t(language, "lives") || "Lives"}
+                    min={1}
+                    max={15}
+                  />
+                </View>
+
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>
+                  {t(language, "assignNumbers") || "Assign numbers"}
+                </Text>
+                <AnimatedSegmentedControl
+                  theme={theme}
+                  activeOption={killerAssignMode}
+                  onSelect={(val) =>
+                    setKillerAssignMode(val as "random" | "throw")
+                  }
+                  options={[
+                    { id: "random", label: t(language, "random") || "Random" },
+                    {
+                      id: "throw",
+                      label: t(language, "byThrow") || "By throw",
+                    },
+                  ]}
+                />
+
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>
+                  {t(language, "becomeKiller") || "Become Killer"}
+                </Text>
+                <AnimatedSegmentedControl
+                  theme={theme}
+                  activeOption={killerMode}
+                  onSelect={(val) =>
+                    setKillerMode(val as "double" | "treble" | "any")
+                  }
+                  options={[
+                    {
+                      id: "double",
+                      label: t(language, "doubleOnly") || "Double only",
+                    },
+                    {
+                      id: "treble",
+                      label: t(language, "trebleOnly") || "Treble only",
+                    },
+                    { id: "any", label: t(language, "anyHit") || "Any hit" },
+                  ]}
+                />
+
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>
+                  {t(language, "selfPenalty") || "Self penalty"}
+                </Text>
+                <AnimatedSegmentedControl
+                  theme={theme}
+                  activeOption={killerSelfPenalty ? "yes" : "no"}
+                  onSelect={(val) => setKillerSelfPenalty(val === "yes")}
+                  options={[
+                    { id: "yes", label: t(language, "yes") || "Yes" },
+                    { id: "no", label: t(language, "no") || "No" },
+                  ]}
+                />
+              </View>
+            )}
+
+            {gameMode === "Training" && trainingMode === "score_clash" && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>
+                  {t(language, "matchRules") || "Match rules"}
+                </Text>
+                <View style={styles.stepperRow}>
+                  <AnimatedStepper
+                    theme={theme}
+                    value={scoreClashTargetPoints}
+                    setValue={setScoreClashTargetPoints}
+                    label={t(language, "targetPoints") || "Target points"}
+                    min={1}
+                    max={20}
+                  />
+                  <View style={styles.divider} />
+                  <AnimatedStepper
+                    theme={theme}
+                    value={scoreClashDartsPerRound}
+                    setValue={setScoreClashDartsPerRound}
+                    label={t(language, "dartsPerRound") || "Darts/Round"}
+                    min={3}
+                    max={15}
+                    step={3}
+                  />
+                </View>
+
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>
+                  {t(language, "tieRule") || "Tie rule"}
+                </Text>
+                <AnimatedSegmentedControl
+                  theme={theme}
+                  activeOption={scoreClashTieRule}
+                  onSelect={(val) =>
+                    setScoreClashTieRule(val as "points" | "tiebreaker")
+                  }
+                  options={[
+                    {
+                      id: "points",
+                      label: t(language, "pointsForAll") || "Points for all",
+                    },
+                    {
+                      id: "tiebreaker",
+                      label: t(language, "tiebreaker") || "Tiebreaker",
+                    },
+                  ]}
+                />
+              </View>
+            )}
 
             {gameMode !== "Training" && (
               <View style={styles.card}>
@@ -731,6 +970,13 @@ export default function Play() {
                   sets,
                   gameMode,
                   cricketMode,
+                  lives,
+                  killerAssignMode,
+                  killerMode,
+                  killerSelfPenalty,
+                  scoreClashDartsPerRound,
+                  scoreClashTargetPoints,
+                  scoreClashTieRule,
                   trainingMode,
                 });
 
