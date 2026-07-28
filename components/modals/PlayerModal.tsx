@@ -1,16 +1,8 @@
 import React from "react";
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { t } from "../../lib/i18n";
 import { AnimatedPressable } from "../common/AnimatedPressable";
+import { BaseModal } from "./BaseModal";
 
 export interface PlayerModalProps {
   visible: boolean;
@@ -36,65 +28,39 @@ export function PlayerModal({
   const styles = getStyles(theme);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-      navigationBarTranslucent
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <Pressable style={styles.modalOverlay} onPress={onClose}>
-          <View
-            style={styles.modalContent}
-            onStartShouldSetResponder={() => true}
-          >
-            <Text style={styles.modalTitle}>{title}</Text>
-            <TextInput
-              style={styles.addPlayerInput}
-              placeholder={t(language, "nameOrNickname") || "Name or nickname"}
-              placeholderTextColor={theme.colors.textMuted}
-              value={value}
-              onChangeText={onChangeText}
-              autoFocus
-              maxLength={30}
-              onSubmitEditing={onSave}
-              returnKeyType="done"
-            />
-            <View style={styles.modalActions}>
-              <AnimatedPressable
-                style={styles.modalBtnCancel}
-                onPress={onClose}
-              >
-                <Text style={styles.modalBtnCancelText}>
-                  {t(language, "cancel") || "Cancel"}
-                </Text>
-              </AnimatedPressable>
-              <AnimatedPressable style={styles.modalBtnAdd} onPress={onSave}>
-                <Text style={styles.modalBtnAddText}>
-                  {t(language, "save") || "Save"}
-                </Text>
-              </AnimatedPressable>
-            </View>
-          </View>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+    <BaseModal visible={visible} onClose={onClose} useKeyboardAvoidingView>
+      <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+        <Text style={styles.modalTitle}>{title}</Text>
+        <TextInput
+          style={styles.addPlayerInput}
+          placeholder={t(language, "nameOrNickname")}
+          placeholderTextColor={theme.colors.textMuted}
+          value={value}
+          onChangeText={onChangeText}
+          autoFocus
+          maxLength={30}
+          onSubmitEditing={onSave}
+          returnKeyType="done"
+        />
+        <View style={styles.modalActions}>
+          <AnimatedPressable style={styles.modalBtnCancel} onPress={onClose}>
+            <Text style={styles.modalBtnCancelText}>
+              {t(language, "cancel")}
+            </Text>
+          </AnimatedPressable>
+          <AnimatedPressable style={styles.modalBtnAdd} onPress={onSave}>
+            <Text style={styles.modalBtnAddText}>
+              {t(language, "save")}
+            </Text>
+          </AnimatedPressable>
+        </View>
+      </View>
+    </BaseModal>
   );
 }
 
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
-      padding: 20,
-    },
     modalContent: {
       backgroundColor: theme.colors.card,
       borderRadius: 20,
@@ -138,7 +104,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       fontSize: 16,
     },
     modalBtnAdd: {
-      backgroundColor: theme.colors.success || "#28a745",
+      backgroundColor: theme.colors.success,
       paddingVertical: 10,
       paddingHorizontal: 20,
       borderRadius: 8,

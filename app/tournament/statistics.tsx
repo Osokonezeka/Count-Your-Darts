@@ -195,7 +195,7 @@ export default function TournamentStatistics() {
         try {
           const uri = await viewShotRef.current.capture();
           await Sharing.shareAsync(uri, {
-            dialogTitle: "Share your Darts Stats!",
+            dialogTitle: t(language, "shareDialogTitle"),
             mimeType: "image/jpeg",
           });
         } catch (error) {
@@ -265,7 +265,7 @@ export default function TournamentStatistics() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <Text style={styles.headerTitle}>
-          {t(language, "tournamentStatistics") || "Tournament Stats"}
+          {t(language, "tournamentStatistics")}
         </Text>
         <View style={styles.headerRight}>
           <AnimatedPressable
@@ -297,8 +297,8 @@ export default function TournamentStatistics() {
           onSelect={(val) => setEntityType(val as EntityType)}
           style={styles.segmentContainer}
           options={[
-            { id: "single", label: t(language, "players") || "Players" },
-            { id: "team", label: t(language, "teams") || "Teams" },
+            { id: "single", label: t(language, "players") },
+            { id: "team", label: t(language, "teams") },
           ]}
         />
         <AnimatedSegmentedControl
@@ -310,12 +310,12 @@ export default function TournamentStatistics() {
             id: f,
             label:
               f === "today"
-                ? t(language, "today") || "Today"
+                ? t(language, "today")
                 : f === "7d"
-                  ? t(language, "week") || "7 days"
+                  ? t(language, "week")
                   : f === "30d"
-                    ? t(language, "month") || "30 days"
-                    : t(language, "all") || "All time",
+                    ? t(language, "month")
+                    : t(language, "all"),
           }))}
         />
       </View>
@@ -338,8 +338,8 @@ export default function TournamentStatistics() {
         visible={showPlayerFilter}
         title={
           entityType === "team"
-            ? t(language, "selectTeamsTitle") || "Select teams"
-            : t(language, "selectPlayers") || "Select players"
+            ? t(language, "selectTeamsTitle")
+            : t(language, "selectPlayers")
         }
         players={filteredHistoryPlayers}
         selectedPlayers={tempNames}
@@ -359,7 +359,7 @@ export default function TournamentStatistics() {
           setShowPlayerFilter(false);
           setFilterSearchQuery("");
         }}
-        confirmText={t(language, "setFilters") || "Set filters"}
+        confirmText={t(language, "setFilters")}
         confirmColor={theme.colors.primary}
         showSearch={true}
         searchQuery={filterSearchQuery}
@@ -368,13 +368,13 @@ export default function TournamentStatistics() {
         allSelected={allSelected}
         searchPlaceholder={
           entityType === "team"
-            ? t(language, "searchTeamOrPlayer") || "Search team / player..."
-            : t(language, "searchPlayer") || "Search player..."
+            ? t(language, "searchTeamOrPlayer")
+            : t(language, "searchPlayer")
         }
         countLabel={
           entityType === "team"
-            ? t(language, "teamsCount") || "teams"
-            : t(language, "playersShort") || "players"
+            ? t(language, "teamsCount")
+            : t(language, "playersShort")
         }
         onSelectAll={() =>
           setTempNames(
@@ -407,7 +407,7 @@ export default function TournamentStatistics() {
             onStartShouldSetResponder={() => true}
           >
             <Text style={styles.modalTitle}>
-              {t(language, "shareStatsTitle") || "Share Stats"}
+              {t(language, "shareStatsTitle")}
             </Text>
             <FlatList
               style={{ flexShrink: 1 }}
@@ -450,34 +450,33 @@ export default function TournamentStatistics() {
               return (
                 <ShareCard
                   playerName={selectedSharePlayer}
-                  subtitle={`${t(language, "sharePlayerStats") || "PLAYER STATS"} • TOURNAMENTS`}
+                  subtitle={`${t(language, "sharePlayerStats")} • TOURNAMENTS`}
                   topRightBox={{
                     label:
-                      t(language, "shareMatchesPlayed") || "MATCHES PLAYED",
+                      t(language, "shareMatchesPlayed"),
                     value: playerStats?.mPlayed?.toString() || "0",
                   }}
                   boxes={[
                     {
                       label:
-                        t(language, "shareTournaments") ||
-                        "TOURNAMENTS (1st / 2nd)",
+                        t(language, "shareTournaments"),
                       value: `${playerStats?.tPlayed || 0} (${playerStats?.t1st || 0} / ${playerStats?.t2nd || 0})`,
                     },
                     {
-                      label: t(language, "shareGamesWon") || "MATCHES / WON",
+                      label: t(language, "shareGamesWon"),
                       value: `${playerStats?.mPlayed || 0} / ${playerStats?.mWon || 0} (${playerStats?.winPct?.toFixed(0) || 0}%)`,
                     },
                     {
-                      label: t(language, "shareFirst9Avg") || "FIRST 9 / AVG",
+                      label: t(language, "shareFirst9Avg"),
                       value: `${playerStats?.calculatedFirst9?.toFixed(1) || "0.0"} / ${playerStats?.calculatedAvg?.toFixed(1) || "0.0"}`,
                     },
                     {
                       label:
-                        t(language, "shareCheckoutsHit") || "CHECKOUTS / HIT %",
+                        t(language, "shareCheckoutsHit"),
                       value: `${playerStats?.checkoutHits || 0} / ${playerStats?.calculatedCheckoutPct?.toFixed(1) || "0.0"}%`,
                     },
                     {
-                      label: t(language, "shareScoring") || "100+ / 140+ / 180",
+                      label: t(language, "shareScoring"),
                       value: `${playerStats?.s100 || 0} / ${playerStats?.s140 || 0} / ${playerStats?.s180 || 0}`,
                       fullWidth: true,
                     },

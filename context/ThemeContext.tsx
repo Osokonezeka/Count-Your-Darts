@@ -9,14 +9,14 @@ import React, {
   useState,
 } from "react";
 import { Animated, StyleSheet, useColorScheme, View } from "react-native";
-import { darkTheme, lightTheme, sizes } from "../lib/theme";
+import { darkTheme, lightTheme } from "../lib/theme";
 
 const THEME_KEY = "@settings_theme";
 type ThemeMode = "light" | "dark" | "auto";
 
 type ThemeContextType = {
   themeMode: ThemeMode;
-  theme: { colors: typeof lightTheme; sizes: typeof sizes };
+  theme: { colors: typeof lightTheme };
   setThemeMode: (mode: ThemeMode) => void;
 };
 
@@ -64,7 +64,6 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const theme = useMemo(
     () => ({
       colors: resolvedTheme === "dark" ? darkTheme : lightTheme,
-      sizes,
     }),
     [resolvedTheme],
   );

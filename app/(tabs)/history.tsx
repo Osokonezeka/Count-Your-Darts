@@ -20,31 +20,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
-import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
+import { getSharedScreenStyles } from "../../components/common/SharedScreenStyles";
+import CustomAlert from "../../components/modals/CustomAlert";
 import { HeatmapBoard } from "../../components/statistics/StatisticsComponents";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useAlert } from "../../hooks/useAlert";
 import { t } from "../../lib/i18n";
 import {
-  PlayerMatchStats,
-  Turn,
-  TurnDart,
-  parseDateString,
-} from "../../lib/statsUtils";
+  ActiveSection,
+  getActiveSections,
+  getSingleMatchStats,
+  MatchHistory,
+  ParsedMatchStat,
+} from "../../lib/matchStatsMapper";
+import { parseDateString } from "../../lib/statsUtils";
+
+export type { MatchHistory } from "../../lib/matchStatsMapper";
 
 const HISTORY_KEY = "@dart_match_history";
-
-export type MatchHistory = {
-  id: string;
-  date: string;
-  duration?: string;
-  mode: string;
-  settings?: Record<string, string | number | boolean | undefined>;
-  players: PlayerMatchStats[];
-  isUnfinished?: boolean;
-  gameState?: Record<string, unknown>;
-};
 
 const MODE_CONFIG: Record<
   string,
@@ -134,49 +129,7 @@ const MODE_CONFIG: Record<
 
 const ASCENDING_SCORE_MODES = ["Around the Clock"];
 
-export interface ParsedMatchStat {
-  name: string;
-  score?: number;
-  darts?: number;
-  avg?: number | string;
-  first9DartsPoints?: number;
-  first9DartsCount?: number;
-  totalPoints?: number;
-  totalDarts?: number;
-  checkoutDarts?: number;
-  checkoutHits?: number;
-  s60?: number;
-  s100?: number;
-  s140?: number;
-  s180?: number;
-  closed?: number;
-  mpr?: string;
-  status?: string;
-  hits?: Record<number, { S: number; D: number; T: number }>;
-  coords?: { x: number; y: number }[];
-  tPlayed?: number;
-  t1st?: number;
-  t2nd?: number;
-  mPlayed?: number;
-  mWon?: number;
-  isBust?: boolean;
-  c2?: number;
-  c3?: number;
-  c4_6?: number;
-  fails?: number;
-  targetAvg?: string;
-  phase1?: number;
-  phase2?: number;
-  phase3?: number;
-  halves?: number;
-  shanghais?: number;
-  sHits?: number;
-  dHits?: number;
-  tHits?: number;
-  accuracy?: string;
-  reached?: number;
-  scorelessInnings?: number;
-}
+export type { ParsedMatchStat } from "../../lib/matchStatsMapper";
 
 interface MatchStatCardProps {
   item: { id: string; title: string };
@@ -396,6 +349,9 @@ const MatchStatCard = React.memo(
           key={colKey}
           style={isName ? styles.colNameWrap : styles.colWrap}
           onPress={() => handleSort(colKey)}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ selected: isActive }}
         >
           <Text style={styles.colText}>{label}</Text>
           {isActive && (
@@ -434,7 +390,13 @@ const MatchStatCard = React.memo(
           ]}
           layout={LinearTransition.duration(250)}
         >
-          <Pressable style={styles.sectionHeader} onPress={onToggle}>
+          <Pressable
+            style={styles.sectionHeader}
+            onPress={onToggle}
+            accessibilityRole="button"
+            accessibilityLabel={item.title}
+            accessibilityState={{ expanded: isOpen }}
+          >
             <Text style={styles.sectionTitle}>{item.title}</Text>
             <Ionicons
               name={isOpen ? "chevron-up" : "chevron-down"}
@@ -449,16 +411,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "firstNine") || "First 9",
+                      t(language, "firstNine"),
                       "first9",
                     )}
                     {renderSortableHeader(
-                      t(language, "average") || "Average",
+                      t(language, "average"),
                       "avg",
                     )}
                   </View>
@@ -490,16 +452,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "gameDarts") || "Game darts",
+                      t(language, "gameDarts"),
                       "checkoutDarts",
                     )}
                     {renderSortableHeader(
-                      t(language, "hitPercent") || "Hit %",
+                      t(language, "hitPercent"),
                       "checkoutPct",
                     )}
                   </View>
@@ -525,7 +487,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -594,6 +556,9 @@ const MatchStatCard = React.memo(
                         <Pressable
                           style={styles.hitPlayerHeader}
                           onPress={() => onTogglePlayer(`${item.id}_${s.name}`)}
+                          accessibilityRole="button"
+                          accessibilityLabel={s.name}
+                          accessibilityState={{ expanded: !isCollapsed }}
                         >
                           <Text style={styles.hitPlayerName}>{s.name}</Text>
                           <Ionicons
@@ -607,15 +572,15 @@ const MatchStatCard = React.memo(
                             <View style={styles.rowHeader}>
                               <View style={styles.colNameWrap}>
                                 <Text style={styles.colText}>
-                                  {t(language, "target") || "Target"}
+                                  {t(language, "target")}
                                 </Text>
                               </View>
                               {renderSortableHeader(
-                                t(language, "single") || "Single",
+                                t(language, "single"),
                                 "S",
                               )}
                               {renderSortableHeader(
-                                t(language, "double") || "Double",
+                                t(language, "double"),
                                 "D",
                               )}
                               {renderSortableHeader(tripleTerm, "T")}
@@ -670,6 +635,9 @@ const MatchStatCard = React.memo(
                         <Pressable
                           style={styles.hitPlayerHeader}
                           onPress={() => onTogglePlayer(`${item.id}_${s.name}`)}
+                          accessibilityRole="button"
+                          accessibilityLabel={s.name}
+                          accessibilityState={{ expanded: !isCollapsed }}
                         >
                           <Text style={styles.hitPlayerName}>{s.name}</Text>
                           <Ionicons
@@ -696,20 +664,20 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "points") || "Points",
+                      t(language, "points"),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "darts") || "Darts",
+                      t(language, "darts"),
                       "darts",
                     )}
                     {renderSortableHeader(
-                      t(language, "closed") || "Closed",
+                      t(language, "closed"),
                       "closed",
                     )}
                     {renderSortableHeader("MPR", "mpr")}
@@ -740,16 +708,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "darts") || "Darts",
+                      t(language, "darts"),
                       "darts",
                     )}
                     {renderSortableHeader(
-                      t(language, "accuracy") || "Accuracy",
+                      t(language, "accuracy"),
                       "avg",
                     )}
                   </View>
@@ -773,16 +741,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "score") || "Score",
+                      t(language, "score"),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "status") || "Status",
+                      t(language, "status"),
                       "status",
                     )}
                   </View>
@@ -814,16 +782,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "score") || "Score",
+                      t(language, "score"),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "average") || "Average",
+                      t(language, "average"),
                       "avg",
                     )}
                     {renderSortableHeader("140+", "s140")}
@@ -848,13 +816,13 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader("PTS", "score")}
                     {renderSortableHeader(
-                      t(language, "avgShort") || "AVG",
+                      t(language, "avgShort"),
                       "targetAvg",
                     )}
                   </View>
@@ -878,7 +846,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -914,7 +882,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -939,7 +907,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -965,7 +933,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -1004,14 +972,14 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader("PTS", "score")}
                     {renderSortableHeader("ERRORS", "halves")}
                     {renderSortableHeader(
-                      t(language, "accuracyShort") || "ACC",
+                      t(language, "accuracyShort"),
                       "accuracy",
                     )}
                   </View>
@@ -1050,7 +1018,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -1084,17 +1052,17 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader("PTS", "score")}
                     {renderSortableHeader(
-                      t(language, "target") || "Target",
+                      t(language, "target"),
                       "reached",
                     )}
                     {renderSortableHeader(
-                      t(language, "accuracyShort") || "ACC",
+                      t(language, "accuracyShort"),
                       "accuracy",
                     )}
                   </View>
@@ -1123,7 +1091,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -1157,16 +1125,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "darts") || "Darts",
+                      t(language, "darts"),
                       "darts",
                     )}
                     {renderSortableHeader(
-                      t(language, "accuracyShort") || "ACC",
+                      t(language, "accuracyShort"),
                       "accuracy",
                     )}
                   </View>
@@ -1190,16 +1158,16 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "runs")?.toUpperCase() || "RUNS",
+                      t(language, "runs")?.toUpperCase(),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "scoreless")?.toUpperCase() || "0 RUNS",
+                      t(language, "scoreless")?.toUpperCase(),
                       "scorelessInnings",
                     )}
                   </View>
@@ -1235,7 +1203,7 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
@@ -1269,20 +1237,20 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "highestReached") || "Highest",
+                      t(language, "highestReached"),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "darts") || "Darts",
+                      t(language, "darts"),
                       "darts",
                     )}
                     {renderSortableHeader(
-                      t(language, "hitPercent") || "Hit %",
+                      t(language, "hitPercent"),
                       "accuracy",
                     )}
                   </View>
@@ -1314,20 +1282,20 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "lives") || "Lives",
+                      t(language, "lives"),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "darts") || "Darts",
+                      t(language, "darts"),
                       "darts",
                     )}
                     {renderSortableHeader(
-                      t(language, "status") || "Status",
+                      t(language, "status"),
                       "status",
                     )}
                   </View>
@@ -1366,20 +1334,20 @@ const MatchStatCard = React.memo(
                 <>
                   <View style={styles.rowHeader}>
                     {renderSortableHeader(
-                      t(language, "player") || "Player",
+                      t(language, "player"),
                       "name",
                       true,
                     )}
                     {renderSortableHeader(
-                      t(language, "points") || "Points",
+                      t(language, "points"),
                       "score",
                     )}
                     {renderSortableHeader(
-                      t(language, "score") || "Score",
+                      t(language, "score"),
                       "totalPoints",
                     )}
                     {renderSortableHeader(
-                      t(language, "average") || "Average",
+                      t(language, "average"),
                       "avg",
                     )}
                   </View>
@@ -1451,12 +1419,7 @@ export default function HistoryScreen() {
   if (selectedMatch) lastSelectedMatch.current = selectedMatch;
   const matchToDisplay = selectedMatch || lastSelectedMatch.current;
 
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    title: "",
-    message: "",
-    buttons: [] as AlertButton[],
-  });
+  const { showAlert, alertProps } = useAlert(language);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     performance: true,
@@ -1491,21 +1454,19 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       navigation.setOptions({
-        headerTitle: t(language, "history") || "History",
+        headerTitle: t(language, "history"),
         headerShadowVisible: false,
         headerRight: () => (
           <Pressable
             onPress={() => {
-              setAlertConfig({
-                title: t(language, "delete") || "Delete",
-                message:
-                  t(language, "deleteHistoryConfirm") ||
-                  "Are you sure you want to delete all match history? This action cannot be undone.",
-                buttons: [
-                  { text: t(language, "cancel") || "Cancel", style: "cancel" },
+              showAlert(
+                t(language, "delete"),
+                t(language, "deleteHistoryConfirm"),
+                [
+                  { text: t(language, "cancel"), style: "cancel" },
                   {
                     text:
-                      t(language, "deletePermanently") || "Delete Permanently",
+                      t(language, "deletePermanently"),
                     style: "destructive",
                     onPress: async () => {
                       await AsyncStorage.multiRemove([
@@ -1516,20 +1477,21 @@ export default function HistoryScreen() {
                     },
                   },
                 ],
-              });
-              setAlertVisible(true);
+              );
             }}
             style={{ marginRight: 16, padding: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={t(language, "deleteAllHistory")}
           >
             <Ionicons
               name="trash-outline"
               size={24}
-              color={theme.colors.danger || "#ef4444"}
+              color={theme.colors.danger}
             />
           </Pressable>
         ),
       });
-    }, [navigation, language, theme]),
+    }, [navigation, language, theme, showAlert]),
   );
 
   useFocusEffect(
@@ -1548,15 +1510,13 @@ export default function HistoryScreen() {
   );
 
   const deleteMatch = (id: string) => {
-    setAlertConfig({
-      title: t(language, "deleteMatch") || "Delete match",
-      message:
-        t(language, "deleteMatchConfirm") ||
-        "Are you sure you want to remove this match from the history?",
-      buttons: [
-        { text: t(language, "cancel") || "Cancel", style: "cancel" },
+    showAlert(
+      t(language, "deleteMatch"),
+      t(language, "deleteMatchConfirm"),
+      [
+        { text: t(language, "cancel"), style: "cancel" },
         {
-          text: t(language, "delete") || "Delete",
+          text: t(language, "delete"),
           style: "destructive",
           onPress: async () => {
             const updatedHistory = history.filter((match) => match.id !== id);
@@ -1568,8 +1528,7 @@ export default function HistoryScreen() {
           },
         },
       ],
-    });
-    setAlertVisible(true);
+    );
   };
 
   const handleLoadMore = () => {
@@ -1601,353 +1560,10 @@ export default function HistoryScreen() {
     scrollLayout.contentWidth > 0 &&
     scrollLayout.offset + scrollLayout.width < scrollLayout.contentWidth - 5;
 
-  const singleMatchStats = useMemo(() => {
-    if (!matchToDisplay) return [];
-
-    if (matchToDisplay.mode === "Cricket") {
-      return matchToDisplay.players.map((p) => {
-        const closedCount =
-          p.totalClosedTargets !== undefined
-            ? p.totalClosedTargets
-            : p.marks
-              ? Object.values(p.marks).filter((m: number) => m >= 3).length
-              : p.closedTargets || 0;
-
-        const totalMarks =
-          p.totalMatchMarks !== undefined
-            ? p.totalMatchMarks
-            : p.totalMarks !== undefined
-              ? p.totalMarks
-              : (Object.values(p.marks || {}).reduce(
-                  (a: number, b: number) => a + b,
-                  0,
-                ) as number);
-        const totalDarts =
-          p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts || 0;
-        const score =
-          p.totalMatchScore !== undefined ? p.totalMatchScore : p.score;
-
-        return {
-          name: p.name,
-          score: score,
-          darts: totalDarts,
-          closed: closedCount,
-          mpr:
-            totalDarts > 0
-              ? ((totalMarks / totalDarts) * 3).toFixed(2)
-              : "0.00",
-        };
-      });
-    }
-
-    if (matchToDisplay.mode === "Catch 40") {
-      return matchToDisplay.players.map((p) => {
-        const targetsPlayed =
-          (p.c2 || 0) + (p.c3 || 0) + (p.c4_6 || 0) + (p.fails || 0);
-        const avg =
-          targetsPlayed > 0
-            ? ((p.dartsCount || p.darts || 0) / targetsPlayed).toFixed(1)
-            : "0.0";
-        return {
-          name: p.name,
-          score: p.score || 0,
-          darts: p.dartsCount || p.darts || 0,
-          c2: p.c2 || 0,
-          c3: p.c3 || 0,
-          c4_6: p.c4_6 || 0,
-          fails: p.fails || 0,
-          targetAvg: avg,
-        };
-      });
-    }
-
-    if (matchToDisplay.mode === "JDC Challenge") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        darts: p.dartsCount || p.darts || 0,
-        phase1: p.phase1 || 0,
-        phase2: p.phase2 || 0,
-        phase3: p.phase3 || 0,
-      }));
-    }
-
-    if (matchToDisplay.mode === "Bermuda Triangle") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        halves: p.halves || 0,
-      }));
-    }
-
-    if (matchToDisplay.mode === "Halve-It") {
-      return matchToDisplay.players.map((p) => {
-        const darts = p.dartsCount || p.darts || 0;
-        return {
-          name: p.name,
-          score: p.score || 0,
-          halves: p.halves || 0,
-          sHits: p.sHits || 0,
-          dHits: p.dHits || 0,
-          tHits: p.tHits || 0,
-          accuracy:
-            darts > 0
-              ? ((((p.hits as number) || 0) / darts) * 100).toFixed(1) + "%"
-              : "0%",
-        };
-      });
-    }
-
-    if (matchToDisplay.mode === "Shanghai") {
-      return matchToDisplay.players.map((p) => {
-        const darts = p.dartsCount || p.darts || 0;
-        const reached = Math.min(
-          20,
-          Math.floor(Math.max(0, darts - 1) / 3) + 1,
-        );
-        return {
-          name: p.name,
-          score: p.score || 0,
-          shanghais: p.shanghais || 0,
-          sHits: p.sHits || 0,
-          dHits: p.dHits || 0,
-          tHits: p.tHits || 0,
-          accuracy:
-            darts > 0
-              ? ((((p.hits as number) || 0) / darts) * 100).toFixed(1) + "%"
-              : "0%",
-          reached,
-        };
-      });
-    }
-
-    if (matchToDisplay.mode === "Baseball") {
-      return matchToDisplay.players.map((p) => {
-        return {
-          name: p.name,
-          score: p.score || 0,
-          sHits: p.sHits || 0,
-          dHits: p.dHits || 0,
-          tHits: p.tHits || 0,
-          scorelessInnings: p.scorelessInnings || 0,
-          accuracy:
-            p.dartsCount && p.dartsCount > 0
-              ? ((((p.hits as number) || 0) / p.dartsCount) * 100).toFixed(1) +
-                "%"
-              : "0%",
-        };
-      });
-    }
-
-    if (matchToDisplay.mode === "Chase the Dragon") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        darts: p.darts || 0,
-        accuracy: p.accuracy || "0%",
-      }));
-    }
-
-    if (matchToDisplay.mode === "Around the Clock") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        darts: p.darts || 0,
-        avg: p.accuracy || "0%",
-      }));
-    }
-
-    if (matchToDisplay.mode === "Bob's 27") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        darts: p.darts || 0,
-        status:
-          p.status ||
-          (p.isBust
-            ? (t(language, "bust") || "BUST").toUpperCase()
-            : (t(language, "cleared") || "CLEARED").toUpperCase()),
-        isBust: p.isBust,
-      }));
-    }
-
-    if (matchToDisplay.mode === "121_checkout") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 120,
-        darts: p.totalMatchDarts || p.darts || 0,
-        accuracy:
-          p.checkoutDarts && p.checkoutDarts > 0
-            ? (((p.checkoutHits || 0) / p.checkoutDarts) * 100).toFixed(1) + "%"
-            : "0%",
-      }));
-    }
-
-    if (matchToDisplay.mode === "Killer") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        darts: p.darts || 0,
-        status: p.status || "UNKNOWN",
-      }));
-    }
-
-    if (matchToDisplay.mode === "Score Clash") {
-      return matchToDisplay.players.map((p) => ({
-        name: p.name,
-        score: p.score || 0,
-        totalPoints: p.totalMatchScore || 0,
-        darts: p.darts || 0,
-        avg:
-          p.darts && p.darts > 0
-            ? (((p.totalMatchScore || 0) / p.darts) * 3).toFixed(1)
-            : "0.0",
-      }));
-    }
-
-    if (matchToDisplay.mode === "100 Darts") {
-      return matchToDisplay.players.map((p) => {
-        const hits: Record<number, { S: number; D: number; T: number }> = {};
-        [...Array(20)].forEach((_, i) => (hits[i + 1] = { S: 0, D: 0, T: 0 }));
-        hits[25] = { S: 0, D: 0, T: 0 };
-        hits[0] = { S: 0, D: 0, T: 0 };
-
-        if (p.allTurns) {
-          p.allTurns.forEach((turn: Turn) => {
-            turn.forEach((dart: TurnDart) => {
-              if (
-                dart &&
-                typeof dart === "object" &&
-                dart.v !== undefined &&
-                hits[dart.v]
-              ) {
-                if (dart.m === 1) hits[dart.v].S++;
-                if (dart.m === 2) hits[dart.v].D++;
-                if (dart.m === 3) hits[dart.v].T++;
-              }
-            });
-          });
-        }
-
-        return {
-          name: p.name,
-          score: p.score || 0,
-          darts: p.darts || 0,
-          avg: p.avg || "0.0",
-          s140: p.s140 || 0,
-          s180: p.s180 || 0,
-          hits,
-        };
-      });
-    }
-
-    const playerMap: Record<string, ParsedMatchStat> = {};
-    const winner = [...matchToDisplay.players].sort(
-      (a, b) =>
-        (b.sets || 0) - (a.sets || 0) ||
-        (b.legs || 0) - (a.legs || 0) ||
-        (a.score || 0) - (b.score || 0),
-    )[0];
-
-    matchToDisplay.players.forEach((p: PlayerMatchStats) => {
-      playerMap[p.name] = {
-        name: p.name,
-        mPlayed: 1,
-        mWon: winner && p.name === winner.name ? 1 : 0,
-        totalPoints: 0,
-        totalDarts: 0,
-        first9DartsPoints: 0,
-        first9DartsCount: 0,
-        checkoutDarts: p.checkoutDarts || 0,
-        checkoutHits: p.checkoutHits || 0,
-        s180: 0,
-        s140: 0,
-        s100: 0,
-        s60: 0,
-        tPlayed: 0,
-        t1st: 0,
-        t2nd: 0,
-        hits: {},
-        coords: [],
-      };
-      [...Array(20)].forEach(
-        (_, i) => (playerMap[p.name].hits![i + 1] = { S: 0, D: 0, T: 0 }),
-      );
-      playerMap[p.name].hits![25] = { S: 0, D: 0, T: 0 };
-      playerMap[p.name].hits![0] = { S: 0, D: 0, T: 0 };
-
-      if (p.allTurns) {
-        const turns = p.allTurns;
-        const sumOfLengths = turns.reduce(
-          (acc: number, t: Turn) => acc + t.length,
-          0,
-        );
-        const isBuggyCompressed =
-          p.totalMatchDarts &&
-          p.totalMatchDarts > sumOfLengths &&
-          !turns.some((t: Turn) =>
-            t.some(
-              (d: TurnDart) =>
-                typeof d === "object" && d !== null && d.d !== undefined,
-            ),
-          );
-
-        turns.forEach((turn: Turn, index: number) => {
-          const turnSum = turn.reduce(
-            (a: number, b: TurnDart) =>
-              a + (typeof b === "number" ? b : (b.v || 0) * (b.m || 1)),
-            0,
-          );
-
-          let turnDarts = turn.reduce(
-            (a: number, b: TurnDart) =>
-              a +
-              (typeof b === "number"
-                ? 1
-                : typeof b === "object" && b !== null && b.d !== undefined
-                  ? b.d
-                  : 1),
-            0,
-          );
-          if (isBuggyCompressed && p.totalMatchDarts !== undefined) {
-            turnDarts =
-              index === turns.length - 1 ? p.totalMatchDarts - index * 3 : 3;
-          }
-
-          playerMap[p.name].totalPoints! += turnSum;
-          playerMap[p.name].totalDarts! += turnDarts;
-          if (index < 3) {
-            playerMap[p.name].first9DartsPoints! += turnSum;
-            playerMap[p.name].first9DartsCount! += turnDarts;
-          }
-          if (turnSum >= 180) playerMap[p.name].s180!++;
-          else if (turnSum >= 140) playerMap[p.name].s140!++;
-          else if (turnSum >= 100) playerMap[p.name].s100!++;
-          else if (turnSum >= 60) playerMap[p.name].s60!++;
-          turn.forEach((dart: TurnDart) => {
-            const isScoreInput =
-              (typeof dart === "object" && dart !== null && dart.i === true) ||
-              isBuggyCompressed;
-            if (isScoreInput) return;
-            if (typeof dart === "object" && dart !== null && dart.c)
-              playerMap[p.name].coords!.push(dart.c);
-
-            if (
-              typeof dart === "object" &&
-              dart !== null &&
-              dart.v !== undefined &&
-              playerMap[p.name].hits![dart.v]
-            ) {
-              if (dart.m === 1) playerMap[p.name].hits![dart.v].S++;
-              if (dart.m === 2) playerMap[p.name].hits![dart.v].D++;
-              if (dart.m === 3) playerMap[p.name].hits![dart.v].T++;
-            }
-          });
-        });
-      }
-    });
-    return Object.values(playerMap);
-  }, [matchToDisplay]);
+  const singleMatchStats = useMemo(
+    () => getSingleMatchStats(matchToDisplay, language),
+    [matchToDisplay, language],
+  );
 
   const renderGameCard = ({ item }: { item: MatchHistory }) => {
     const isCricket = item.mode === "Cricket";
@@ -2003,6 +1619,8 @@ export default function HistoryScreen() {
       <Pressable
         onPress={() => setSelectedMatch(item)}
         style={[styles.card, isUnfinished && styles.unfinishedCard]}
+        accessibilityRole="button"
+        accessibilityLabel={`${badgeLabel} - ${displayDate}`}
       >
         <View style={styles.cardHeader}>
           <View style={styles.dateRow}>
@@ -2051,6 +1669,8 @@ export default function HistoryScreen() {
             <Pressable
               onPress={() => deleteMatch(item.id)}
               style={styles.deleteBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t(language, "deleteMatch")}
             >
               <Ionicons
                 name="trash-outline"
@@ -2065,8 +1685,8 @@ export default function HistoryScreen() {
           <Text style={styles.settingsText}>{settingsStr}</Text>
           {(!isSpecialMode || isCricket) && (
             <Text style={styles.settingsTextBold}>
-              {item.settings?.legs || 1} {t(language, "leg") || "Leg"} /{" "}
-              {item.settings?.sets || 1} {t(language, "set") || "Set"}
+              {item.settings?.legs || 1} {t(language, "leg")} /{" "}
+              {item.settings?.sets || 1} {t(language, "set")}
             </Text>
           )}
         </View>
@@ -2117,8 +1737,8 @@ export default function HistoryScreen() {
                         {item.mode === "Around the Clock" ||
                         (item.mode === "Cricket" &&
                           item.settings?.cricketMode === "no-score")
-                          ? `${p.darts || 0} ${t(language, "dartsShort") || "darts"}`
-                          : `${p.score || 0} ${t(language, "ptsShort") || "pts"}`}
+                          ? `${p.darts || 0} ${t(language, "dartsShort")}`
+                          : `${p.score || 0} ${t(language, "ptsShort")}`}
                       </Text>
                     </>
                   ) : (
@@ -2128,8 +1748,8 @@ export default function HistoryScreen() {
                       </Text>
                       <Text style={styles.playerScore}>
                         {p.score === 0
-                          ? t(language, "checkoutUpper") || "CHECKOUT"
-                          : `${p.score} ${t(language, "ptsShort") || "pts"}`}
+                          ? t(language, "checkoutUpper")
+                          : `${p.score} ${t(language, "ptsShort")}`}
                       </Text>
                     </>
                   )}
@@ -2142,188 +1762,10 @@ export default function HistoryScreen() {
     );
   };
 
-  const activeSections = useMemo(() => {
-    if (!matchToDisplay) return [];
-
-    const hasAnyHits = singleMatchStats.some((s: ParsedMatchStat) => {
-      if (!s.hits) return false;
-      return Object.values(s.hits).some(
-        (h: { S: number; D: number; T: number }) =>
-          h.S > 0 || h.D > 0 || h.T > 0,
-      );
-    });
-
-    if (matchToDisplay.mode === "Cricket") {
-      return [
-        {
-          id: "cricket_summary",
-          title: t(language, "cricketSummary") || "Cricket summary",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Around the Clock") {
-      return [
-        {
-          id: "aroundtheclock_summary",
-          title: t(language, "aroundTheClock") || "Around the Clock",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Bob's 27") {
-      return [
-        { id: "bob27_summary", title: t(language, "bobs27") || "Bob's 27" },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Catch 40") {
-      return [
-        { id: "catch40_summary", title: t(language, "catch40") || "Catch 40" },
-        { id: "catch40_details", title: t(language, "scoring") || "Scoring" },
-      ];
-    }
-
-    if (matchToDisplay.mode === "JDC Challenge") {
-      return [
-        {
-          id: "jdc_summary",
-          title: t(language, "jdcChallenge") || "JDC Challenge",
-        },
-        { id: "jdc_details", title: t(language, "scoring") || "Scoring" },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Bermuda Triangle") {
-      return [
-        {
-          id: "bermuda_summary",
-          title: t(language, "bermudaTriangle") || "Bermuda Triangle",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Halve-It") {
-      return [
-        { id: "halveit_summary", title: t(language, "halveIt") || "Halve-It" },
-        { id: "halveit_details", title: t(language, "scoring") || "Scoring" },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Shanghai") {
-      return [
-        {
-          id: "shanghai_summary",
-          title: t(language, "shanghai") || "Shanghai",
-        },
-        { id: "shanghai_details", title: t(language, "scoring") || "Scoring" },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Baseball") {
-      return [
-        {
-          id: "baseball_summary",
-          title: t(language, "baseball") || "Baseball",
-        },
-        { id: "baseball_details", title: t(language, "scoring") || "Scoring" },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Chase the Dragon") {
-      return [
-        {
-          id: "dragon_summary",
-          title: t(language, "chaseTheDragon") || "Chase the Dragon",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "121_checkout") {
-      return [
-        {
-          id: "121_checkout_summary",
-          title: t(language, "121Checkout") || "121 Checkout",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Killer") {
-      return [
-        {
-          id: "killer_summary",
-          title: t(language, "killer") || "Killer",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "Score Clash") {
-      return [
-        {
-          id: "score_clash_summary",
-          title: t(language, "scoreClash") || "Score Clash",
-        },
-      ];
-    }
-
-    if (matchToDisplay.mode === "100 Darts") {
-      const sections = [
-        {
-          id: "hundreddarts_summary",
-          title: t(language, "100Darts") || "100 Darts",
-        },
-      ];
-      if (hasAnyHits) {
-        sections.push({
-          id: "hit_chart",
-          title: t(language, "sectorsHeader") || "Targets hitted",
-        });
-      }
-      const hasAnyCoords = singleMatchStats.some(
-        (s: ParsedMatchStat) => s.coords && s.coords.length > 0,
-      );
-      if (hasAnyCoords) {
-        sections.push({
-          id: "heatmap",
-          title: t(language, "heatmap") || "Heatmap",
-        });
-      }
-      return sections;
-    }
-
-    const sections = [
-      {
-        id: "performance",
-        title: t(language, "avgHeader") || "First 9 / Average",
-      },
-      {
-        id: "checkouts",
-        title: t(language, "gameDartsHeader") || "Game Darts / Hit %",
-      },
-      {
-        id: "scoring",
-        title:
-          t(language, "scoringHeader") || "Scoring (60+ / 100+ / 140+ / 180)",
-      },
-    ];
-
-    if (hasAnyHits)
-      sections.push({
-        id: "hit_chart",
-        title: t(language, "sectorsHeader") || "Targets hitted",
-      });
-
-    const hasAnyCoords = singleMatchStats.some(
-      (s: ParsedMatchStat) => s.coords && s.coords.length > 0,
-    );
-    if (hasAnyCoords)
-      sections.push({
-        id: "heatmap",
-        title: t(language, "heatmap") || "Heatmap",
-      });
-
-    return sections;
-  }, [matchToDisplay, singleMatchStats, language]);
+  const activeSections: ActiveSection[] = useMemo(
+    () => getActiveSections(matchToDisplay, singleMatchStats, language),
+    [matchToDisplay, singleMatchStats, language],
+  );
 
   return (
     <View style={styles.container}>
@@ -2373,10 +1815,10 @@ export default function HistoryScreen() {
             }
             style={[styles.filterContainer, { width: 1240 }]}
             options={[
-              { id: "All", label: t(language, "all") || "All" },
+              { id: "All", label: t(language, "all") },
               { id: "X01", label: "X01" },
-              { id: "Cricket", label: t(language, "cricket") || "Cricket" },
-              { id: "Bob's 27", label: t(language, "bobsShort") || "Bob's" },
+              { id: "Cricket", label: t(language, "cricket") },
+              { id: "Bob's 27", label: t(language, "bobsShort") },
               { id: "100 Darts", label: "100" },
               { id: "Catch 40", label: "C40" },
               { id: "JDC Challenge", label: "JDC" },
@@ -2386,14 +1828,14 @@ export default function HistoryScreen() {
               { id: "Baseball", label: "Baseball" },
               { id: "Chase the Dragon", label: "Dragon" },
               { id: "121_checkout", label: "121" },
-              { id: "Killer", label: t(language, "killer") || "Killer" },
+              { id: "Killer", label: t(language, "killer") },
               {
                 id: "Score Clash",
-                label: t(language, "scoreClash") || "Score Clash",
+                label: t(language, "scoreClash"),
               },
               {
                 id: "Around the Clock",
-                label: t(language, "clockShort") || "Clock",
+                label: t(language, "clockShort"),
               },
             ]}
           />
@@ -2436,7 +1878,7 @@ export default function HistoryScreen() {
               color={theme.colors.textLight}
             />
             <Text style={styles.emptyStateText}>
-              {t(language, "noGamesPlayed") || "No games played yet"}
+              {t(language, "noGamesPlayed")}
             </Text>
           </View>
         )}
@@ -2459,7 +1901,7 @@ export default function HistoryScreen() {
           <View style={styles.modalHeader}>
             <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={styles.modalHeaderTitle}>
-                {t(language, "matchStatsTitle") || "Match Statistics"}
+                {t(language, "matchStatsTitle")}
               </Text>
               <Text style={styles.modalHeaderSubtitle}>
                 {matchToDisplay?.date}{" "}
@@ -2485,16 +1927,20 @@ export default function HistoryScreen() {
                     });
                   }}
                   style={styles.resumeBtnModal}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(language, "resume")}
                 >
                   <Ionicons name="play" size={16} color="#fff" />
                   <Text style={styles.resumeBtnText}>
-                    {t(language, "resume") || "Resume"}
+                    {t(language, "resume")}
                   </Text>
                 </AnimatedPressable>
               )}
               <AnimatedPressable
                 onPress={() => setSelectedMatch(null)}
                 style={styles.modalCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t(language, "close")}
               >
                 <Ionicons
                   name="close"
@@ -2528,19 +1974,14 @@ export default function HistoryScreen() {
         </SafeAreaView>
       </Modal>
 
-      <CustomAlert
-        visible={alertVisible}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onRequestClose={() => setAlertVisible(false)}
-      />
+      <CustomAlert {...alertProps} />
     </View>
   );
 }
 
-const getStyles = (theme: { colors: Record<string, string> }) =>
-  StyleSheet.create({
+const getStyles = (theme: { colors: Record<string, string> }) => {
+  const shared = getSharedScreenStyles(theme);
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     filterContainer: {
       backgroundColor: theme.colors.cardBorder,
@@ -2580,23 +2021,18 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     },
     listContainer: { paddingHorizontal: 16, paddingBottom: 20 },
     card: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
+      ...shared.card,
       borderWidth: 2,
       borderColor: theme.colors.card,
-      elevation: 2,
+      shadowOpacity: 0,
     },
     unfinishedCard: {
       borderColor: theme.colors.warning,
       borderWidth: 2,
     },
     cardHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
+      ...shared.cardHeader,
       alignItems: "flex-start",
-      marginBottom: 12,
     },
     dateRow: {
       flex: 1,
@@ -2625,7 +2061,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     resumeBtnModal: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: theme.colors.warning || "#f0ad4e",
+      backgroundColor: theme.colors.warning,
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 10,
@@ -2633,7 +2069,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     resumeBtn: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: theme.colors.warning || "#f0ad4e",
+      backgroundColor: theme.colors.warning,
       paddingHorizontal: 8,
       paddingVertical: 4,
       borderRadius: 8,
@@ -2823,3 +2259,4 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       textAlign: "center",
     },
   });
+};

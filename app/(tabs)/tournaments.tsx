@@ -26,7 +26,7 @@ export default function TournamentScreen() {
       contentContainerStyle={styles.scrollContent}
     >
       <Text style={styles.sectionTitleMain}>
-        {t(language, "selectTournamentMode") || "Select tournament mode"}
+        {t(language, "selectTournamentMode")}
       </Text>
 
       <AnimatedPressable
@@ -37,11 +37,10 @@ export default function TournamentScreen() {
           <Ionicons name="people" size={48} color={theme.colors.primary} />
         </View>
         <Text style={styles.modeTitle}>
-          {t(language, "localGame") || "Local game"}
+          {t(language, "localGame")}
         </Text>
         <Text style={styles.modeDesc}>
-          {t(language, "localGameDesc") ||
-            "Play on the same device. Perfect for playing at one board."}
+          {t(language, "localGameDesc")}
         </Text>
       </AnimatedPressable>
       <AnimatedPressable
@@ -59,11 +58,10 @@ export default function TournamentScreen() {
           </View>
         </View>
         <Text style={styles.modeTitle}>
-          {t(language, "multiGame") || "Multiplayer game"}
+          {t(language, "multiGame")}
         </Text>
         <Text style={styles.modeDesc}>
-          {t(language, "multiGameDesc") ||
-            "Each player uses their own phone. Create a room and invite friends."}
+          {t(language, "multiGameDesc")}
         </Text>
       </AnimatedPressable>
 
@@ -77,7 +75,7 @@ export default function TournamentScreen() {
           color={theme.colors.primary}
         />
         <Text style={styles.historyBtnText}>
-          {t(language, "tournamentHistory") || "Tournament History"}
+          {t(language, "tournamentHistory")}
         </Text>
       </AnimatedPressable>
 
@@ -87,7 +85,7 @@ export default function TournamentScreen() {
       >
         <Ionicons name="stats-chart" size={24} color={theme.colors.primary} />
         <Text style={styles.historyBtnText}>
-          {t(language, "tournamentStatistics") || "Tournament Statistics"}
+          {t(language, "tournamentStatistics")}
         </Text>
       </AnimatedPressable>
     </ScrollView>

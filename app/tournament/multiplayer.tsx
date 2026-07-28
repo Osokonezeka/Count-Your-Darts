@@ -17,6 +17,7 @@ import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useAlert } from "../../hooks/useAlert";
 import { t } from "../../lib/i18n";
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -62,11 +63,7 @@ export default function MultiplayerScreen() {
   const [firebaseConfigStr, setFirebaseConfigStr] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [deviceNameInput, setDeviceNameInput] = useState("");
-  const [alertConfigErrorVisible, setAlertConfigErrorVisible] = useState(false);
-  const [joinErrorVisible, setJoinErrorVisible] = useState(false);
-  const [permissionAlertVisible, setPermissionAlertVisible] = useState(false);
-  const [sessionEndedAlertVisible, setSessionEndedAlertVisible] =
-    useState(false);
+  const { showAlert, alertProps } = useAlert(language);
   const [activeSession, setActiveSession] = useState<MultiplayerSession | null>(
     null,
   );
@@ -86,7 +83,13 @@ export default function MultiplayerScreen() {
       setIsScanning(false);
       setIsSoftPrompting(false);
       setJoinModalVisible(false);
-      setTimeout(() => setJoinErrorVisible(true), 400);
+      setTimeout(
+        () =>
+          showAlert(t(language, "error"), t(language, "invalidJoinCode"), [
+            { text: t(language, "ok"), style: "default" },
+          ]),
+        400,
+      );
       return;
     }
     setJoinModalVisible(false);
@@ -130,7 +133,15 @@ export default function MultiplayerScreen() {
         );
       } catch (error) {
         setConfigModalVisible(false);
-        setTimeout(() => setAlertConfigErrorVisible(true), 400);
+        setTimeout(
+          () =>
+            showAlert(
+              t(language, "error"),
+              t(language, "invalidFirebaseConfig"),
+              [{ text: t(language, "ok"), style: "default" }],
+            ),
+          400,
+        );
         return;
       }
     } else {
@@ -239,7 +250,9 @@ export default function MultiplayerScreen() {
         }
       } else throw new Error("Not found");
     } catch (e) {
-      setSessionEndedAlertVisible(true);
+      showAlert(t(language, "sessionEndedTitle"), t(language, "sessionEndedMsg"), [
+        { text: t(language, "ok"), style: "default" },
+      ]);
       await AsyncStorage.removeItem("@current_multiplayer_session");
       setActiveSession(null);
     }
@@ -260,26 +273,26 @@ export default function MultiplayerScreen() {
         >
           <Ionicons name="arrow-back" size={24} color={theme.colors.textMain} />
           <Text style={styles.backButtonText}>
-            {t(language, "changeMode") || "Change mode"}
+            {t(language, "changeMode")}
           </Text>
         </AnimatedPressable>
         <Text style={styles.sectionTitleMain}>
-          {t(language, "multiplayerOptions") || "Multiplayer options"}
+          {t(language, "multiplayerOptions")}
         </Text>
 
         {activeSession && (
           <AnimatedPrimaryButton
             title={
               isResuming
-                ? t(language, "resuming") || "Resuming..."
+                ? t(language, "resuming")
                 : t(language, "resumeMultiplayerSession")?.replace(
                     "{{name}}",
                     activeSession.tournamentName,
-                  ) || `Resume: ${activeSession.tournamentName}`
+                  )
             }
             iconName="reload"
             iconPosition="left"
-            color={theme.colors.warning || "#f0ad4e"}
+            color={theme.colors.warning}
             theme={theme}
             disabled={isResuming}
             style={{ marginBottom: 20 }}
@@ -309,11 +322,10 @@ export default function MultiplayerScreen() {
             />
           </View>
           <Text style={styles.modeTitle}>
-            {t(language, "hostGame") || "Host game"}
+            {t(language, "hostGame")}
           </Text>
           <Text style={styles.modeDesc}>
-            {t(language, "hostGameDesc") ||
-              "Create a new room, set rules and share the code with friends."}
+            {t(language, "hostGameDesc")}
           </Text>
         </AnimatedPressable>
         <AnimatedPressable
@@ -331,11 +343,10 @@ export default function MultiplayerScreen() {
             <Ionicons name="log-in" size={48} color={theme.colors.primary} />
           </View>
           <Text style={styles.modeTitle}>
-            {t(language, "joinGame") || "Join game"}
+            {t(language, "joinGame")}
           </Text>
           <Text style={styles.modeDesc}>
-            {t(language, "joinGameDesc") ||
-              "Already have a code from a friend? Enter it here to join the lobby."}
+            {t(language, "joinGameDesc")}
           </Text>
         </AnimatedPressable>
       </ScrollView>
@@ -354,16 +365,15 @@ export default function MultiplayerScreen() {
           />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {t(language, "deviceNameConfig") || "Device Configuration"}
+              {t(language, "deviceNameConfig")}
             </Text>
             <Text style={styles.modalDesc}>
-              {t(language, "deviceNameDesc") ||
-                "Enter the name under which other players will see this device in the Lobby."}
+              {t(language, "deviceNameDesc")}
             </Text>
             <TextInput
               style={styles.deviceNameInput}
               placeholder={
-                t(language, "deviceNamePlaceholder") || "e.g. Mike's iPad"
+                t(language, "deviceNamePlaceholder")
               }
               placeholderTextColor={theme.colors.textMuted}
               value={deviceNameInput}
@@ -376,7 +386,7 @@ export default function MultiplayerScreen() {
                 onPress={() => setDeviceNameModalVisible(false)}
               >
                 <Text style={styles.modalBtnCancelText}>
-                  {t(language, "cancel") || "Cancel"}
+                  {t(language, "cancel")}
                 </Text>
               </AnimatedPressable>
               <AnimatedPressable
@@ -384,7 +394,7 @@ export default function MultiplayerScreen() {
                 onPress={saveDeviceNameConfig}
               >
                 <Text style={styles.modalBtnSaveText}>
-                  {t(language, "save") || "Save"}
+                  {t(language, "save")}
                 </Text>
               </AnimatedPressable>
             </View>
@@ -406,12 +416,10 @@ export default function MultiplayerScreen() {
           />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {t(language, "databaseConfigHost") ||
-                "Database Configuration (Host)"}
+              {t(language, "databaseConfigHost")}
             </Text>
             <Text style={styles.modalDesc}>
-              {t(language, "firebaseConfigDesc") ||
-                "Paste your Firebase configuration code here (the one you got in the console) so you can host games for others."}
+              {t(language, "firebaseConfigDesc")}
             </Text>
             <TextInput
               style={styles.configInput}
@@ -424,10 +432,12 @@ export default function MultiplayerScreen() {
             <View style={styles.modalActions}>
               <AnimatedPressable
                 style={styles.modalBtnTutorial}
-                onPress={() => Linking.openURL("https://example.com/tutorial")}
+                onPress={() =>
+                  Linking.openURL("https://firebase.google.com/docs/web/setup")
+                }
               >
                 <Text style={styles.modalBtnTutorialText}>
-                  {t(language, "tutorial") || "Tutorial"}
+                  {t(language, "tutorial")}
                 </Text>
               </AnimatedPressable>
               <View style={styles.modalActionsRight}>
@@ -436,7 +446,7 @@ export default function MultiplayerScreen() {
                   onPress={() => setConfigModalVisible(false)}
                 >
                   <Text style={styles.modalBtnCancelText}>
-                    {t(language, "cancel") || "Cancel"}
+                    {t(language, "cancel")}
                   </Text>
                 </AnimatedPressable>
                 <AnimatedPressable
@@ -444,7 +454,7 @@ export default function MultiplayerScreen() {
                   onPress={saveHostConfig}
                 >
                   <Text style={styles.modalBtnSaveText}>
-                    {t(language, "save") || "Save"}
+                    {t(language, "save")}
                   </Text>
                 </AnimatedPressable>
               </View>
@@ -485,8 +495,7 @@ export default function MultiplayerScreen() {
               </AnimatedPressable>
               <View style={styles.scannerOverlay}>
                 <Text style={styles.scannerText}>
-                  {t(language, "pointCameraAtQr") ||
-                    "Point camera at the QR code"}
+                  {t(language, "pointCameraAtQr")}
                 </Text>
               </View>
             </View>
@@ -500,11 +509,10 @@ export default function MultiplayerScreen() {
                 />
               </View>
               <Text style={styles.modalTitle}>
-                {t(language, "cameraAccess") || "Camera access"}
+                {t(language, "cameraAccess")}
               </Text>
               <Text style={styles.modalDesc}>
-                {t(language, "cameraAccessDesc") ||
-                  "In a moment, we will ask you for camera access. It is needed solely to scan QR codes from a friend's screen to quickly join a game."}
+                {t(language, "cameraAccessDesc")}
               </Text>
               <View style={styles.modalActions}>
                 <AnimatedPressable
@@ -512,7 +520,7 @@ export default function MultiplayerScreen() {
                   onPress={() => setIsSoftPrompting(false)}
                 >
                   <Text style={styles.modalBtnCancelText}>
-                    {t(language, "cancel") || "Cancel"}
+                    {t(language, "cancel")}
                   </Text>
                 </AnimatedPressable>
                 <AnimatedPressable
@@ -525,12 +533,30 @@ export default function MultiplayerScreen() {
                     } else {
                       setJoinModalVisible(false);
                       setIsSoftPrompting(false);
-                      setTimeout(() => setPermissionAlertVisible(true), 400);
+                      setTimeout(
+                        () =>
+                          showAlert(
+                            t(language, "error"),
+                            t(language, "cameraPermissionDenied"),
+                            [
+                              {
+                                text: t(language, "cancel"),
+                                style: "cancel",
+                              },
+                              {
+                                text: t(language, "settings"),
+                                style: "default",
+                                onPress: () => Linking.openSettings(),
+                              },
+                            ],
+                          ),
+                        400,
+                      );
                     }
                   }}
                 >
                   <Text style={styles.modalBtnSaveText}>
-                    {t(language, "continue") || "Continue"}
+                    {t(language, "continue")}
                   </Text>
                 </AnimatedPressable>
               </View>
@@ -538,16 +564,15 @@ export default function MultiplayerScreen() {
           ) : (
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>
-                {t(language, "joinGame") || "Join game"}
+                {t(language, "joinGame")}
               </Text>
               <Text style={styles.modalDesc}>
-                {t(language, "joinGameModalDesc") ||
-                  "Paste the long Connection String or scan the QR code from the Host's screen."}
+                {t(language, "joinGameModalDesc")}
               </Text>
               <View style={styles.joinInputContainer}>
                 <TextInput
                   style={styles.joinInputFlexible}
-                  placeholder={t(language, "pasteCode") || "Paste code..."}
+                  placeholder={t(language, "pasteCode")}
                   placeholderTextColor={theme.colors.textMuted}
                   value={joinCode}
                   onChangeText={setJoinCode}
@@ -560,7 +585,25 @@ export default function MultiplayerScreen() {
                       setIsScanning(true);
                     } else if (permission.status === "denied") {
                       setJoinModalVisible(false);
-                      setTimeout(() => setPermissionAlertVisible(true), 400);
+                      setTimeout(
+                        () =>
+                          showAlert(
+                            t(language, "error"),
+                            t(language, "cameraPermissionDenied"),
+                            [
+                              {
+                                text: t(language, "cancel"),
+                                style: "cancel",
+                              },
+                              {
+                                text: t(language, "settings"),
+                                style: "default",
+                                onPress: () => Linking.openSettings(),
+                              },
+                            ],
+                          ),
+                        400,
+                      );
                     } else {
                       setIsSoftPrompting(true);
                     }
@@ -582,7 +625,7 @@ export default function MultiplayerScreen() {
                   }}
                 >
                   <Text style={styles.modalBtnCancelText}>
-                    {t(language, "cancel") || "Cancel"}
+                    {t(language, "cancel")}
                   </Text>
                 </AnimatedPressable>
                 <AnimatedPressable
@@ -591,7 +634,7 @@ export default function MultiplayerScreen() {
                   onPress={() => handleJoin(joinCode)}
                 >
                   <Text style={styles.modalBtnSaveText}>
-                    {t(language, "join") || "Join"}
+                    {t(language, "join")}
                   </Text>
                 </AnimatedPressable>
               </View>
@@ -600,81 +643,7 @@ export default function MultiplayerScreen() {
         </View>
       </Modal>
 
-      <CustomAlert
-        visible={alertConfigErrorVisible}
-        title={t(language, "error") || "Error"}
-        message={
-          t(language, "invalidFirebaseConfig") ||
-          "The pasted text does not contain a valid Firebase configuration. Copy and paste the entire block containing the keys (e.g., apiKey, projectId)."
-        }
-        onRequestClose={() => setAlertConfigErrorVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setAlertConfigErrorVisible(false),
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={joinErrorVisible}
-        title={t(language, "error") || "Error"}
-        message={
-          t(language, "invalidJoinCode") ||
-          "Invalid invitation code. Make sure the pasted text is correct or scan the QR code again."
-        }
-        onRequestClose={() => setJoinErrorVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setJoinErrorVisible(false),
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={permissionAlertVisible}
-        title={t(language, "error") || "Error"}
-        message={
-          t(language, "cameraPermissionDenied") ||
-          "Camera access denied. To scan the QR code, you must grant camera permissions in your device settings."
-        }
-        onRequestClose={() => setPermissionAlertVisible(false)}
-        buttons={[
-          {
-            text: t(language, "cancel") || "Cancel",
-            style: "cancel",
-            onPress: () => setPermissionAlertVisible(false),
-          },
-          {
-            text: t(language, "settings") || "Settings",
-            style: "default",
-            onPress: () => {
-              setPermissionAlertVisible(false);
-              Linking.openSettings();
-            },
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={sessionEndedAlertVisible}
-        title={t(language, "sessionEndedTitle") || "Session ended"}
-        message={
-          t(language, "sessionEndedMsg") ||
-          "This tournament has ended or been cancelled by the Host."
-        }
-        onRequestClose={() => setSessionEndedAlertVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setSessionEndedAlertVisible(false),
-          },
-        ]}
-      />
+      <CustomAlert {...alertProps} />
     </View>
   );
 }

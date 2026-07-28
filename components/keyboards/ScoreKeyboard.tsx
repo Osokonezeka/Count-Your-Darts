@@ -84,7 +84,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       borderBottomWidth: 1,
       borderColor: theme.colors.cardBorder,
     },
-    kbEnter: { backgroundColor: theme.colors.success || "#28a745" },
-    kbDel: { backgroundColor: theme.colors.danger || "#ff4444" },
+    kbEnter: { backgroundColor: theme.colors.success },
+    kbDel: { backgroundColor: theme.colors.danger },
     kbTxt: { fontSize: 28, fontWeight: "800", color: theme.colors.textMain },
   });

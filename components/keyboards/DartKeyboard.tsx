@@ -3,6 +3,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { t } from "../../lib/i18n";
 import { AnimatedPressable } from "../common/AnimatedPressable";
+import { KeyboardActionButton } from "./KeyboardActionButton";
 
 const DART_ROWS = [
   [1, 2, 3, 4, 5, 6, 7],
@@ -65,9 +66,10 @@ export function DartKeyboard({
       ))}
 
       <View style={styles.keyRow4}>
-        <AnimatedPressable
+        <KeyboardActionButton
           onPress={onMiss}
-          style={[styles.keyAction, multiplier !== 1 && styles.disabledKey]}
+          theme={theme}
+          disabled={multiplier !== 1}
         >
           <Text
             style={[
@@ -77,11 +79,12 @@ export function DartKeyboard({
           >
             {missTerm}
           </Text>
-        </AnimatedPressable>
+        </KeyboardActionButton>
 
-        <AnimatedPressable
+        <KeyboardActionButton
           onPress={() => onMultiplierToggle(2)}
-          style={[styles.keyAction, multiplier === 2 && styles.activeModifier]}
+          theme={theme}
+          active={multiplier === 2}
         >
           <Text
             style={[
@@ -89,12 +92,13 @@ export function DartKeyboard({
               multiplier === 2 && styles.activeModifierText,
             ]}
           >
-            {t(language, "double") || "Double"}
+            {t(language, "double")}
           </Text>
-        </AnimatedPressable>
-        <AnimatedPressable
+        </KeyboardActionButton>
+        <KeyboardActionButton
           onPress={() => onMultiplierToggle(3)}
-          style={[styles.keyAction, multiplier === 3 && styles.activeModifier]}
+          theme={theme}
+          active={multiplier === 3}
         >
           <Text
             style={[
@@ -104,14 +108,11 @@ export function DartKeyboard({
           >
             {tripleTerm}
           </Text>
-        </AnimatedPressable>
+        </KeyboardActionButton>
 
-        <AnimatedPressable
-          onPress={onUndo}
-          style={[styles.keyAction, styles.undoKey]}
-        >
+        <KeyboardActionButton onPress={onUndo} theme={theme} undo>
           <Ionicons name="arrow-undo" size={28} color={theme.colors.danger} />
-        </AnimatedPressable>
+        </KeyboardActionButton>
       </View>
     </>
   );
@@ -131,21 +132,11 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       elevation: 2,
     },
     keyText: { fontSize: 18, fontWeight: "700", color: theme.colors.textMain },
-    keyAction: {
-      flex: 1,
-      height: 58,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
     keyTextAction: {
       fontSize: 15,
       fontWeight: "800",
       color: theme.colors.textMain,
     },
-    activeModifier: { backgroundColor: theme.colors.primaryDark },
     activeModifierText: { color: "#fff" },
     disabledKey: {
       backgroundColor: theme.colors.cardBorder,
@@ -153,5 +144,4 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       opacity: 0.5,
     },
     disabledKeyText: { color: theme.colors.textLight },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
   });

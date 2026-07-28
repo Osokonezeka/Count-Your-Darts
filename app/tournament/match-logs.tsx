@@ -41,15 +41,14 @@ export default function MatchLogsScreen() {
         ]}
       >
         <Text style={{ color: theme.colors.textMuted }}>
-          {t(language, "noLogsAvailable") ||
-            "No logs available for this match."}
+          {t(language, "noLogsAvailable")}
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
           style={{ marginTop: 20 }}
         >
           <Text style={{ color: theme.colors.primary, fontWeight: "bold" }}>
-            {t(language, "goBack") || "Go back"}
+            {t(language, "goBack")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -115,7 +114,7 @@ export default function MatchLogsScreen() {
         <View key={i} style={styles.row}>
           <View style={styles.colScored}>
             <Text style={[styles.txtScored, t1 === "BUST" && styles.txtBust]}>
-              {t1 || ""}
+              {t1 === "BUST" ? t(language, "bust")?.toUpperCase() : t1 || ""}
             </Text>
           </View>
           <View style={styles.colToGo}>
@@ -143,7 +142,7 @@ export default function MatchLogsScreen() {
           </View>
           <View style={styles.colScored}>
             <Text style={[styles.txtScored, t2 === "BUST" && styles.txtBust]}>
-              {t2 || ""}
+              {t2 === "BUST" ? t(language, "bust")?.toUpperCase() : t2 || ""}
             </Text>
           </View>
         </View>,
@@ -153,24 +152,24 @@ export default function MatchLogsScreen() {
     return (
       <View key={legIndex} style={styles.legContainer}>
         <Text style={styles.legTitle}>
-          {(t(language, "legNumber") || "Leg {{number}}").replace(
+          {(t(language, "legNumber")).replace(
             "{{number}}",
             (legIndex + 1).toString(),
           )}
         </Text>
         <View style={styles.tableHead}>
           <Text style={styles.headLabel}>
-            {t(language, "scored") || "Scored"}
+            {t(language, "scored")}
           </Text>
           <Text style={styles.headLabelToGo} numberOfLines={1}>
             {match.player1?.name}
           </Text>
           <View style={{ width: 40 }} />
           <Text style={styles.headLabelToGo} numberOfLines={1}>
-            {match.player2?.name || t(language, "byePlayer") || "Bye"}
+            {match.player2?.name || t(language, "byePlayer")}
           </Text>
           <Text style={styles.headLabel}>
-            {t(language, "scored") || "Scored"}
+            {t(language, "scored")}
           </Text>
         </View>
         <View style={styles.tableBody}>{rows}</View>
@@ -188,7 +187,7 @@ export default function MatchLogsScreen() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {t(language, "matchLogsTitle") || "Match Logs"}
+          {t(language, "matchLogsTitle")}
         </Text>
         <View style={{ width: 34 }} />
       </View>
@@ -219,7 +218,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMain,
       textAlign: "center",
       paddingVertical: 10,
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.1)",
+      backgroundColor: theme.colors.primaryLight,
     },
     tableHead: {
       flexDirection: "row",
@@ -265,7 +264,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       backgroundColor: theme.colors.cardBorder,
     },
     starterCell: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.15)",
+      backgroundColor: theme.colors.primaryLight,
     },
     starterIcon: { position: "absolute", left: 10 },
     txtScored: {
@@ -280,7 +279,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMuted,
     },
     txtBust: {
-      color: theme.colors.danger || "red",
+      color: theme.colors.danger,
       fontSize: 14,
       fontWeight: "800",
     },

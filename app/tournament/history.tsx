@@ -52,7 +52,7 @@ export default function TournamentHistoryScreen() {
       }
     } catch (e) {
       console.error(
-        t(language, "tournamentHistoryLoadError") || "Error loading history:",
+        t(language, "tournamentHistoryLoadError"),
         e,
       );
     } finally {
@@ -107,16 +107,16 @@ export default function TournamentHistoryScreen() {
       }
 
       const formatLabels: Record<string, string> = {
-        single_knockout: t(language, "singleKnockout") || "Single Knockout",
-        double_knockout: t(language, "doubleKnockout") || "Double Knockout",
-        round_robin: t(language, "roundRobin") || "Round Robin",
+        single_knockout: t(language, "singleKnockout"),
+        double_knockout: t(language, "doubleKnockout"),
+        round_robin: t(language, "roundRobin"),
         groups_and_knockout:
-          t(language, "groupsAndKnockout") || "Groups + Knockout",
+          t(language, "groupsAndKnockout"),
         groups_and_double_knockout:
-          t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
+          t(language, "groupsAndDoubleKnockout"),
       };
 
-      let winnerName = t(language, "unknown") || "Unknown";
+      let winnerName = t(language, "unknown");
       let secondPlaceName = "";
 
       if (item.settings?.format === "round_robin") {
@@ -226,8 +226,8 @@ export default function TournamentHistoryScreen() {
               </Text>
               <Text style={styles.expandText}>
                 {isExpanded
-                  ? t(language, "showLess") || "Show less"
-                  : t(language, "showMore") || "Show more"}
+                  ? t(language, "showLess")
+                  : t(language, "showMore")}
               </Text>
             </Pressable>
           )}
@@ -266,8 +266,8 @@ export default function TournamentHistoryScreen() {
               <Text style={styles.tagText}>
                 {item.players?.length || 0}{" "}
                 {isTeam
-                  ? t(language, "teamsCount") || "teams"
-                  : t(language, "playersShort") || "players"}
+                  ? t(language, "teamsCount")
+                  : t(language, "playersShort")}
               </Text>
             </View>
           </View>
@@ -313,7 +313,7 @@ export default function TournamentHistoryScreen() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <Text style={styles.headerTitle}>
-          {t(language, "tournamentHistory") || "Tournament History"}
+          {t(language, "tournamentHistory")}
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -332,11 +332,10 @@ export default function TournamentHistoryScreen() {
             color={theme.colors.cardBorder}
           />
           <Text style={styles.emptyText}>
-            {t(language, "noSavedTournaments") || "No saved tournaments."}
+            {t(language, "noSavedTournaments")}
           </Text>
           <Text style={styles.emptySubText}>
-            {t(language, "noSavedTournamentsSub") ||
-              "Your finished tournaments will appear here."}
+            {t(language, "noSavedTournamentsSub")}
           </Text>
         </View>
       ) : (
@@ -350,20 +349,19 @@ export default function TournamentHistoryScreen() {
 
       <CustomAlert
         visible={deleteAlert.visible}
-        title={t(language, "deleteFromHistory") || "Delete from history"}
+        title={t(language, "deleteFromHistory")}
         message={
-          t(language, "deleteFromHistoryConfirm") ||
-          "Are you sure you want to permanently delete this tournament from history?"
+          t(language, "deleteFromHistoryConfirm")
         }
         onRequestClose={() => setDeleteAlert({ visible: false, id: "" })}
         buttons={[
           {
-            text: t(language, "cancel") || "Cancel",
+            text: t(language, "cancel"),
             style: "cancel",
             onPress: () => setDeleteAlert({ visible: false, id: "" }),
           },
           {
-            text: t(language, "delete") || "Delete",
+            text: t(language, "delete"),
             style: "destructive",
             onPress: deleteHistoryItem,
           },

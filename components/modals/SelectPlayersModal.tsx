@@ -1,16 +1,9 @@
 import React from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  Pressable,
-  FlatList,
-} from "react-native";
+import { View, Text, TextInput, StyleSheet, FlatList } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AnimatedPressable } from "../common/AnimatedPressable";
 import { t } from "../../lib/i18n";
+import { BaseModal } from "./BaseModal";
 
 export interface SelectPlayerItem {
   name: string;
@@ -67,153 +60,124 @@ export function SelectPlayersModal({
   const styles = getStyles(theme);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-      navigationBarTranslucent
-    >
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <View
-          style={styles.modalContent}
-          onStartShouldSetResponder={() => true}
-        >
-          <Text style={styles.modalTitle}>{title}</Text>
+    <BaseModal visible={visible} onClose={onClose} useKeyboardAvoidingView>
+      <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+        <Text style={styles.modalTitle}>{title}</Text>
 
-          {showSearch && (
-            <View style={styles.searchContainer}>
-              <Ionicons
-                name="search"
-                size={20}
-                color={theme.colors.textMuted}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder={
-                  searchPlaceholder ||
-                  t(language, "searchPlayer") ||
-                  "Search player..."
-                }
-                placeholderTextColor={theme.colors.textMuted}
-                value={searchQuery}
-                onChangeText={onSearchChange}
-              />
-            </View>
-          )}
+        {showSearch && (
+          <View style={styles.searchContainer}>
+            <Ionicons name="search" size={20} color={theme.colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={
+                searchPlaceholder ||
+                t(language, "searchPlayer")
+              }
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={onSearchChange}
+            />
+          </View>
+        )}
 
-          {showSelectAll && (
-            <View style={styles.selectAllRow}>
-              <Text style={styles.selectAllLabel}>
-                {players.length}{" "}
-                {countLabel || t(language, "playersShort") || "players"}
-              </Text>
-              <AnimatedPressable
-                onPress={allSelected ? onDeselectAll : onSelectAll}
-              >
-                <Text style={styles.selectAllText}>
-                  {allSelected
-                    ? t(language, "deselectAll") || "Deselect all"
-                    : t(language, "selectAll") || "Select all"}
-                </Text>
-              </AnimatedPressable>
-            </View>
-          )}
-
-          <FlatList
-            style={{ maxHeight: 350, width: "100%" }}
-            data={players}
-            keyExtractor={(item) =>
-              typeof item === "object" ? item.name : item
-            }
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => {
-              const isObj = typeof item === "object" && item !== null;
-              const itemName = isObj ? item.name : item;
-              const itemSubtitle = isObj ? item.subtitle : null;
-              const checked = selectedPlayers.includes(itemName);
-              return (
-                <AnimatedPressable
-                  style={styles.playerRow}
-                  onPress={() => onTogglePlayer(itemName)}
-                >
-                  <View
-                    style={{
-                      flex: 1,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingRight: 12,
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.playerName,
-                        checked && styles.playerNameActive,
-                      ]}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {itemName}
-                    </Text>
-                    {itemSubtitle && (
-                      <Text style={styles.playerSubtitle} numberOfLines={1}>
-                        {" "}
-                        ({itemSubtitle})
-                      </Text>
-                    )}
-                  </View>
-                  <View
-                    style={[styles.checkbox, checked && styles.checkboxActive]}
-                  >
-                    {checked && (
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    )}
-                  </View>
-                </AnimatedPressable>
-              );
-            }}
-            ListEmptyComponent={
-              <Text style={styles.emptyText}>
-                {t(language, "noPlayersMatch") ||
-                  "No players match the criteria."}
-              </Text>
-            }
-          />
-
-          <View style={styles.modalActions}>
-            {cancelText && (
-              <AnimatedPressable
-                onPress={onClose}
-                style={styles.modalBtnCancel}
-              >
-                <Text style={styles.modalBtnCancelText}>{cancelText}</Text>
-              </AnimatedPressable>
-            )}
+        {showSelectAll && (
+          <View style={styles.selectAllRow}>
+            <Text style={styles.selectAllLabel}>
+              {players.length}{" "}
+              {countLabel || t(language, "playersShort")}
+            </Text>
             <AnimatedPressable
-              onPress={onConfirm}
-              style={[
-                styles.modalBtnAdd,
-                confirmColor && { backgroundColor: confirmColor },
-              ]}
+              onPress={allSelected ? onDeselectAll : onSelectAll}
             >
-              <Text style={styles.modalBtnAddText}>{confirmText}</Text>
+              <Text style={styles.selectAllText}>
+                {allSelected
+                  ? t(language, "deselectAll")
+                  : t(language, "selectAll")}
+              </Text>
             </AnimatedPressable>
           </View>
+        )}
+
+        <FlatList
+          style={{ maxHeight: 350, width: "100%" }}
+          data={players}
+          keyExtractor={(item) => (typeof item === "object" ? item.name : item)}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => {
+            const isObj = typeof item === "object" && item !== null;
+            const itemName = isObj ? item.name : item;
+            const itemSubtitle = isObj ? item.subtitle : null;
+            const checked = selectedPlayers.includes(itemName);
+            return (
+              <AnimatedPressable
+                style={styles.playerRow}
+                onPress={() => onTogglePlayer(itemName)}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingRight: 12,
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.playerName,
+                      checked && styles.playerNameActive,
+                    ]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {itemName}
+                  </Text>
+                  {itemSubtitle && (
+                    <Text style={styles.playerSubtitle} numberOfLines={1}>
+                      {" "}
+                      ({itemSubtitle})
+                    </Text>
+                  )}
+                </View>
+                <View
+                  style={[styles.checkbox, checked && styles.checkboxActive]}
+                >
+                  {checked && (
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+              </AnimatedPressable>
+            );
+          }}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              {t(language, "noPlayersMatch")}
+            </Text>
+          }
+        />
+
+        <View style={styles.modalActions}>
+          {cancelText && (
+            <AnimatedPressable onPress={onClose} style={styles.modalBtnCancel}>
+              <Text style={styles.modalBtnCancelText}>{cancelText}</Text>
+            </AnimatedPressable>
+          )}
+          <AnimatedPressable
+            onPress={onConfirm}
+            style={[
+              styles.modalBtnAdd,
+              confirmColor && { backgroundColor: confirmColor },
+            ]}
+          >
+            <Text style={styles.modalBtnAddText}>{confirmText}</Text>
+          </AnimatedPressable>
         </View>
-      </Pressable>
-    </Modal>
+      </View>
+    </BaseModal>
   );
 }
 
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
-      padding: 20,
-    },
     modalContent: {
       backgroundColor: theme.colors.card,
       borderRadius: 20,
@@ -277,7 +241,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       fontWeight: "600",
     },
     playerNameActive: {
-      color: theme.colors.success || "#28a745",
+      color: theme.colors.success,
       fontWeight: "bold",
     },
     playerSubtitle: {
@@ -296,8 +260,8 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       alignItems: "center",
     },
     checkboxActive: {
-      backgroundColor: theme.colors.success || "#28a745",
-      borderColor: theme.colors.success || "#28a745",
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
     },
     modalActions: {
       flexDirection: "row",
@@ -318,7 +282,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     },
     modalBtnAdd: {
       flex: 1,
-      backgroundColor: theme.colors.success || "#28a745",
+      backgroundColor: theme.colors.success,
       paddingVertical: 14,
       paddingHorizontal: 20,
       borderRadius: 12,

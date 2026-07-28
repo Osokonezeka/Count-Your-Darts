@@ -22,6 +22,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useGameModals } from "../../hooks/useGameModals";
 import { useX01Match } from "../../hooks/useX01Match";
+import { advanceBracketAfterMatchWin } from "../../lib/bracketAdvancement";
 import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
 import { useMatchStore } from "../../store/useMatchStore";
@@ -43,6 +44,7 @@ export default function TournamentMatchScreen() {
     GameAlerts,
     showExitConfirm,
     showUndoConfirm,
+    showForfeitConfirm,
     showInvalidScoreAlert,
   } = useGameModals(language);
 
@@ -145,8 +147,7 @@ export default function TournamentMatchScreen() {
         }
       } catch (e) {
         console.error(
-          t(language, "errorLoadingPhaseSettings") ||
-            "Error loading phase settings:",
+          t(language, "errorLoadingPhaseSettings"),
           e,
         );
       }
@@ -221,7 +222,7 @@ export default function TournamentMatchScreen() {
         }
       } catch (e) {
         console.error(
-          "Błąd podczas aktualizacji drabinki przy wyjściu z meczu:",
+          "Error updating bracket while exiting match:",
           e,
         );
       }
@@ -239,6 +240,63 @@ export default function TournamentMatchScreen() {
     return unsubscribe;
   }, [navigation, winner]);
 
+  const handleForfeit = async (forfeitingSide: "p1" | "p2") => {
+    isExiting.current = true;
+
+    const forfeitingPlayer =
+      forfeitingSide === "p1" ? match.player1 : match.player2;
+    const winnerObj = forfeitingSide === "p1" ? match.player2 : match.player1;
+
+    if (
+      initialSettings &&
+      initialSettings.name &&
+      match &&
+      match.id &&
+      winnerObj
+    ) {
+      try {
+        await AsyncStorage.removeItem(`match_save_${match.id}`);
+        useMatchStore.getState().clearMultipleMatches([match.id]);
+
+        const bKey = `bracket_structure_${String(initialSettings.name).replace(/\s/g, "_")}`;
+        const bStr = await AsyncStorage.getItem(bKey);
+        if (bStr) {
+          const bracket = JSON.parse(bStr);
+          const mIndex = bracket.findIndex((m: Match) => m.id === match.id);
+          if (mIndex > -1) {
+            bracket[mIndex].isInProgress = false;
+            bracket[mIndex].inProgressDeviceName = null;
+            bracket[mIndex].inProgressDeviceId = null;
+            bracket[mIndex].gameState = undefined;
+            bracket[mIndex].score = undefined;
+            bracket[mIndex].hasProgress = false;
+            bracket[mIndex].isWalkover = true;
+            bracket[mIndex].forfeitWinnerId = winnerObj.id;
+
+            advanceBracketAfterMatchWin(
+              bracket,
+              match.id,
+              winnerObj,
+              forfeitingPlayer,
+            );
+
+            await AsyncStorage.setItem(bKey, JSON.stringify(bracket));
+          }
+        }
+      } catch (e) {
+        console.error("Error updating bracket while forfeiting match:", e);
+      }
+    }
+
+    await AsyncStorage.setItem("@bracket_needs_sync", "true");
+    router.back();
+  };
+
+  const handleForfeitRequest = () => {
+    if (!match?.player1 || !match?.player2) return;
+    showForfeitConfirm(match.player1.name, match.player2.name, handleForfeit);
+  };
+
   const handleExitRequest = () => {
     const hasProgress =
       (p1Score.sets || 0) > 0 ||
@@ -253,7 +311,7 @@ export default function TournamentMatchScreen() {
     } else {
       showExitConfirm(
         saveMatchAndExit,
-        t(language, "exitMatchSub") || "Score will be saved.",
+        t(language, "exitMatchSub"),
       );
     }
   };
@@ -325,7 +383,11 @@ export default function TournamentMatchScreen() {
         <View key={i} style={styles.row}>
           <View style={styles.colScored}>
             <Text style={[styles.txtScored, t1 === "BUST" && styles.txtBust]}>
-              {isP1T ? currentInput : t1 || ""}
+              {isP1T
+                ? currentInput
+                : t1 === "BUST"
+                  ? t(language, "bust")?.toUpperCase()
+                  : t1 || ""}
             </Text>
           </View>
           <View
@@ -373,7 +435,11 @@ export default function TournamentMatchScreen() {
           </View>
           <View style={styles.colScored}>
             <Text style={[styles.txtScored, t2 === "BUST" && styles.txtBust]}>
-              {isP2T ? currentInput : t2 || ""}
+              {isP2T
+                ? currentInput
+                : t2 === "BUST"
+                  ? t(language, "bust")?.toUpperCase()
+                  : t2 || ""}
             </Text>
           </View>
         </View>,
@@ -388,6 +454,7 @@ export default function TournamentMatchScreen() {
     settings,
     match,
     theme,
+    language,
   ]);
 
   if (!isFormatLoaded || !settings) {
@@ -410,11 +477,25 @@ export default function TournamentMatchScreen() {
           <Ionicons name="close" size={28} color={theme.colors.textMain} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {t(language, "firstTo") || "First to"} {settings.targetSets}{" "}
-          {t(language, "setsShort") || "Sets"} / {settings.targetLegs}{" "}
-          {t(language, "legsShort") || "Legs"}
+          {t(language, "firstTo")} {settings.targetSets}{" "}
+          {t(language, "setsShort")} / {settings.targetLegs}{" "}
+          {t(language, "legsShort")}
         </Text>
-        <View style={{ width: 28 }} />
+        {!winner && match.player1 && match.player2 ? (
+          <TouchableOpacity
+            onPress={handleForfeitRequest}
+            accessibilityRole="button"
+            accessibilityLabel={t(language, "forfeitMatchButtonLabel")}
+          >
+            <Ionicons
+              name="flag-outline"
+              size={24}
+              color={theme.colors.warning}
+            />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 28 }} />
+        )}
       </View>
 
       <View style={styles.playerInfoBar}>
@@ -462,7 +543,7 @@ export default function TournamentMatchScreen() {
             ]}
             numberOfLines={1}
           >
-            {match.player2?.name || t(language, "byePlayer") || "Bye"}
+            {match.player2?.name || t(language, "byePlayer")}
           </Text>
           {p2ActiveMember && (
             <Text
@@ -480,17 +561,17 @@ export default function TournamentMatchScreen() {
 
       <View style={styles.tableHead}>
         <Text style={styles.headLabel}>
-          {t(language, "scored") || "Scored"}
+          {t(language, "scored")}
         </Text>
         <Text style={styles.headLabelToGo}>
-          {t(language, "toGo") || "To Go"}
+          {t(language, "toGo")}
         </Text>
         <View style={{ width: 40 }} />
         <Text style={styles.headLabelToGo}>
-          {t(language, "toGo") || "To Go"}
+          {t(language, "toGo")}
         </Text>
         <Text style={styles.headLabel}>
-          {t(language, "scored") || "Scored"}
+          {t(language, "scored")}
         </Text>
       </View>
 
@@ -507,7 +588,7 @@ export default function TournamentMatchScreen() {
       {winner && (
         <View style={styles.winOverlay}>
           <Text style={styles.winTitle}>
-            {winner} {t(language, "wins") || "Wins!"}
+            {winner} {t(language, "wins")}
           </Text>
           <AnimatedPressable
             style={styles.winBtn}
@@ -544,7 +625,7 @@ export default function TournamentMatchScreen() {
             }}
           >
             <Text style={styles.winBtnTxt}>
-              {t(language, "close") || "Close"}
+              {t(language, "close")}
             </Text>
           </AnimatedPressable>
         </View>
@@ -560,11 +641,10 @@ export default function TournamentMatchScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {t(language, "doublesDarts") || "Darts at double"}
+              {t(language, "doublesDarts")}
             </Text>
             <Text style={styles.modalDesc}>
-              {t(language, "doublesDartsDesc") ||
-                "How many darts were thrown at a double?"}
+              {t(language, "doublesDartsDesc")}
             </Text>
             <View style={styles.doublePromptActions}>
               {(() => {
@@ -594,7 +674,7 @@ export default function TournamentMatchScreen() {
                   return (
                     <View style={{ width: "100%" }}>
                       <Text style={styles.promptSectionTitle}>
-                        {t(language, "checkout") || "Checkout (Win)"}
+                        {t(language, "checkout")}
                       </Text>
                       <View style={styles.doublePromptActions}>
                         {winOpts.map((num) => (
@@ -603,8 +683,7 @@ export default function TournamentMatchScreen() {
                             style={[
                               styles.doubleBtn,
                               {
-                                backgroundColor:
-                                  theme.colors.success || "#28a745",
+                                backgroundColor: theme.colors.success,
                               },
                             ]}
                             onPress={() => {
@@ -627,12 +706,12 @@ export default function TournamentMatchScreen() {
                         style={[
                           styles.promptSectionTitle,
                           {
-                            color: theme.colors.danger || "#dc3545",
+                            color: theme.colors.danger,
                             marginTop: 20,
                           },
                         ]}
                       >
-                        {t(language, "bust") || "Bust"}
+                        {t(language, "bust")}
                       </Text>
                       <View style={styles.doublePromptActions}>
                         {bustOpts.map((num) => (
@@ -641,8 +720,7 @@ export default function TournamentMatchScreen() {
                             style={[
                               styles.doubleBtn,
                               {
-                                backgroundColor:
-                                  theme.colors.danger || "#dc3545",
+                                backgroundColor: theme.colors.danger,
                               },
                             ]}
                             onPress={() => {
@@ -823,7 +901,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       backgroundColor: theme.colors.cardBorder,
     },
     activeToGoCell: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.15)",
+      backgroundColor: theme.colors.primaryLight,
     },
     activeToGoText: { color: theme.colors.primary },
     disabledScoredCell: {

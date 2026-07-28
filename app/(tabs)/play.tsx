@@ -15,8 +15,9 @@ import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryBu
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
 import { AnimatedStepper } from "../../components/common/AnimatedStepper";
 import { AnimatedVerticalSelect } from "../../components/common/AnimatedVerticalSelect";
+import { getSharedScreenStyles } from "../../components/common/SharedScreenStyles";
 import { AddBotModal } from "../../components/modals/AddBotModal";
-import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
+import CustomAlert from "../../components/modals/CustomAlert";
 import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
 import { PlayerModal } from "../../components/modals/PlayerModal";
 import { SelectPlayersModal } from "../../components/modals/SelectPlayersModal";
@@ -24,6 +25,7 @@ import { useGame } from "../../context/GameContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { usePlayers } from "../../context/PlayersContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useAlert } from "../../hooks/useAlert";
 import { t } from "../../lib/i18n";
 import { isBot } from "../../lib/statsUtils";
 
@@ -145,7 +147,7 @@ const TRAINING_CONFIG = [
 ] as const;
 
 export default function Play() {
-  const { setPlayers, setSettings } = useGame();
+  const { setSelectedPlayers: setMatchPlayers, setSettings } = useGame();
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -218,27 +220,7 @@ export default function Play() {
 
   const [isRandomizeEnabled, setIsRandomizeEnabled] = useState(false);
 
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    title: "",
-    message: "",
-    buttons: [] as AlertButton[],
-  });
-
-  const showAlert = (
-    title: string,
-    message: string,
-    buttons?: AlertButton[],
-  ) => {
-    setAlertConfig({
-      title,
-      message,
-      buttons: buttons || [
-        { text: t(language, "ok") || "OK", style: "default" },
-      ],
-    });
-    setAlertVisible(true);
-  };
+  const { showAlert, alertProps } = useAlert(language);
 
   const allPlayersSelected =
     players.length > 0 && players.length === selectedPlayers.length;
@@ -249,12 +231,14 @@ export default function Play() {
         <AnimatedPressable
           onPress={() => setManageVisible(true)}
           style={{ marginRight: 16, padding: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel={t(language, "managePlayers")}
         >
           <Ionicons name="person-add" size={24} color={theme.colors.primary} />
         </AnimatedPressable>
       ),
     });
-  }, [navigation, theme]);
+  }, [navigation, theme, language]);
 
   const handleSavePlayer = () => {
     const name = newPlayerName.trim();
@@ -269,9 +253,8 @@ export default function Play() {
     } else {
       if (players.includes(name)) {
         showAlert(
-          t(language, "error") || "Error",
-          t(language, "playerAlreadyExists") ||
-            "Player with this name already exists.",
+          t(language, "error"),
+          t(language, "playerAlreadyExists"),
         );
         return;
       }
@@ -284,12 +267,12 @@ export default function Play() {
 
   const handleDeletePlayer = (name: string) => {
     showAlert(
-      t(language, "delete") || "Delete",
-      (t(language, "deletePlayer") || "Delete player") + ` ${name}?`,
+      t(language, "delete"),
+      (t(language, "deletePlayer")) + ` ${name}?`,
       [
-        { text: t(language, "cancel") || "Cancel", style: "cancel" },
+        { text: t(language, "cancel"), style: "cancel" },
         {
-          text: t(language, "delete") || "Delete",
+          text: t(language, "delete"),
           style: "destructive",
           onPress: () => {
             removePlayer(name);
@@ -304,10 +287,10 @@ export default function Play() {
   const handleAddBot = (difficulty: number) => {
     let baseName = "";
     if (difficulty === 0) {
-      baseName = `${t(language, "bot") || "Bot"} (${t(language, "adaptive") || "Adaptive"})`;
+      baseName = `${t(language, "bot")} (${t(language, "adaptive")})`;
     } else {
       const level = (difficulty - 20) / 5;
-      baseName = `${t(language, "bot") || "Bot"} (Lvl ${level})`;
+      baseName = `${t(language, "bot")} (Lvl ${level})`;
     }
 
     let finalName = baseName;
@@ -440,7 +423,7 @@ export default function Play() {
           <>
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>
-                {t(language, "mode") || "Mode"}
+                {t(language, "mode")}
               </Text>
               <AnimatedSegmentedControl
                 theme={theme}
@@ -451,7 +434,7 @@ export default function Play() {
                 options={[
                   {
                     id: "X01",
-                    label: t(language, "x01") || "X01",
+                    label: t(language, "x01"),
                     icon: (isActive: boolean) => (
                       <Ionicons
                         name="contract-outline"
@@ -462,7 +445,7 @@ export default function Play() {
                   },
                   {
                     id: "Cricket",
-                    label: t(language, "cricket") || "Cricket",
+                    label: t(language, "cricket"),
                     icon: (isActive: boolean) => (
                       <Ionicons
                         name="close-circle-outline"
@@ -473,7 +456,7 @@ export default function Play() {
                   },
                   {
                     id: "Training",
-                    label: t(language, "training") || "Training",
+                    label: t(language, "training"),
                     icon: (isActive: boolean) => (
                       <Ionicons
                         name="barbell-outline"
@@ -488,7 +471,7 @@ export default function Play() {
               {gameMode === "Training" && (
                 <>
                   <Text style={styles.subTitle}>
-                    {t(language, "exercise") || "Exercise"}
+                    {t(language, "exercise")}
                   </Text>
                   <AnimatedVerticalSelect
                     theme={theme}
@@ -512,10 +495,9 @@ export default function Play() {
                       {
                         id: "around_the_clock",
                         title:
-                          t(language, "aroundTheClock") || "Around the Clock",
+                          t(language, "aroundTheClock"),
                         desc:
-                          t(language, "aroundTheClockDesc") ||
-                          "Hit numbers 1-20 sequentially.",
+                          t(language, "aroundTheClockDesc"),
                         icon: (
                           <Ionicons
                             name="time-outline"
@@ -530,10 +512,9 @@ export default function Play() {
                       },
                       {
                         id: "100_darts",
-                        title: t(language, "100Darts") || "100 Darts (Scoring)",
+                        title: t(language, "100Darts"),
                         desc:
-                          t(language, "100DartsDesc") ||
-                          "Throw 100 darts for highest score.",
+                          t(language, "100DartsDesc"),
                         icon: (
                           <Ionicons
                             name="stats-chart-outline"
@@ -548,10 +529,9 @@ export default function Play() {
                       },
                       {
                         id: "bobs_27",
-                        title: t(language, "bobs27") || "Bob's 27",
+                        title: t(language, "bobs27"),
                         desc:
-                          t(language, "bobs27Desc") ||
-                          "Double training game by Bob Anderson.",
+                          t(language, "bobs27Desc"),
                         icon: (
                           <Ionicons
                             name="disc-outline"
@@ -566,10 +546,9 @@ export default function Play() {
                       },
                       {
                         id: "catch_40",
-                        title: t(language, "catch40") || "Catch 40",
+                        title: t(language, "catch40"),
                         desc:
-                          t(language, "catch40Desc") ||
-                          "Checkout numbers 61 to 100 with max 6 darts each.",
+                          t(language, "catch40Desc"),
                         icon: (
                           <Ionicons
                             name="flash-outline"
@@ -584,10 +563,9 @@ export default function Play() {
                       },
                       {
                         id: "jdc_challenge",
-                        title: t(language, "jdcChallenge") || "JDC Challenge",
+                        title: t(language, "jdcChallenge"),
                         desc:
-                          t(language, "jdcChallengeDesc") ||
-                          "Official JDC 57-dart routine: Scoring, Doubles, Scoring.",
+                          t(language, "jdcChallengeDesc"),
                         icon: (
                           <Ionicons
                             name="star-outline"
@@ -603,10 +581,9 @@ export default function Play() {
                       {
                         id: "bermuda_triangle",
                         title:
-                          t(language, "bermudaTriangle") || "Bermuda Triangle",
+                          t(language, "bermudaTriangle"),
                         desc:
-                          t(language, "bermudaTriangleDesc") ||
-                          "Hit specific targets. Miss with all 3 darts and your score is halved!",
+                          t(language, "bermudaTriangleDesc"),
                         icon: (
                           <Ionicons
                             name="boat-outline"
@@ -621,10 +598,9 @@ export default function Play() {
                       },
                       {
                         id: "shanghai",
-                        title: t(language, "shanghai") || "Shanghai",
+                        title: t(language, "shanghai"),
                         desc:
-                          t(language, "shanghaiDesc") ||
-                          "Hit 1-20 in order. Hit S, D, T in one round for an instant win!",
+                          t(language, "shanghaiDesc"),
                         icon: (
                           <Ionicons
                             name="medal-outline"
@@ -639,10 +615,9 @@ export default function Play() {
                       },
                       {
                         id: "halve_it",
-                        title: t(language, "halveIt") || "Halve-It",
+                        title: t(language, "halveIt"),
                         desc:
-                          t(language, "halveItDesc") ||
-                          "Start with 40 pts. Hit the target or your score is halved!",
+                          t(language, "halveItDesc"),
                         icon: (
                           <Ionicons
                             name="star-half-outline"
@@ -657,10 +632,9 @@ export default function Play() {
                       },
                       {
                         id: "baseball",
-                        title: t(language, "baseball") || "Baseball",
+                        title: t(language, "baseball"),
                         desc:
-                          t(language, "baseballDesc") ||
-                          "Play 9 innings (targets 1-9). Single=1, Double=2, Treble=3 runs.",
+                          t(language, "baseballDesc"),
                         icon: (
                           <Ionicons
                             name="baseball-outline"
@@ -676,10 +650,9 @@ export default function Play() {
                       {
                         id: "chase_the_dragon",
                         title:
-                          t(language, "chaseTheDragon") || "Chase the Dragon",
+                          t(language, "chaseTheDragon"),
                         desc:
-                          t(language, "chaseTheDragonDesc") ||
-                          "Hit 10-20 Singles, then Trebles, Doubles, and Bulls in order.",
+                          t(language, "chaseTheDragonDesc"),
                         icon: (
                           <Ionicons
                             name="footsteps-outline"
@@ -694,10 +667,9 @@ export default function Play() {
                       },
                       {
                         id: "121_checkout",
-                        title: t(language, "121Checkout") || "121 Checkout",
+                        title: t(language, "121Checkout"),
                         desc:
-                          t(language, "121CheckoutDesc") ||
-                          "Finish the score starting from 121 in 9 darts.",
+                          t(language, "121CheckoutDesc"),
                         icon: (
                           <Ionicons
                             name="arrow-up-circle-outline"
@@ -712,10 +684,9 @@ export default function Play() {
                       },
                       {
                         id: "killer",
-                        title: t(language, "killer") || "Killer",
+                        title: t(language, "killer"),
                         desc:
-                          t(language, "killerDesc") ||
-                          "Hit your double to become a Killer and eliminate others!",
+                          t(language, "killerDesc"),
                         icon: (
                           <Ionicons
                             name="skull-outline"
@@ -730,10 +701,9 @@ export default function Play() {
                       },
                       {
                         id: "score_clash",
-                        title: t(language, "scoreClash") || "Score Clash",
+                        title: t(language, "scoreClash"),
                         desc:
-                          t(language, "scoreClashDesc") ||
-                          "Win rounds by scoring the most points.",
+                          t(language, "scoreClashDesc"),
                         icon: (
                           <Ionicons
                             name="flame-outline"
@@ -755,7 +725,7 @@ export default function Play() {
             {gameMode === "Training" && trainingMode === "killer" && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
-                  {t(language, "matchRules") || "Match rules"}
+                  {t(language, "matchRules")}
                 </Text>
                 <View
                   style={{ flexDirection: "row", justifyContent: "center" }}
@@ -764,14 +734,14 @@ export default function Play() {
                     theme={theme}
                     value={lives}
                     setValue={setLives}
-                    label={t(language, "lives") || "Lives"}
+                    label={t(language, "lives")}
                     min={1}
                     max={15}
                   />
                 </View>
 
                 <Text style={[styles.subTitle, { marginTop: 16 }]}>
-                  {t(language, "assignNumbers") || "Assign numbers"}
+                  {t(language, "assignNumbers")}
                 </Text>
                 <AnimatedSegmentedControl
                   theme={theme}
@@ -780,16 +750,16 @@ export default function Play() {
                     setKillerAssignMode(val as "random" | "throw")
                   }
                   options={[
-                    { id: "random", label: t(language, "random") || "Random" },
+                    { id: "random", label: t(language, "random") },
                     {
                       id: "throw",
-                      label: t(language, "byThrow") || "By throw",
+                      label: t(language, "byThrow"),
                     },
                   ]}
                 />
 
                 <Text style={[styles.subTitle, { marginTop: 16 }]}>
-                  {t(language, "becomeKiller") || "Become Killer"}
+                  {t(language, "becomeKiller")}
                 </Text>
                 <AnimatedSegmentedControl
                   theme={theme}
@@ -800,26 +770,26 @@ export default function Play() {
                   options={[
                     {
                       id: "double",
-                      label: t(language, "doubleOnly") || "Double only",
+                      label: t(language, "doubleOnly"),
                     },
                     {
                       id: "treble",
-                      label: t(language, "trebleOnly") || "Treble only",
+                      label: t(language, "trebleOnly"),
                     },
-                    { id: "any", label: t(language, "anyHit") || "Any hit" },
+                    { id: "any", label: t(language, "anyHit") },
                   ]}
                 />
 
                 <Text style={[styles.subTitle, { marginTop: 16 }]}>
-                  {t(language, "selfPenalty") || "Self penalty"}
+                  {t(language, "selfPenalty")}
                 </Text>
                 <AnimatedSegmentedControl
                   theme={theme}
                   activeOption={killerSelfPenalty ? "yes" : "no"}
                   onSelect={(val) => setKillerSelfPenalty(val === "yes")}
                   options={[
-                    { id: "yes", label: t(language, "yes") || "Yes" },
-                    { id: "no", label: t(language, "no") || "No" },
+                    { id: "yes", label: t(language, "yes") },
+                    { id: "no", label: t(language, "no") },
                   ]}
                 />
               </View>
@@ -828,14 +798,14 @@ export default function Play() {
             {gameMode === "Training" && trainingMode === "score_clash" && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
-                  {t(language, "matchRules") || "Match rules"}
+                  {t(language, "matchRules")}
                 </Text>
                 <View style={styles.stepperRow}>
                   <AnimatedStepper
                     theme={theme}
                     value={scoreClashTargetPoints}
                     setValue={setScoreClashTargetPoints}
-                    label={t(language, "targetPoints") || "Target points"}
+                    label={t(language, "targetPoints")}
                     min={1}
                     max={20}
                   />
@@ -844,7 +814,7 @@ export default function Play() {
                     theme={theme}
                     value={scoreClashDartsPerRound}
                     setValue={setScoreClashDartsPerRound}
-                    label={t(language, "dartsPerRound") || "Darts/Round"}
+                    label={t(language, "dartsPerRound")}
                     min={3}
                     max={15}
                     step={3}
@@ -852,7 +822,7 @@ export default function Play() {
                 </View>
 
                 <Text style={[styles.subTitle, { marginTop: 16 }]}>
-                  {t(language, "tieRule") || "Tie rule"}
+                  {t(language, "tieRule")}
                 </Text>
                 <AnimatedSegmentedControl
                   theme={theme}
@@ -863,11 +833,11 @@ export default function Play() {
                   options={[
                     {
                       id: "points",
-                      label: t(language, "pointsForAll") || "Points for all",
+                      label: t(language, "pointsForAll"),
                     },
                     {
                       id: "tiebreaker",
-                      label: t(language, "tiebreaker") || "Tiebreaker",
+                      label: t(language, "tiebreaker"),
                     },
                   ]}
                 />
@@ -877,14 +847,14 @@ export default function Play() {
             {gameMode !== "Training" && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
-                  {t(language, "matchRules") || "Match rules"}
+                  {t(language, "matchRules")}
                 </Text>
                 <View style={styles.stepperRow}>
                   <AnimatedStepper
                     theme={theme}
                     value={sets}
                     setValue={setSets}
-                    label={t(language, "sets") || "Sets"}
+                    label={t(language, "sets")}
                     max={30}
                   />
                   <View style={styles.divider} />
@@ -892,7 +862,7 @@ export default function Play() {
                     theme={theme}
                     value={legs}
                     setValue={setLegs}
-                    label={t(language, "legs") || "Legs"}
+                    label={t(language, "legs")}
                     max={30}
                   />
                   {gameMode === "X01" && (
@@ -902,7 +872,7 @@ export default function Play() {
                         theme={theme}
                         value={points}
                         setValue={setPoints}
-                        label={t(language, "points") || "Points"}
+                        label={t(language, "points")}
                         min={101}
                         step={200}
                       />
@@ -916,8 +886,8 @@ export default function Play() {
                         value={cricketMode}
                         displayValue={
                           cricketMode === "standard"
-                            ? t(language, "withScore") || "Score"
-                            : t(language, "withoutScore") || "No score"
+                            ? t(language, "withScore")
+                            : t(language, "withoutScore")
                         }
                         onLeftPress={() =>
                           setCricketMode(
@@ -933,7 +903,7 @@ export default function Play() {
                               : "standard",
                           )
                         }
-                        label={t(language, "scoring") || "Scoring"}
+                        label={t(language, "scoring")}
                       />
                     </>
                   )}
@@ -942,7 +912,7 @@ export default function Play() {
             )}
 
             <AnimatedPrimaryButton
-              title={t(language, "startBtn") || "Start"}
+              title={t(language, "startBtn")}
               iconName="arrow-forward"
               theme={theme}
               disabled={playerOrder.length === 0}
@@ -951,13 +921,12 @@ export default function Play() {
               onPress={() => {
                 if (playerOrder.length === 0) {
                   showAlert(
-                    t(language, "error") || "Error",
-                    t(language, "noPlayersSelected") ||
-                      "Please select players.",
+                    t(language, "error"),
+                    t(language, "noPlayersSelected"),
                   );
                   return;
                 }
-                setPlayers(
+                setMatchPlayers(
                   isRandomizeEnabled
                     ? shufflePlayers(playerOrder)
                     : playerOrder,
@@ -1001,7 +970,7 @@ export default function Play() {
             >
               <View style={styles.playersHeader}>
                 <Text style={styles.sectionTitle}>
-                  {t(language, "players") || "Players"}
+                  {t(language, "players")}
                 </Text>
                 <View style={styles.playersActions}>
                   {playerOrder.length > 1 && (
@@ -1013,6 +982,9 @@ export default function Play() {
                           backgroundColor: theme.colors.dangerLight,
                         },
                       ]}
+                      accessibilityRole="switch"
+                      accessibilityLabel={t(language, "toggleRandomize")}
+                      accessibilityState={{ checked: isRandomizeEnabled }}
                     >
                       <Ionicons
                         name="shuffle"
@@ -1028,6 +1000,8 @@ export default function Play() {
                   <AnimatedPressable
                     onPress={() => setBotModalVisible(true)}
                     style={styles.iconBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(language, "addBot")}
                   >
                     <Ionicons
                       name="hardware-chip"
@@ -1048,6 +1022,10 @@ export default function Play() {
                       styles.iconBtnPrimary,
                       allPlayersSelected && styles.iconBtnDisabled,
                     ]}
+                    disabled={allPlayersSelected}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(language, "addPlayer")}
+                    accessibilityState={{ disabled: allPlayersSelected }}
                   >
                     <Ionicons name="add" size={24} color="#fff" />
                   </AnimatedPressable>
@@ -1063,6 +1041,12 @@ export default function Play() {
                         : () => setModalVisible(true)
                     }
                     style={styles.emptyPlayers}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      players.length === 0
+                        ? t(language, "addInRightCorner")
+                        : t(language, "addPlayersToGame")
+                    }
                   >
                     <Ionicons
                       name="people-outline"
@@ -1071,10 +1055,8 @@ export default function Play() {
                     />
                     <Text style={styles.emptyPlayersText}>
                       {players.length === 0
-                        ? t(language, "addInRightCorner") ||
-                          "Add players in top-right corner"
-                        : t(language, "addPlayersToGame") ||
-                          "Press + to add players to the game"}
+                        ? t(language, "addInRightCorner")
+                        : t(language, "addPlayersToGame")}
                     </Text>
                   </AnimatedPressable>
                 </View>
@@ -1120,6 +1102,13 @@ export default function Play() {
                         alignItems: "center",
                         flex: 1,
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${index + 1}. ${item}`}
+                      accessibilityHint={
+                        !isRandomizeEnabled
+                          ? t(language, "reorderPlayerHint")
+                          : undefined
+                      }
                     >
                       <Ionicons
                         name="reorder-two"
@@ -1159,6 +1148,11 @@ export default function Play() {
                         left: 10,
                         right: 10,
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t(
+                        language,
+                        "removePlayerFromMatch",
+                      ).replace("{{name}}", item as string)}
                     >
                       <Ionicons
                         name="close"
@@ -1181,7 +1175,7 @@ export default function Play() {
             {gameMode === "X01" && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
-                  {t(language, "inOutRules") || "In / Out Rules"}
+                  {t(language, "inOutRules")}
                 </Text>
                 <AnimatedSegmentedControl
                   theme={theme}
@@ -1218,7 +1212,7 @@ export default function Play() {
 
       <SelectPlayersModal
         visible={modalVisible}
-        title={t(language, "selectPlayers") || "Select players"}
+        title={t(language, "selectPlayers")}
         players={players.filter((p: string) => !selectedPlayers.includes(p))}
         selectedPlayers={tempSelected}
         onTogglePlayer={(p: string) => {
@@ -1231,8 +1225,8 @@ export default function Play() {
           setSelectedPlayers([...selectedPlayers, ...tempSelected]);
           setModalVisible(false);
         }}
-        confirmText={t(language, "add") || "Add"}
-        cancelText={t(language, "cancel") || "Cancel"}
+        confirmText={t(language, "add")}
+        cancelText={t(language, "cancel")}
         theme={theme}
         language={language}
       />
@@ -1240,7 +1234,7 @@ export default function Play() {
       <ManagePlayersModal
         visible={isManageVisible}
         onClose={() => setManageVisible(false)}
-        title={t(language, "managePlayers") || "Manage players"}
+        title={t(language, "managePlayers")}
         players={players.map((p: string) => ({ id: p, name: p }))}
         onAddPress={() => {
           setEditingPlayerName(null);
@@ -1253,8 +1247,8 @@ export default function Play() {
           setAddPopupVisible(true);
         }}
         onDeletePress={(p: { name: string }) => handleDeletePlayer(p.name)}
-        addLabel={t(language, "addNewPlayer") || "Add new player"}
-        emptyText={t(language, "noPlayers") || "No more players"}
+        addLabel={t(language, "addNewPlayer")}
+        emptyText={t(language, "noPlayers")}
         theme={theme}
       />
 
@@ -1262,8 +1256,8 @@ export default function Play() {
         visible={isAddPopupVisible}
         title={
           editingPlayerName
-            ? t(language, "editPlayer") || "Edit player"
-            : t(language, "newPlayer") || "New player"
+            ? t(language, "editPlayer")
+            : t(language, "newPlayer")
         }
         value={newPlayerName}
         onChangeText={setNewPlayerName}
@@ -1287,31 +1281,18 @@ export default function Play() {
         trainingMode={trainingMode}
       />
 
-      <CustomAlert
-        visible={alertVisible}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onRequestClose={() => setAlertVisible(false)}
-      />
+      <CustomAlert {...alertProps} />
     </GestureHandlerRootView>
   );
 }
 
-const getStyles = (theme: { colors: Record<string, string> }) =>
-  StyleSheet.create({
+const getStyles = (theme: { colors: Record<string, string> }) => {
+  const shared = getSharedScreenStyles(theme);
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { padding: 16, paddingBottom: 40, overflow: "visible" },
     card: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 3,
-      elevation: 2,
+      ...shared.card,
       overflow: "visible",
     },
     playersCardTop: {
@@ -1351,9 +1332,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       borderBottomWidth: 1,
     },
     sectionTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
+      ...shared.sectionTitle,
       marginBottom: 12,
     },
     subTitle: {
@@ -1424,3 +1403,4 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMain,
     },
   });
+};

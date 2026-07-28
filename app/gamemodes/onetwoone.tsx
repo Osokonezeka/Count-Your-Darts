@@ -1,4 +1,3 @@
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
     useCallback,
@@ -9,11 +8,10 @@ import React, {
     useRef,
     useState,
 } from "react";
-import { Modal, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { current, produce } from "immer";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
@@ -24,6 +22,7 @@ import { DartKeyboard } from "../../components/keyboards/DartKeyboard";
 import { InputModeSelector } from "../../components/keyboards/InputModeSelector";
 import { InteractiveDartboard } from "../../components/keyboards/InteractiveDartboard";
 import { ScoreKeyboard } from "../../components/keyboards/ScoreKeyboard";
+import { DoubleOutModal } from "../../components/modals/DoubleOutModal";
 import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
@@ -34,6 +33,11 @@ import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
+import { useMatchLifecycle } from "../../hooks/useMatchLifecycle";
+import {
+    getCheckoutSuggestion,
+    useX01Engine,
+} from "../../hooks/useX01Engine";
 import {
     breakdownScoreToDarts,
     resolveBotAverage,
@@ -42,7 +46,7 @@ import {
 import { getCheckoutInfo } from "../../lib/checkouts";
 import {
     BOGEY_NUMBERS,
-    formatTime,
+    formatThrow,
     IMPOSSIBLE_SCORES,
 } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
@@ -431,21 +435,8 @@ const gameReducer = produce((draft: GameState, action: Action) => {
   }
 });
 
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
-};
-
-const getDictionaryFormat = (t: Throw) => {
-  if (t.value === 25 && t.multiplier === 2) return "BULL";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
-};
-
 export default function OneTwoOneGame() {
-  const { players, settings } = useGame();
+  const { selectedPlayers, settings } = useGame();
   const { language } = useLanguage();
   const { tripleTerm, missTerm, bullTerm } = useTerminology();
   const { theme } = useTheme();
@@ -463,7 +454,12 @@ export default function OneTwoOneGame() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({
@@ -480,19 +476,14 @@ export default function OneTwoOneGame() {
     showInvalidScoreAlert,
   } = useGameModals(language);
 
-  const [showDoublePrompt, setShowDoublePrompt] = useState(false);
-  const [pendingTurn, setPendingTurn] = useState<{
-    score: number;
-    newLeft: number;
-    isBust: boolean;
-    currentLeft: number;
-  } | null>(null);
+  const { showDoublePrompt, pendingTurn, prepareScoreSubmission, closeDoublePrompt } =
+    useX01Engine();
 
   const [state, dispatch] = useReducer(
     gameReducer,
     parsedResume && parsedResume.gameState
       ? { ...parsedResume.gameState }
-      : initialState(players || [], {
+      : initialState(selectedPlayers || [], {
           inRule: "straight",
           outRule: "double",
           startPoints: 121,
@@ -512,44 +503,27 @@ export default function OneTwoOneGame() {
     matchTimeRef.current = time;
   }, []);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current) return;
-      e.preventDefault();
+  const hasMatchStarted = state.playerStates.some(
+    (p) => p.score !== 121 || p.totalMatchDarts > 0,
+  );
 
-      if (state.matchWinner) {
-        saveMatchToHistory(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-        return;
-      }
+  useExitGuard(hasMatchStarted || !!state.matchWinner, () => {
+    if (state.matchWinner) {
+      saveMatchToHistory(false).then(confirmExit);
+      return;
+    }
 
-      const hasStarted = state.playerStates.some(
-        (p) => p.score !== 121 || p.totalMatchDarts > 0,
-      );
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
-
-      showExitConfirm(() => {
-        saveMatchToHistory(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+    showExitConfirm(() => {
+      saveMatchToHistory(false).then(confirmExit);
     });
-    return unsubscribe;
-  }, [navigation, language, state]);
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   useEffect(() => {
-    if (state.speechEvent) speak(state.speechEvent.text);
+    if (state.speechEvent) speak(t(language, state.speechEvent.text));
   }, [state.speechEvent]);
 
   const currentPlayer = state.playerStates[state.currentIndex];
@@ -561,15 +535,18 @@ export default function OneTwoOneGame() {
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
-        const baseline = await getPlayersHistoricalBaseline(humanNames, "X01");
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
+        const baseline = await getPlayersHistoricalBaseline(
+          humanNames,
+          "121_checkout",
+        );
         setHistoricalBaseline(baseline);
         setIsBaselineLoaded(true);
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   const { isFastBot, delay } = useBotDelay(state.isUndoing, 700);
   const botAvg = resolveBotAverage(
@@ -668,80 +645,51 @@ export default function OneTwoOneGame() {
   }, [state.matchWinner]);
 
   const saveMatchToHistory = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
+    const mappedPlayers = state.playerStates.map((p, idx) => {
+      let validTurns = p.allTurns ? [...p.allTurns] : [];
+      if (
+        !p.isFinished &&
+        p.turnThrows &&
+        p.turnThrows.length > 0 &&
+        state.currentIndex === idx &&
+        !state.matchWinner
+      ) {
+        validTurns.push(p.turnThrows);
+      }
+      const validTurnsFormatted = validTurns.map((turn) =>
+        turn.map((t: Throw) => ({
+          v: t.value,
+          m: t.multiplier,
+          d: t.darts,
+          i: t.isScoreInput,
+          c: t.coords,
+        })),
+      );
 
-      const mappedPlayers = state.playerStates.map((p, idx) => {
-        let validTurns = p.allTurns ? [...p.allTurns] : [];
-        if (
-          !p.isFinished &&
-          p.turnThrows &&
-          p.turnThrows.length > 0 &&
-          state.currentIndex === idx &&
-          !state.matchWinner
-        ) {
-          validTurns.push(p.turnThrows);
-        }
-        const validTurnsFormatted = validTurns.map((turn) =>
-          turn.map((t: Throw) => ({
-            v: t.value,
-            m: t.multiplier,
-            d: t.darts,
-            i: t.isScoreInput,
-            c: t.coords,
-          })),
-        );
-
-        return {
-          name: p.name,
-          score: p.highestTarget, // Saving max level reached as score
-          rank: p.rank,
-          totalMatchDarts: p.totalMatchDarts || 0,
-          checkoutDarts: p.checkoutDarts || 0,
-          checkoutHits: p.checkoutHits || 0,
-          allTurns: validTurnsFormatted,
-        };
-      });
-
-      mappedPlayers.sort((a, b) => (b.score || 0) - (a.score || 0));
-
-      const isUnfinished = state.matchWinner === null;
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "121_checkout",
-        settings: state.settings,
-        players: mappedPlayers,
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
+      return {
+        name: p.name,
+        score: p.highestTarget,
+        rank: p.rank,
+        totalMatchDarts: p.totalMatchDarts || 0,
+        checkoutDarts: p.checkoutDarts || 0,
+        checkoutHits: p.checkoutHits || 0,
+        allTurns: validTurnsFormatted,
       };
+    });
 
-      const existingHistoryStr = await AsyncStorage.getItem(
-        "@dart_match_history",
-      );
-      const existingHistory = existingHistoryStr
-        ? JSON.parse(existingHistoryStr)
-        : [];
+    mappedPlayers.sort((a, b) => (b.score || 0) - (a.score || 0));
 
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
-      );
-      if (existingIndex > -1) existingHistory[existingIndex] = historyItem;
-      else existingHistory.unshift(historyItem);
+    const isUnfinished = state.matchWinner === null;
 
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (error) {
-      console.error("Error saving history", error);
-      if (navigateAway) router.push("/play");
-    }
+    await persistMatchToHistory({
+      mode: "121_checkout",
+      settings: state.settings,
+      players: mappedPlayers,
+      isUnfinished,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
   const handleThrow = (
@@ -812,20 +760,11 @@ export default function OneTwoOneGame() {
       return;
     }
 
-    const currentLeft = currentPlayer.score;
-    const newLeft = currentLeft - score;
-    const isCheckoutSetup =
-      currentLeft <= 170 && !BOGEY_NUMBERS.includes(currentLeft);
-    const isBust =
-      newLeft < 0 || newLeft === 1 || (newLeft === 0 && !isCheckoutSetup);
-
-    let couldHaveThrownDouble = isCheckoutSetup && (newLeft <= 50 || isBust);
-    if (couldHaveThrownDouble) {
-      setPendingTurn({ score, newLeft, isBust, currentLeft });
-      setShowDoublePrompt(true);
-    } else {
-      processScoreTurn(score, 0, isBust);
-    }
+    prepareScoreSubmission(
+      { currentLeft: currentPlayer.score, score, outRule: "double" },
+      (resolvedScore, dartsAtDouble, isBust) =>
+        processScoreTurn(resolvedScore, dartsAtDouble, isBust),
+    );
   };
 
   const processScoreTurn = (
@@ -839,53 +778,28 @@ export default function OneTwoOneGame() {
       payload: { score, dartsAtDouble, isBust, individualDarts },
     });
     setTypedScore("");
-    setShowDoublePrompt(false);
-    setPendingTurn(null);
+    closeDoublePrompt();
   };
 
   let checkoutSuggestion: string | null = null;
   if (currentPlayer && !state.matchWinner && !currentPlayer.isFinished) {
-    const dartsRemaining = Math.min(
-      3 - state.throwsThisTurn,
-      currentPlayer.dartsLeft,
-    );
-    if (state.throwsThisTurn === 0) {
-      checkoutSuggestion = getCheckoutInfo(currentPlayer.score);
-    } else {
-      const originalCheckoutStr = getCheckoutInfo(
-        currentPlayer.roundStartScore,
-      );
-      let followedPlan = false;
-      if (originalCheckoutStr) {
-        const plan = originalCheckoutStr.split(" ");
-        followedPlan = true;
-        for (let i = 0; i < (currentPlayer.turnThrows?.length || 0); i++) {
-          if (getDictionaryFormat(currentPlayer.turnThrows[i]) !== plan[i]) {
-            followedPlan = false;
-            break;
-          }
-        }
-        if (followedPlan)
-          checkoutSuggestion = plan
-            .slice(currentPlayer.turnThrows.length)
-            .join(" ");
-      }
-      if (!followedPlan) {
-        const newCheckoutStr = getCheckoutInfo(currentPlayer.score);
-        if (
-          newCheckoutStr &&
-          newCheckoutStr.split(" ").length <= dartsRemaining
-        )
-          checkoutSuggestion = newCheckoutStr;
-      }
-    }
+    checkoutSuggestion = getCheckoutSuggestion({
+      score: currentPlayer.score,
+      roundStartScore: currentPlayer.roundStartScore,
+      throwsThisTurn: state.throwsThisTurn,
+      turnThrows: currentPlayer.turnThrows,
+      dartsRemaining: Math.min(
+        3 - state.throwsThisTurn,
+        currentPlayer.dartsLeft,
+      ),
+    });
   }
 
   const isModalVisible = !!state.matchWinner;
   const winnerName = state.matchWinner?.name || "";
-  const modalTitle = t(language, "trainingFinished") || "Training finished!";
+  const modalTitle = t(language, "trainingFinished");
   const modalSub =
-    (t(language, "highestReached") || "Highest reached: ") +
+    (t(language, "highestReached")) +
     " " +
     (state.matchWinner?.highestTarget || 120);
 
@@ -899,9 +813,11 @@ export default function OneTwoOneGame() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerGameType}>121 Checkout</Text>
+          <Text style={styles.headerGameType}>
+            {t(language, "121Checkout")}
+          </Text>
           <Text style={styles.headerSubInfo}>
-            {t(language, "training")?.toUpperCase() || "TRAINING"}
+            {t(language, "training")?.toUpperCase()}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -1019,7 +935,7 @@ export default function OneTwoOneGame() {
                         color={theme.colors.textMuted}
                       />
                       <Text style={styles.statBold}>
-                        {t(language, "level") || "Level"}:{" "}
+                        {t(language, "level")}:{" "}
                         <Text style={{ color: theme.colors.primary }}>
                           {p.target}
                         </Text>
@@ -1032,7 +948,7 @@ export default function OneTwoOneGame() {
                         color={theme.colors.textMuted}
                       />
                       <Text style={styles.statBold}>
-                        {t(language, "dartsRemaining") || "Darts left"}:{" "}
+                        {t(language, "dartsRemaining")}:{" "}
                         <Text
                           style={{
                             color:
@@ -1056,7 +972,9 @@ export default function OneTwoOneGame() {
       <View style={styles.checkoutWrapper}>
         {checkoutSuggestion ? (
           <View style={styles.checkoutBadge}>
-            <Text style={styles.checkoutLabel}>CHECKOUT</Text>
+            <Text style={styles.checkoutLabel}>
+              {t(language, "checkoutUpper")}
+            </Text>
             <Text style={styles.checkoutValue}>{checkoutSuggestion}</Text>
           </View>
         ) : (
@@ -1122,110 +1040,23 @@ export default function OneTwoOneGame() {
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
-            title={t(language, "endMatch") || "End"}
+            title={t(language, "endMatch")}
             theme={theme}
             onPress={() => saveMatchToHistory(true)}
           />
         </View>
       </FinishModal>
 
-      <Modal visible={showDoublePrompt} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {t(language, "doublesDarts") || "Darts at double"}
-            </Text>
-            <Text style={styles.modalDesc}>
-              {t(language, "doublesDartsDesc") ||
-                "How many darts were thrown at a double?"}
-            </Text>
-            <View style={styles.doublePromptActions}>
-              {(() => {
-                if (!pendingTurn) return null;
-                let maxDarts = Math.min(3, currentPlayer?.dartsLeft || 3);
-                if (
-                  pendingTurn.currentLeft > 110 ||
-                  [109, 108, 106, 105, 103, 102, 99].includes(
-                    pendingTurn.currentLeft,
-                  )
-                )
-                  maxDarts = 1;
-                else if (pendingTurn.currentLeft > 50)
-                  maxDarts = Math.min(2, maxDarts);
-
-                if (pendingTurn.newLeft === 0 && !pendingTurn.isBust) {
-                  const winOpts = Array.from(
-                    { length: maxDarts },
-                    (_, i) => i + 1,
-                  );
-                  const bustOpts = Array.from(
-                    { length: maxDarts + 1 },
-                    (_, i) => i,
-                  );
-
-                  return (
-                    <View style={{ width: "100%" }}>
-                      <Text style={styles.promptSectionTitle}>
-                        {t(language, "checkout") || "Checkout (Win)"}
-                      </Text>
-                      <View style={styles.doublePromptActions}>
-                        {winOpts.map((num) => (
-                          <AnimatedPressable
-                            key={`win-${num}`}
-                            style={[
-                              styles.doubleBtn,
-                              { backgroundColor: theme.colors.success },
-                            ]}
-                            onPress={() =>
-                              processScoreTurn(pendingTurn.score, num)
-                            }
-                          >
-                            <Text style={styles.doubleBtnTxt}>{num}</Text>
-                          </AnimatedPressable>
-                        ))}
-                      </View>
-                      <Text
-                        style={[
-                          styles.promptSectionTitle,
-                          { color: theme.colors.danger, marginTop: 20 },
-                        ]}
-                      >
-                        {t(language, "bust") || "Bust"}
-                      </Text>
-                      <View style={styles.doublePromptActions}>
-                        {bustOpts.map((num) => (
-                          <AnimatedPressable
-                            key={`bust-${num}`}
-                            style={[
-                              styles.doubleBtn,
-                              { backgroundColor: theme.colors.danger },
-                            ]}
-                            onPress={() =>
-                              processScoreTurn(pendingTurn.score, num, true)
-                            }
-                          >
-                            <Text style={styles.doubleBtnTxt}>{num}</Text>
-                          </AnimatedPressable>
-                        ))}
-                      </View>
-                    </View>
-                  );
-                }
-                let opts = Array.from({ length: maxDarts + 1 }, (_, i) => i);
-                return opts.map((num) => (
-                  <AnimatedPressable
-                    key={num}
-                    style={styles.doubleBtn}
-                    onPress={() => processScoreTurn(pendingTurn.score, num)}
-                  >
-                    <Text style={styles.doubleBtnTxt}>{num}</Text>
-                  </AnimatedPressable>
-                ));
-              })()}
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <DoubleOutModal
+        visible={showDoublePrompt}
+        pendingTurn={pendingTurn}
+        onSelect={(score, dartsAtDouble, isBust) =>
+          processScoreTurn(score, dartsAtDouble, isBust)
+        }
+        theme={theme}
+        language={language}
+        maxDartsAvailable={currentPlayer?.dartsLeft || 3}
+      />
       {GameAlerts}
     </SafeAreaView>
   );
@@ -1295,54 +1126,4 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       fontSize: 16,
       fontWeight: "900",
     },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 20,
-    },
-    modalContent: {
-      backgroundColor: theme.colors.card,
-      padding: 25,
-      borderRadius: 24,
-      width: "100%",
-      alignItems: "center",
-    },
-    modalTitle: {
-      fontSize: 24,
-      fontWeight: "900",
-      textAlign: "center",
-      color: theme.colors.textMain,
-      marginBottom: 15,
-    },
-    modalDesc: {
-      fontSize: 14,
-      color: theme.colors.textMuted,
-      textAlign: "center",
-      marginBottom: 24,
-    },
-    promptSectionTitle: {
-      fontSize: 13,
-      fontWeight: "900",
-      color: theme.colors.success,
-      marginBottom: 8,
-      textTransform: "uppercase",
-      textAlign: "center",
-      letterSpacing: 1,
-    },
-    doublePromptActions: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      width: "100%",
-      gap: 10,
-    },
-    doubleBtn: {
-      flex: 1,
-      backgroundColor: theme.colors.primary,
-      paddingVertical: 15,
-      borderRadius: 12,
-      alignItems: "center",
-    },
-    doubleBtnTxt: { color: "#fff", fontSize: 20, fontWeight: "800" },
   });

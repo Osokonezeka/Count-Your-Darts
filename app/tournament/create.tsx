@@ -1,5 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker, {
+  DateTimePickerAndroid,
+} from "@react-native-community/datetimepicker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -20,6 +23,7 @@ import { AnimatedStepper } from "../../components/common/AnimatedStepper";
 import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryButton";
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { useLanguage } from "../../context/LanguageContext";
+import { useAlert } from "../../hooks/useAlert";
 import dayjs from "dayjs";
 import "dayjs/locale/en";
 import "dayjs/locale/pl";
@@ -31,6 +35,8 @@ import {
   TournamentSettings,
   PlayerMatchStats,
   Match,
+  DEFAULT_ADVANCING_PER_GROUP,
+  MAX_GROUP_SIZE,
 } from "../../lib/statsUtils";
 import {
   connectToDynamicFirebase,
@@ -46,7 +52,7 @@ type TournamentFormat =
   | "groups_and_knockout"
   | "groups_and_double_knockout";
 type TeamSize = "single" | "team";
-type BracketOrder = "top_to_bottom" | "bottom_to_top";
+type BracketOrder = "top_to_bottom" | "bottom_to_top" | "custom";
 
 type ActiveTournamentItem = {
   settings: TournamentSettings;
@@ -86,8 +92,8 @@ const ExpandableDesc = ({
         }}
       >
         {isExpanded
-          ? t(language, "showLess") || "Show less"
-          : t(language, "showMore") || "Show more"}
+          ? t(language, "showLess")
+          : t(language, "showMore")}
       </Text>
     </Pressable>
   );
@@ -113,17 +119,9 @@ export default function TournamentCreateScreen() {
   const [isSavedModalVisible, setSavedModalVisible] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
   const [nameError, setNameError] = useState(false);
+  const [isIosDatePickerVisible, setIosDatePickerVisible] = useState(false);
 
-  const [deleteAlert, setDeleteAlert] = useState({
-    visible: false,
-    title: "",
-    message: "",
-    buttons: [] as {
-      text: string;
-      style?: "default" | "cancel" | "destructive";
-      onPress?: () => void;
-    }[],
-  });
+  const { showAlert, alertProps } = useAlert(language);
 
   const [config, setConfig] = useState({
     name: "",
@@ -138,6 +136,7 @@ export default function TournamentCreateScreen() {
     groupSets: 1,
     groupLegs: 2,
     groupPoints: 501,
+    advancingPerGroup: DEFAULT_ADVANCING_PER_GROUP,
     customSemis: false,
     semiSets: 1,
     semiLegs: 4,
@@ -167,25 +166,15 @@ export default function TournamentCreateScreen() {
   );
 
   const handleDeleteTournament = (tName: string) => {
-    setDeleteAlert({
-      visible: true,
-      title: t(language, "deleteTournament") || "Delete tournament",
-      message:
-        t(language, "deleteTournamentPrompt")?.replace("{{name}}", tName) ||
-        `Are you sure you want to delete tournament '${tName}'? All results will be permanently lost.`,
-      buttons: [
+    showAlert(
+      t(language, "deleteTournament"),
+      t(language, "deleteTournamentPrompt")?.replace("{{name}}", tName),
+      [
+        { text: t(language, "cancel"), style: "cancel" },
         {
-          text: t(language, "cancel") || "Cancel",
-          style: "cancel",
-          onPress: () =>
-            setDeleteAlert((prev) => ({ ...prev, visible: false })),
-        },
-        {
-          text: t(language, "delete") || "Delete",
+          text: t(language, "delete"),
           style: "destructive",
           onPress: async () => {
-            setDeleteAlert((prev) => ({ ...prev, visible: false }));
-
             const tItem = activeTournaments.find(
               (t) => t.settings.name === tName,
             );
@@ -242,7 +231,7 @@ export default function TournamentCreateScreen() {
           },
         },
       ],
-    });
+    );
   };
 
   const updateConfig = (
@@ -251,6 +240,32 @@ export default function TournamentCreateScreen() {
   ) => setConfig((prev) => ({ ...prev, [key]: value }));
 
   const isKnockoutFormat = config.format.includes("knockout");
+  const supportsThirdPlaceMatch =
+    config.format === "single_knockout" ||
+    config.format === "groups_and_knockout";
+
+  const openDatePicker = () => {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: config.startDate,
+        mode: "date",
+        onChange: (dateEvent, selectedDate) => {
+          if (dateEvent.type !== "set" || !selectedDate) return;
+          DateTimePickerAndroid.open({
+            value: selectedDate,
+            mode: "time",
+            onChange: (timeEvent, selectedTime) => {
+              if (timeEvent.type === "set" && selectedTime) {
+                updateConfig("startDate", selectedTime);
+              }
+            },
+          });
+        },
+      });
+    } else {
+      setIosDatePickerVisible(true);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -268,8 +283,8 @@ export default function TournamentCreateScreen() {
         </AnimatedPressable>
         <Text style={styles.headerTitle}>
           {isHost === "true"
-            ? t(language, "newRoom") || "New room"
-            : t(language, "newTournament") || "New tournament"}
+            ? t(language, "newRoom")
+            : t(language, "newTournament")}
         </Text>
         <View style={{ width: 30 }} />
       </View>
@@ -277,10 +292,10 @@ export default function TournamentCreateScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {activeTournaments.length > 0 && (
           <AnimatedPrimaryButton
-            title={`${t(language, "unfinishedTournaments") || "Unfinished tournaments"} (${activeTournaments.length})`}
+            title={`${t(language, "unfinishedTournaments")} (${activeTournaments.length})`}
             iconName="list"
             iconPosition="left"
-            color={theme.colors.warning || "#f0ad4e"}
+            color={theme.colors.warning}
             theme={theme}
             style={{ marginBottom: 16 }}
             onPress={() => setSavedModalVisible(true)}
@@ -289,24 +304,23 @@ export default function TournamentCreateScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>
-            {t(language, "basicInfo") || "Basic information"}
+            {t(language, "basicInfo")}
           </Text>
 
           <Text
             style={[
               styles.inputLabel,
-              nameError && { color: theme.colors.danger || "red" },
+              nameError && { color: theme.colors.danger },
             ]}
           >
-            {t(language, "tournamentName") || "Tournament name"}{" "}
+            {t(language, "tournamentName")}{" "}
             {nameError && "*"}
           </Text>
           <TextInput
             ref={nameInputRef}
             style={[styles.textInput, nameError && styles.textInputError]}
             placeholder={
-              t(language, "tournamentNamePlaceholder") ||
-              "e.g. Garage Championship 2024"
+              t(language, "tournamentNamePlaceholder")
             }
             placeholderTextColor={
               nameError ? "rgba(220, 53, 69, 0.5)" : theme.colors.textMuted
@@ -319,9 +333,13 @@ export default function TournamentCreateScreen() {
           />
 
           <Text style={styles.inputLabel}>
-            {t(language, "startDate") || "Start date"}
+            {t(language, "startDate")}
           </Text>
-          <View style={styles.dateSelector}>
+          <AnimatedPressable
+            style={styles.dateSelector}
+            onPress={openDatePicker}
+            accessibilityLabel={t(language, "startDate")}
+          >
             <Ionicons
               name="calendar-outline"
               size={20}
@@ -332,19 +350,18 @@ export default function TournamentCreateScreen() {
                 .locale(language === "pl" ? "pl" : "en")
                 .format("DD MMM YYYY, HH:mm")}
             </Text>
-          </View>
+          </AnimatedPressable>
 
           <View style={styles.descHeader}>
             <Text style={styles.inputLabel}>
-              {t(language, "description") || "Description"}
+              {t(language, "description")}
             </Text>
             <Text style={styles.charCount}>{config.desc.length}/500</Text>
           </View>
           <TextInput
             style={[styles.textInput, styles.textArea]}
             placeholder={
-              t(language, "tournamentDescPlaceholder") ||
-              "Additional info, prizes, rules of conduct..."
+              t(language, "tournamentDescPlaceholder")
             }
             placeholderTextColor={theme.colors.textMuted}
             multiline
@@ -357,7 +374,7 @@ export default function TournamentCreateScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>
-            {t(language, "structure") || "Structure"}
+            {t(language, "structure")}
           </Text>
           <AnimatedSegmentedControl
             theme={theme}
@@ -366,11 +383,11 @@ export default function TournamentCreateScreen() {
             options={[
               {
                 id: "single",
-                label: t(language, "singleFormat") || "1 vs 1 (Single)",
+                label: t(language, "singleFormat"),
               },
               {
                 id: "team",
-                label: t(language, "pairsFormat") || "2 vs 2 (Pairs)",
+                label: t(language, "pairsFormat"),
               },
             ]}
           />
@@ -378,96 +395,116 @@ export default function TournamentCreateScreen() {
             <AnimatedVerticalSelect
               theme={theme}
               activeOption={config.format}
-              onSelect={(val: string) => updateConfig("format", val)}
+              onSelect={(val: string) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  format: val as TournamentFormat,
+                  thirdPlaceMatch:
+                    val === "single_knockout" ||
+                    val === "groups_and_knockout"
+                      ? prev.thirdPlaceMatch
+                      : false,
+                }))
+              }
               options={[
                 {
                   id: "single_knockout",
-                  title: t(language, "singleKnockout") || "Single Knockout",
+                  title: t(language, "singleKnockout"),
                   desc:
-                    t(language, "singleKnockoutDesc") ||
-                    "Players are eliminated after one loss.",
+                    t(language, "singleKnockoutDesc"),
                 },
                 {
                   id: "double_knockout",
-                  title: t(language, "doubleKnockout") || "Double Knockout",
+                  title: t(language, "doubleKnockout"),
                   desc:
-                    t(language, "doubleKnockoutDesc") ||
-                    "Players are eliminated after two losses.",
+                    t(language, "doubleKnockoutDesc"),
                 },
                 {
                   id: "round_robin",
-                  title: t(language, "roundRobin") || "Round Robin",
+                  title: t(language, "roundRobin"),
                   desc:
-                    t(language, "roundRobinDesc") ||
-                    "Every player plays against everyone else.",
+                    t(language, "roundRobinDesc"),
                 },
                 {
                   id: "groups_and_knockout",
                   title:
-                    t(language, "groupsAndKnockout") || "Groups + Knockout",
+                    t(language, "groupsAndKnockout"),
                   desc:
-                    t(language, "groupsAndKnockoutDesc") ||
-                    "Group stage followed by single elimination.",
+                    t(language, "groupsAndKnockoutDesc"),
                 },
                 {
                   id: "groups_and_double_knockout",
                   title:
-                    t(language, "groupsAndDoubleKnockout") ||
-                    "Groups + Double Knockout",
+                    t(language, "groupsAndDoubleKnockout"),
                   desc:
-                    t(language, "groupsAndDoubleKnockoutDesc") ||
-                    "Group stage followed by double elimination.",
+                    t(language, "groupsAndDoubleKnockoutDesc"),
                 },
               ]}
             />
           </View>
         </View>
 
-        {isKnockoutFormat && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              {t(language, "seeding") || "Seeding"}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>
+            {t(language, "seeding")}
+          </Text>
+          <AnimatedSegmentedControl
+            theme={theme}
+            activeOption={config.bracketOrder}
+            onSelect={(val: string) =>
+              updateConfig("bracketOrder", val as BracketOrder)
+            }
+            options={[
+              {
+                id: "top_to_bottom",
+                label: t(language, "topToBottom"),
+                icon: (isActive: boolean) => (
+                  <Ionicons
+                    name="arrow-down"
+                    size={16}
+                    color={isActive ? "#fff" : theme.colors.textMuted}
+                  />
+                ),
+              },
+              {
+                id: "bottom_to_top",
+                label: t(language, "bottomToTop"),
+                icon: (isActive: boolean) => (
+                  <Ionicons
+                    name="arrow-up"
+                    size={16}
+                    color={isActive ? "#fff" : theme.colors.textMuted}
+                  />
+                ),
+              },
+              {
+                id: "custom",
+                label: t(language, "customSeeding"),
+                icon: (isActive: boolean) => (
+                  <Ionicons
+                    name="reorder-four"
+                    size={16}
+                    color={isActive ? "#fff" : theme.colors.textMuted}
+                  />
+                ),
+              },
+            ]}
+          />
+          {config.bracketOrder === "custom" && (
+            <Text style={[styles.hintText, { marginTop: 12 }]}>
+              {t(language, "customSeedingHint")}
             </Text>
-            <AnimatedSegmentedControl
-              theme={theme}
-              activeOption={config.bracketOrder}
-              onSelect={(val: string) => updateConfig("bracketOrder", val)}
-              options={[
-                {
-                  id: "top_to_bottom",
-                  label: t(language, "topToBottom") || "Top to bottom",
-                  icon: (isActive: boolean) => (
-                    <Ionicons
-                      name="arrow-down"
-                      size={16}
-                      color={isActive ? "#fff" : theme.colors.textMuted}
-                    />
-                  ),
-                },
-                {
-                  id: "bottom_to_top",
-                  label: t(language, "bottomToTop") || "Bottom to top",
-                  icon: (isActive: boolean) => (
-                    <Ionicons
-                      name="arrow-up"
-                      size={16}
-                      color={isActive ? "#fff" : theme.colors.textMuted}
-                    />
-                  ),
-                },
-              ]}
-            />
-          </View>
-        )}
+          )}
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>
-            {t(language, "matchRules") || "Match rules"}
+            {t(language, "matchRules")}
           </Text>
           <View style={styles.stepperRow}>
             <AnimatedStepper
               theme={theme}
-              label={t(language, "sets") || "Sets"}
+              label={t(language, "sets")}
               value={config.targetSets}
               setValue={(val: number) => updateConfig("targetSets", val)}
               max={30}
@@ -475,7 +512,7 @@ export default function TournamentCreateScreen() {
             <View style={styles.divider} />
             <AnimatedStepper
               theme={theme}
-              label={t(language, "legs") || "Legs"}
+              label={t(language, "legs")}
               value={config.targetLegs}
               setValue={(val: number) => updateConfig("targetLegs", val)}
               max={30}
@@ -483,7 +520,7 @@ export default function TournamentCreateScreen() {
             <View style={styles.divider} />
             <AnimatedStepper
               theme={theme}
-              label={t(language, "points") || "Points"}
+              label={t(language, "points")}
               value={config.startingPoints}
               setValue={(val: number) => updateConfig("startingPoints", val)}
               min={101}
@@ -515,8 +552,7 @@ export default function TournamentCreateScreen() {
                       )}
                     </View>
                     <Text style={styles.toggleText}>
-                      {t(language, "customGroupsToggle") ||
-                        "Different for groups?"}
+                      {t(language, "customGroupsToggle")}
                     </Text>
                   </AnimatedPressable>
 
@@ -524,7 +560,7 @@ export default function TournamentCreateScreen() {
                     <View style={styles.stepperRowSub}>
                       <AnimatedStepper
                         theme={theme}
-                        label={t(language, "setsGroup") || "Sets (Groups)"}
+                        label={t(language, "setsGroup")}
                         value={config.groupSets}
                         setValue={(val: number) =>
                           updateConfig("groupSets", val)
@@ -534,7 +570,7 @@ export default function TournamentCreateScreen() {
                       <View style={styles.divider} />
                       <AnimatedStepper
                         theme={theme}
-                        label={t(language, "legsGroup") || "Legs (Groups)"}
+                        label={t(language, "legsGroup")}
                         value={config.groupLegs}
                         setValue={(val: number) =>
                           updateConfig("groupLegs", val)
@@ -543,6 +579,25 @@ export default function TournamentCreateScreen() {
                       />
                     </View>
                   )}
+
+                  <View style={styles.stepperRowSub}>
+                    <AnimatedStepper
+                      theme={theme}
+                      label={t(language, "advancingPerGroup")}
+                      value={config.advancingPerGroup}
+                      setValue={(val: number) =>
+                        updateConfig("advancingPerGroup", val)
+                      }
+                      min={1}
+                      max={MAX_GROUP_SIZE - 1}
+                    />
+                  </View>
+                  <Text style={styles.hintText}>
+                    {t(language, "advancingPerGroupHint")?.replace(
+                      "{{max}}",
+                      String(MAX_GROUP_SIZE - 1),
+                    )}
+                  </Text>
                 </>
               )}
 
@@ -563,8 +618,7 @@ export default function TournamentCreateScreen() {
                   )}
                 </View>
                 <Text style={styles.toggleText}>
-                  {t(language, "customSemisToggle") ||
-                    "Different for semifinals?"}
+                  {t(language, "customSemisToggle")}
                 </Text>
               </AnimatedPressable>
 
@@ -572,7 +626,7 @@ export default function TournamentCreateScreen() {
                 <View style={styles.stepperRowSub}>
                   <AnimatedStepper
                     theme={theme}
-                    label={t(language, "setsSemi") || "Sets (1/2)"}
+                    label={t(language, "setsSemi")}
                     value={config.semiSets}
                     setValue={(val: number) => updateConfig("semiSets", val)}
                     max={30}
@@ -580,7 +634,7 @@ export default function TournamentCreateScreen() {
                   <View style={styles.divider} />
                   <AnimatedStepper
                     theme={theme}
-                    label={t(language, "legsSemi") || "Legs (1/2)"}
+                    label={t(language, "legsSemi")}
                     value={config.semiLegs}
                     setValue={(val: number) => updateConfig("semiLegs", val)}
                     max={30}
@@ -607,7 +661,7 @@ export default function TournamentCreateScreen() {
                   )}
                 </View>
                 <Text style={styles.toggleText}>
-                  {t(language, "customFinalsToggle") || "Different for final?"}
+                  {t(language, "customFinalsToggle")}
                 </Text>
               </AnimatedPressable>
 
@@ -615,7 +669,7 @@ export default function TournamentCreateScreen() {
                 <View style={styles.stepperRowSub}>
                   <AnimatedStepper
                     theme={theme}
-                    label={t(language, "setsFinal") || "Sets (Final)"}
+                    label={t(language, "setsFinal")}
                     value={config.finalSets}
                     setValue={(val: number) => updateConfig("finalSets", val)}
                     max={30}
@@ -623,7 +677,7 @@ export default function TournamentCreateScreen() {
                   <View style={styles.divider} />
                   <AnimatedStepper
                     theme={theme}
-                    label={t(language, "legsFinal") || "Legs (Final)"}
+                    label={t(language, "legsFinal")}
                     value={config.finalLegs}
                     setValue={(val: number) => updateConfig("finalLegs", val)}
                     max={30}
@@ -631,34 +685,38 @@ export default function TournamentCreateScreen() {
                 </View>
               )}
 
-              <View style={styles.horizontalDivider} />
+              {supportsThirdPlaceMatch && (
+                <>
+                  <View style={styles.horizontalDivider} />
 
-              <AnimatedPressable
-                style={styles.toggleRow}
-                onPress={() =>
-                  updateConfig("thirdPlaceMatch", !config.thirdPlaceMatch)
-                }
-              >
-                <View
-                  style={[
-                    styles.checkboxSmall,
-                    config.thirdPlaceMatch && styles.checkboxSmallActive,
-                  ]}
-                >
-                  {config.thirdPlaceMatch && (
-                    <Ionicons name="checkmark" size={14} color="#fff" />
-                  )}
-                </View>
-                <Text style={styles.toggleText}>
-                  {t(language, "thirdPlaceMatchToggle") || "3rd place match?"}
-                </Text>
-              </AnimatedPressable>
+                  <AnimatedPressable
+                    style={styles.toggleRow}
+                    onPress={() =>
+                      updateConfig("thirdPlaceMatch", !config.thirdPlaceMatch)
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.checkboxSmall,
+                        config.thirdPlaceMatch && styles.checkboxSmallActive,
+                      ]}
+                    >
+                      {config.thirdPlaceMatch && (
+                        <Ionicons name="checkmark" size={14} color="#fff" />
+                      )}
+                    </View>
+                    <Text style={styles.toggleText}>
+                      {t(language, "thirdPlaceMatchToggle")}
+                    </Text>
+                  </AnimatedPressable>
+                </>
+              )}
             </>
           )}
         </View>
 
         <AnimatedPrimaryButton
-          title={t(language, "nextStep") || "Next step"}
+          title={t(language, "nextStep")}
           iconName="arrow-forward"
           theme={theme}
           fontSize={18}
@@ -681,23 +739,9 @@ export default function TournamentCreateScreen() {
                 trimmedName.toLowerCase(),
             );
             if (nameExists) {
-              setDeleteAlert({
-                visible: true,
-                title: t(language, "error") || "Error",
-                message:
-                  t(language, "tournamentExists") ||
-                  "A tournament with this name already exists. Please choose a different name.",
-                buttons: [
-                  {
-                    text: t(language, "ok") || "OK",
-                    onPress: () =>
-                      setDeleteAlert((prev) => ({
-                        ...prev,
-                        visible: false,
-                      })),
-                  },
-                ],
-              });
+              showAlert(t(language, "error"), t(language, "tournamentExists"), [
+                { text: t(language, "ok"), style: "default" },
+              ]);
               return;
             }
             router.push({
@@ -737,7 +781,7 @@ export default function TournamentCreateScreen() {
           >
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitleList}>
-                {t(language, "resumeTournament") || "Resume tournament"}
+                {t(language, "resumeTournament")}
               </Text>
               <AnimatedPressable
                 onPress={() => setSavedModalVisible(false)}
@@ -765,9 +809,9 @@ export default function TournamentCreateScreen() {
                     />
                     <Text style={styles.savedTDesc}>
                       {tItem.players?.length || 0}{" "}
-                      {t(language, "playersShort") || "players"} •{" "}
+                      {t(language, "playersShort")} •{" "}
                       {tItem.settings.startingPoints}{" "}
-                      {t(language, "ptsShort") || "pts"}
+                      {t(language, "ptsShort")}
                     </Text>
                   </View>
                   <View style={{ flexDirection: "row", gap: 10 }}>
@@ -851,15 +895,63 @@ export default function TournamentCreateScreen() {
         </View>
       </Modal>
 
-      <CustomAlert
-        visible={deleteAlert.visible}
-        title={deleteAlert.title}
-        message={deleteAlert.message}
-        onRequestClose={() =>
-          setDeleteAlert((prev) => ({ ...prev, visible: false }))
-        }
-        buttons={deleteAlert.buttons}
-      />
+      <CustomAlert {...alertProps} />
+
+      {Platform.OS === "ios" && (
+        <Modal
+          visible={isIosDatePickerVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          navigationBarTranslucent
+          onRequestClose={() => setIosDatePickerVisible(false)}
+        >
+          <View style={styles.modalOverlayList}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setIosDatePickerVisible(false)}
+            />
+            <View
+              style={[
+                styles.modalContentList,
+                { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 40 },
+              ]}
+            >
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitleList}>
+                  {t(language, "startDate")}
+                </Text>
+                <AnimatedPressable
+                  onPress={() => setIosDatePickerVisible(false)}
+                  style={styles.closeModalBtn}
+                >
+                  <Ionicons
+                    name="close"
+                    size={24}
+                    color={theme.colors.textMuted}
+                  />
+                </AnimatedPressable>
+              </View>
+              <DateTimePicker
+                value={config.startDate}
+                mode="datetime"
+                display="spinner"
+                locale={language === "pl" ? "pl-PL" : "en-US"}
+                onChange={(_event, selectedDate) => {
+                  if (selectedDate) updateConfig("startDate", selectedDate);
+                }}
+              />
+              <AnimatedPrimaryButton
+                title={t(language, "ok")}
+                theme={theme}
+                onPress={() => setIosDatePickerVisible(false)}
+                style={{ marginTop: 12 }}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -898,7 +990,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       marginBottom: 16,
     },
     textInputError: {
-      borderColor: theme.colors.danger || "red",
+      borderColor: theme.colors.danger,
       borderWidth: 1.5,
     },
     textArea: { height: 100, textAlignVertical: "top" },
@@ -967,6 +1059,14 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       alignItems: "center",
       marginTop: 8,
     },
+    hintText: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
+      textAlign: "center",
+      marginTop: -4,
+      marginBottom: 4,
+      fontStyle: "italic",
+    },
     divider: {
       width: 1,
       height: 40,
@@ -1033,7 +1133,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       alignItems: "center",
     },
     actionBtnDelete: {
-      backgroundColor: theme.colors.danger || "#dc3545",
+      backgroundColor: theme.colors.danger,
       width: 40,
       height: 40,
       borderRadius: 10,

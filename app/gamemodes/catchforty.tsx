@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { produce, current } from "immer";
 import React, {
@@ -25,17 +23,18 @@ import { FinishModal } from "../../components/modals/FinishModal";
 import { useGame } from "../../context/GameContext";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
+import { useMatchLifecycle } from "../../hooks/useMatchLifecycle";
 import {
   resolveBotAverage,
   simulateBotTurn,
   breakdownScoreToDarts,
 } from "../../lib/bot";
-import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -62,6 +61,7 @@ type GameState = {
   throwsThisTurn: number;
   history: GameState[];
   isUndoing?: boolean;
+  speechEvent?: { text: string; id: number } | null;
 };
 
 type Action =
@@ -89,6 +89,11 @@ const catchFortyReducer = produce((draft: GameState, action: Action) => {
       player.dartsCount += 1;
       player.dartsUsedOnTarget += 1;
       draft.throwsThisTurn += 1;
+
+      draft.speechEvent = {
+        text: isBust ? "0" : hitPoints.toString(),
+        id: Date.now(),
+      };
 
       let targetCompleted = false;
 
@@ -154,16 +159,18 @@ const catchFortyReducer = produce((draft: GameState, action: Action) => {
         ...prevState,
         history: draft.history.slice(0, -1),
         isUndoing: true,
+        speechEvent: null,
       };
     }
   }
 });
 
 export default function CatchForty() {
-  const { players } = useGame();
+  const { selectedPlayers } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
+  const { speak } = useSpeech();
   const { bullTerm, missTerm, tripleTerm } = useTerminology();
   const router = useRouter();
   const navigation = useNavigation();
@@ -176,7 +183,12 @@ export default function CatchForty() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({
@@ -191,7 +203,7 @@ export default function CatchForty() {
     parsedResume
       ? parsedResume.gameState
       : {
-          playerStates: players.map((name) => ({
+          playerStates: selectedPlayers.map((name) => ({
             name,
             score: 0,
             currentTargetIdx: 0,
@@ -207,6 +219,7 @@ export default function CatchForty() {
           currentIndex: 0,
           throwsThisTurn: 0,
           history: [],
+          speechEvent: null,
         },
   );
 
@@ -219,6 +232,10 @@ export default function CatchForty() {
   }, []);
   const { GameAlerts, showExitConfirm } = useGameModals(language);
 
+  useEffect(() => {
+    if (state.speechEvent) speak(t(language, state.speechEvent.text));
+  }, [state.speechEvent]);
+
   const allFinished = state.playerStates.every((p) => p.isFinished);
   const { isFastBot, delay } = useBotDelay(state.isUndoing, 1000);
   const activePlayer = state.playerStates[state.currentIndex];
@@ -230,15 +247,18 @@ export default function CatchForty() {
 
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
-        const baseline = await getPlayersHistoricalBaseline(humanNames, "X01");
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
+        const baseline = await getPlayersHistoricalBaseline(
+          humanNames,
+          "Catch 40",
+        );
         setHistoricalBaseline(baseline);
         setIsBaselineLoaded(true);
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
@@ -290,80 +310,41 @@ export default function CatchForty() {
   }, [allFinished]);
 
   const saveTrainingStats = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
+    const mappedPlayers = state.playerStates
+      .map((p) => ({
+        name: p.name,
+        score: p.score,
+        darts: p.dartsCount,
+        rank: p.rank,
+        c2: p.c2,
+        c3: p.c3,
+        c4_6: p.c4_6,
+        fails: p.fails,
+      }))
+      .sort((a, b) => (b.score || 0) - (a.score || 0));
 
-      const isUnfinished = !allFinished;
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "Catch 40",
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
-        players: state.playerStates
-          .map((p) => ({
-            name: p.name,
-            score: p.score,
-            darts: p.dartsCount,
-            rank: p.rank,
-            c2: p.c2,
-            c3: p.c3,
-            c4_6: p.c4_6,
-            fails: p.fails,
-          }))
-          .sort((a, b) => (b.score || 0) - (a.score || 0)),
-      };
-
-      const existingHistoryStr = await AsyncStorage.getItem(
-        "@dart_match_history",
-      );
-      const existingHistory = existingHistoryStr
-        ? JSON.parse(existingHistoryStr)
-        : [];
-
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
-      );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
-
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (e) {
-      console.error("Save training error", e);
-      if (navigateAway) router.push("/play");
-    }
+    await persistMatchToHistory({
+      mode: "Catch 40",
+      players: mappedPlayers,
+      isUnfinished: !allFinished,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || allFinished) return;
-      e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
-      showExitConfirm(() => {
-        saveTrainingStats(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+  const hasMatchStarted = state.playerStates.some((p) => p.dartsCount > 0);
+
+  useExitGuard(hasMatchStarted || allFinished, () => {
+    if (allFinished) {
+      saveTrainingStats(false).then(confirmExit);
+      return;
+    }
+
+    showExitConfirm(() => {
+      saveTrainingStats(false).then(confirmExit);
     });
-    return unsubscribe;
-  }, [navigation, allFinished, state]);
+  });
 
   const handleThrow = (value: number, overrideMultiplier?: number) => {
     if (allFinished) return;
@@ -404,7 +385,9 @@ export default function CatchForty() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>CATCH 40</Text>
+          <Text style={styles.headerTitle}>
+            {t(language, "catch40")?.toUpperCase()}
+          </Text>
           <Text style={styles.headerSub}>61 ➔ 100</Text>
         </View>
         <View style={styles.headerRight}>
@@ -452,22 +435,22 @@ export default function CatchForty() {
                 <>
                   <View style={specificStyles.statsFlex}>
                     <View style={specificStyles.statCell}>
-                      <Text style={specificStyles.statLabel}>
-                        {t(language, "target")?.toUpperCase() || "TARGET"}
+                      <Text style={styles.statLabel}>
+                        {t(language, "target")?.toUpperCase()}
                       </Text>
                       <Text style={specificStyles.statValueMain}>{target}</Text>
                     </View>
                     <View style={specificStyles.statCell}>
-                      <Text style={specificStyles.statLabel}>
-                        {t(language, "toGo")?.toUpperCase() || "LEFT"}
+                      <Text style={styles.statLabel}>
+                        {t(language, "toGo")?.toUpperCase()}
                       </Text>
                       <Text style={specificStyles.statValueMain}>
                         {p.currentLeft}
                       </Text>
                     </View>
                     <View style={specificStyles.statCell}>
-                      <Text style={specificStyles.statLabel}>
-                        {t(language, "darts")?.toUpperCase() || "DARTS"}
+                      <Text style={styles.statLabel}>
+                        {t(language, "darts")?.toUpperCase()}
                       </Text>
                       <Text
                         style={[
@@ -511,18 +494,15 @@ export default function CatchForty() {
 
       <FinishModal
         visible={allFinished}
-        title={t(language, "trainingFinished") || "Training Finished!"}
-        subtitle={
-          t(language, "trainingSaved") ||
-          "Your results have been saved to history."
-        }
+        title={t(language, "trainingFinished")}
+        subtitle={t(language, "trainingSaved")}
         theme={theme}
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
-            title={t(language, "endMatch") || "End"}
+            title={t(language, "endMatch")}
             theme={theme}
-            onPress={() => router.push("/play")}
+            onPress={() => saveTrainingStats(true)}
           />
         </View>
       </FinishModal>
@@ -544,12 +524,6 @@ const specificStyles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
   },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#888",
-    marginBottom: 4,
-  },
   statValueMain: {
     fontSize: 22,
     fontWeight: "900",
@@ -562,5 +536,11 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       padding: 16,
       backgroundColor: theme.colors.cardBorder,
       paddingBottom: 30,
+    },
+    statLabel: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: theme.colors.textMuted,
+      marginBottom: 4,
     },
   });

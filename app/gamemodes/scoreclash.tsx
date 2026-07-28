@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { current, produce } from "immer";
 import React, {
@@ -34,12 +32,13 @@ import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
+import { useMatchLifecycle } from "../../hooks/useMatchLifecycle";
 import {
     breakdownScoreToDarts,
     resolveBotAverage,
     simulateBotTurn,
 } from "../../lib/bot";
-import { IMPOSSIBLE_SCORES, formatTime } from "../../lib/gameUtils";
+import { formatThrow, IMPOSSIBLE_SCORES } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -100,13 +99,6 @@ type Action =
     }
   | { type: "UNDO" }
   | { type: "RESET_CURRENT_TURN" };
-
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
-};
 
 const scoreClashReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
@@ -294,7 +286,7 @@ const scoreClashReducer = produce((draft: GameState, action: Action) => {
 });
 
 export default function ScoreClash() {
-  const { players, settings } = useGame();
+  const { selectedPlayers, settings } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
@@ -311,7 +303,12 @@ export default function ScoreClash() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({ ...getSharedGameStyles(theme), ...getSpecificStyles(theme) }),
@@ -334,7 +331,7 @@ export default function ScoreClash() {
             targetPoints: settings?.scoreClashTargetPoints || 3,
             scoreClashTieRule: settings?.scoreClashTieRule || "points",
           },
-          playerStates: players.map((name) => ({
+          playerStates: selectedPlayers.map((name) => ({
             name,
             score: 0,
             currentRoundScore: 0,
@@ -369,7 +366,7 @@ export default function ScoreClash() {
   }, []);
 
   useEffect(() => {
-    if (state.speechEvent) speak(state.speechEvent.text);
+    if (state.speechEvent) speak(t(language, state.speechEvent.text));
   }, [state.speechEvent]);
 
   const isGameOver = !!state.matchWinner;
@@ -382,18 +379,18 @@ export default function ScoreClash() {
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
         const baseline = await getPlayersHistoricalBaseline(
           humanNames,
-          "100 Darts",
+          "Score Clash",
         );
         setHistoricalBaseline(baseline);
         setIsBaselineLoaded(true);
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
@@ -441,75 +438,39 @@ export default function ScoreClash() {
   }, [isGameOver]);
 
   const saveScoringStats = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
+    const mappedPlayers = state.playerStates
+      .map((p) => ({
+        name: p.name,
+        score: p.score,
+        totalMatchScore: p.totalMatchScore,
+        darts: p.dartsCount,
+        rank: p.rank,
+      }))
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0));
 
-      const isUnfinished = !isGameOver;
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "Score Clash",
-        settings: state.settings,
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
-        players: state.playerStates
-          .map((p) => ({
-            name: p.name,
-            score: p.score,
-            totalMatchScore: p.totalMatchScore,
-            darts: p.dartsCount,
-            rank: p.rank,
-          }))
-          .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
-      };
-
-      const existingHistoryStr = await AsyncStorage.getItem(
-        "@dart_match_history",
-      );
-      const existingHistory = existingHistoryStr
-        ? JSON.parse(existingHistoryStr)
-        : [];
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
-      );
-
-      if (existingIndex > -1) existingHistory[existingIndex] = historyItem;
-      else existingHistory.unshift(historyItem);
-
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (e) {
-      console.error("Save Score Clash error", e);
-      if (navigateAway) router.push("/play");
-    }
+    await persistMatchToHistory({
+      mode: "Score Clash",
+      settings: state.settings,
+      players: mappedPlayers,
+      isUnfinished: !isGameOver,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || isGameOver) return;
-      e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
-      showExitConfirm(() => {
-        saveScoringStats(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+  const hasMatchStarted = state.playerStates.some((p) => p.dartsCount > 0);
+
+  useExitGuard(hasMatchStarted || isGameOver, () => {
+    if (isGameOver) {
+      saveScoringStats(false).then(confirmExit);
+      return;
+    }
+
+    showExitConfirm(() => {
+      saveScoringStats(false).then(confirmExit);
     });
-    return unsubscribe;
-  }, [navigation, isGameOver, state]);
+  });
 
   const handleThrow = (
     value: number,
@@ -591,12 +552,14 @@ export default function ScoreClash() {
         </AnimatedPressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerGameType}>
-            {t(language, "scoreClash")?.toUpperCase() || "SCORE CLASH"}
+            {t(language, "scoreClash")?.toUpperCase()}
           </Text>
           <Text style={styles.headerSubInfo}>
-            ROUND {state.roundNumber} • FIRST TO {state.settings.targetPoints}
+            {t(language, "round")?.toUpperCase()} {state.roundNumber} •{" "}
+            {t(language, "firstTo")?.toUpperCase()}{" "}
+            {state.settings.targetPoints}
             {state.activeTiebreaker
-              ? ` • ${t(language, "tiebreakerBadge") || "TIEBREAKER"}`
+              ? ` • ${t(language, "tiebreakerBadge")}`
               : ""}
           </Text>
         </View>
@@ -718,7 +681,9 @@ export default function ScoreClash() {
 
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
-                      <Text style={styles.statLabel}>RND Pts</Text>
+                      <Text style={styles.statLabel}>
+                        {t(language, "roundPts")}
+                      </Text>
                       <Text
                         style={[
                           styles.statBold,
@@ -800,16 +765,13 @@ export default function ScoreClash() {
 
       <FinishModal
         visible={isGameOver}
-        title={`${state.matchWinner?.name || "Player"} wins! 🏆`}
-        subtitle={
-          t(language, "trainingSaved") ||
-          "Your results have been saved to history."
-        }
+        title={`${state.matchWinner?.name || t(language, "player")} ${t(language, "wins")} 🏆`}
+        subtitle={t(language, "trainingSaved")}
         theme={theme}
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
-            title={t(language, "endMatch") || "End"}
+            title={t(language, "endMatch")}
             theme={theme}
             onPress={() => saveScoringStats(true)}
           />

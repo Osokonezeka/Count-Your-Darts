@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { produce, current } from "immer";
 import React, {
@@ -37,11 +35,15 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import {
+  popHistorySnapshot,
+  pushHistorySnapshot,
+  useMatchLifecycle,
+} from "../../hooks/useMatchLifecycle";
+import {
   getCricketBotTarget,
   resolveBotAverage,
   simulateCricketBotThrow,
 } from "../../lib/bot";
-import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -108,10 +110,7 @@ const cricketReducer = produce((draft: CricketGameState, action: Action) => {
     case "ADD_MARK": {
       const { value, multiplier, cricketMode, throwLabel } = action.payload;
 
-      const snapshot = current(draft);
-      if (!draft.history) draft.history = [];
-      draft.history.push({ ...snapshot, history: [] });
-      draft.isUndoing = false;
+      pushHistorySnapshot(draft, current(draft));
 
       const player = draft.playerStates[draft.currentIndex];
 
@@ -239,20 +238,15 @@ const cricketReducer = produce((draft: CricketGameState, action: Action) => {
     }
 
     case "UNDO": {
-      if (!draft.history || draft.history.length === 0) return;
-      const prevState = draft.history[draft.history.length - 1];
-      return {
-        ...prevState,
-        history: draft.history.slice(0, -1),
-        speechEvent: null,
-        isUndoing: true,
-      };
+      const prevState = popHistorySnapshot(draft);
+      if (!prevState) return;
+      return { ...prevState, speechEvent: null };
     }
   }
 });
 
 export default function Cricket() {
-  const { players, settings } = useGame();
+  const { selectedPlayers, settings } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { bullTerm, missTerm, tripleTerm } = useTerminology();
@@ -272,7 +266,12 @@ export default function Cricket() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({
@@ -293,7 +292,7 @@ export default function Cricket() {
               legs: settings?.legs || 1,
               sets: settings?.sets || 1,
             },
-          playerStates: (players || []).map((name) => ({
+          playerStates: (selectedPlayers || []).map((name) => ({
             name,
             marks: {},
             score: 0,
@@ -338,8 +337,8 @@ export default function Cricket() {
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
         const baseline = await getPlayersHistoricalBaseline(
           humanNames,
           "Cricket",
@@ -349,7 +348,7 @@ export default function Cricket() {
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   useEffect(() => {
     if (state.legWinner || state.setWinner) {
@@ -429,7 +428,7 @@ export default function Cricket() {
 
   useEffect(() => {
     if (state.speechEvent) {
-      speak(state.speechEvent.text);
+      speak(t(language, state.speechEvent.text));
     }
   }, [state.speechEvent]);
 
@@ -448,120 +447,76 @@ export default function Cricket() {
     }
   }, [state.matchWinner]);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || state.matchWinner) {
-        if (state.matchWinner && !isExiting.current) {
-          saveCricketHistory(true);
-        }
-        return;
-      }
+  const hasMatchStarted = state.playerStates.some((p) => p.darts > 0);
 
-      e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.darts > 0);
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
+  useExitGuard(hasMatchStarted || !!state.matchWinner, () => {
+    if (state.matchWinner) {
+      saveCricketHistory(false).then(confirmExit);
+      return;
+    }
 
-      showExitConfirm(() => {
-        saveCricketHistory(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+    showExitConfirm(() => {
+      saveCricketHistory(false).then(confirmExit);
     });
-
-    return unsubscribe;
-  }, [navigation, language, state]);
+  });
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   const saveCricketHistory = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
+    const isUnfinished = !state.matchWinner;
 
-      const isUnfinished = !state.matchWinner;
-
-      const mappedPlayers = state.playerStates.map((p) => {
-        const closedCount =
-          p.totalClosedTargets !== undefined
-            ? p.totalClosedTargets
-            : TARGETS.reduce(
-                (acc, t) => acc + ((p.marks[t] || 0) >= 3 ? 1 : 0),
-                0,
-              );
-        return {
-          name: p.name,
-          score: p.totalMatchScore !== undefined ? p.totalMatchScore : p.score,
-          darts: p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts,
-          marks: p.marks,
-          totalMarks:
-            p.totalMatchMarks !== undefined
-              ? p.totalMatchMarks
-              : p.totalMarks || 0,
-          closedTargets: closedCount,
-          totalClosedTargets: closedCount,
-          legs: p.legs,
-          sets: p.sets,
-          rank: 0,
-        };
-      });
-
-      mappedPlayers.sort((a, b) => {
-        if (a.name === state.matchWinner?.name) return -1;
-        if (b.name === state.matchWinner?.name) return 1;
-        return (
-          (b.sets || 0) - (a.sets || 0) ||
-          (b.legs || 0) - (a.legs || 0) ||
-          (b.score || 0) - (a.score || 0)
-        );
-      });
-
-      mappedPlayers.forEach((p, idx) => (p.rank = idx + 1));
-
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "Cricket",
-        settings: {
-          cricketMode: currentMode,
-          legs: state.settings?.legs || 1,
-          sets: state.settings?.sets || 1,
-        },
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
-        players: mappedPlayers,
+    const mappedPlayers = state.playerStates.map((p) => {
+      const closedCount =
+        p.totalClosedTargets !== undefined
+          ? p.totalClosedTargets
+          : TARGETS.reduce(
+              (acc, t) => acc + ((p.marks[t] || 0) >= 3 ? 1 : 0),
+              0,
+            );
+      return {
+        name: p.name,
+        score: p.totalMatchScore !== undefined ? p.totalMatchScore : p.score,
+        darts: p.totalMatchDarts !== undefined ? p.totalMatchDarts : p.darts,
+        marks: p.marks,
+        totalMarks:
+          p.totalMatchMarks !== undefined
+            ? p.totalMatchMarks
+            : p.totalMarks || 0,
+        closedTargets: closedCount,
+        totalClosedTargets: closedCount,
+        legs: p.legs,
+        sets: p.sets,
+        rank: 0,
       };
+    });
 
-      const existingStr = await AsyncStorage.getItem("@dart_match_history");
-      const existingHistory = existingStr ? JSON.parse(existingStr) : [];
-
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
+    mappedPlayers.sort((a, b) => {
+      if (a.name === state.matchWinner?.name) return -1;
+      if (b.name === state.matchWinner?.name) return 1;
+      return (
+        (b.sets || 0) - (a.sets || 0) ||
+        (b.legs || 0) - (a.legs || 0) ||
+        (b.score || 0) - (a.score || 0)
       );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
+    });
 
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (error) {
-      console.error("Error saving cricket history", error);
-      if (navigateAway) router.push("/play");
-    }
+    mappedPlayers.forEach((p, idx) => (p.rank = idx + 1));
+
+    await persistMatchToHistory({
+      mode: "Cricket",
+      settings: {
+        cricketMode: currentMode,
+        legs: state.settings?.legs || 1,
+        sets: state.settings?.sets || 1,
+      },
+      players: mappedPlayers,
+      isUnfinished,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
   const handleThrow = (value: number, overrideMultiplier?: number) => {
@@ -621,22 +576,22 @@ export default function Cricket() {
   if (state.matchWinner) {
     modalTitle = isSingleLegMatch
       ? (
-          t(language, "playerFinished") || "{{name}} finished the game!"
+          t(language, "playerFinished")
         ).replace("{{name}}", winnerName)
-      : (t(language, "matchWinner") || "{{name}} has won the match!").replace(
+      : (t(language, "matchWinner")).replace(
           "{{name}}",
           winnerName,
         );
   } else if (state.setWinner) {
-    modalTitle = (t(language, "setWon") || "{{name}} won {{x}} set!")
+    modalTitle = (t(language, "setWon"))
       .replace("{{name}}", winnerName)
       .replace("{{x}}", (state.setWinner.sets || 1).toString());
-    timerText = t(language, "autoNextSet") || "Next set in: ";
+    timerText = t(language, "autoNextSet");
   } else if (state.legWinner) {
-    modalTitle = (t(language, "legWon") || "{{name}} won {{x}} leg!")
+    modalTitle = (t(language, "legWon"))
       .replace("{{name}}", winnerName)
       .replace("{{x}}", (state.legWinner.legs || 1).toString());
-    timerText = t(language, "autoNextLeg") || "Next leg in: ";
+    timerText = t(language, "autoNextLeg");
   }
 
   return (
@@ -649,14 +604,18 @@ export default function Cricket() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>CRICKET</Text>
+          <Text style={styles.headerTitle}>
+            {t(language, "cricket")?.toUpperCase()}
+          </Text>
           <Text style={styles.headerSub}>
-            {currentMode === "standard" ? "WITH SCORE" : "NO SCORE"}
+            {currentMode === "standard"
+              ? t(language, "withScore")?.toUpperCase()
+              : t(language, "withoutScore")?.toUpperCase()}
           </Text>
           {!isSingleLegMatch && (
             <Text style={styles.headerSubInfo}>
-              FIRST TO {state.settings?.legs || 1} L /{" "}
-              {state.settings?.sets || 1} S
+              {t(language, "firstTo")?.toUpperCase()}{" "}
+              {state.settings?.legs || 1} L / {state.settings?.sets || 1} S
             </Text>
           )}
         </View>
@@ -757,7 +716,7 @@ export default function Cricket() {
           <>
             <View style={styles.infoTop}>
               <Text style={styles.infoTurnTitle}>
-                {t(language, "turn") || "TURN"}:
+                {t(language, "turn")}:
               </Text>
               <Text style={styles.infoActivePlayer}>{activePlayer?.name}</Text>
             </View>
@@ -852,7 +811,7 @@ export default function Cricket() {
                 multiplier === 2 && styles.activeModifierText,
               ]}
             >
-              {t(language, "double") || "Double"}
+              {t(language, "double")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -890,19 +849,19 @@ export default function Cricket() {
         <View style={styles.modalActionsCol}>
           {state.matchWinner ? (
             <AnimatedPrimaryButton
-              title={t(language, "endMatch") || "End"}
+              title={t(language, "endMatch")}
               theme={theme}
               onPress={() => saveCricketHistory(true)}
             />
           ) : (
             <AnimatedPrimaryButton
-              title={t(language, "continue") || "Continue"}
+              title={t(language, "continue")}
               theme={theme}
               onPress={() => dispatch({ type: "START_NEXT_LEG" })}
             />
           )}
           <AnimatedPrimaryButton
-            title={t(language, "undoThrow") || "Undo last throw"}
+            title={t(language, "undoThrow")}
             theme={theme}
             color={theme.colors.background}
             textColor={theme.colors.textMuted}

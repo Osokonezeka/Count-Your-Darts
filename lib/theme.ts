@@ -37,10 +37,3 @@ export const darkTheme = {
   textMuted: "#a3a3a3",
   textLight: "#525252",
 };
-
-export const sizes = {
-  iconSmall: 16,
-  iconMedium: 20,
-  iconLarge: 24,
-  iconXLarge: 28,
-};

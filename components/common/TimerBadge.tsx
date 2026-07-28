@@ -1,14 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { StyleProp, Text, TextStyle, View, ViewStyle } from "react-native";
+import { lightTheme } from "../../lib/theme";
 import { formatTime } from "../../lib/gameUtils";
+
+type AppTheme = { colors: typeof lightTheme };
+
+interface TimerBadgeStyles {
+  timerBadge: StyleProp<ViewStyle>;
+  timerText: StyleProp<TextStyle>;
+}
 
 interface TimerBadgeProps {
   initialTime: number;
   isRunning: boolean;
   onTimeUpdate: (time: number) => void;
-  theme: any;
-  styles: any;
+  theme: AppTheme;
+  styles: TimerBadgeStyles;
 }
 
 export const TimerBadge = React.memo(

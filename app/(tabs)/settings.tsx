@@ -22,13 +22,15 @@ import {
 
 import { AnimatedPressable } from "../../components/common/AnimatedPressable";
 import { AnimatedSegmentedControl } from "../../components/common/AnimatedSegmentedControl";
+import { getSharedScreenStyles } from "../../components/common/SharedScreenStyles";
 import { useHaptics } from "../../context/HapticsContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { useSpeech } from "../../context/SpeechContext";
 import { useTerminology } from "../../context/TerminologyContext";
 import { useTheme } from "../../context/ThemeContext";
 import { availableLanguages, t, Lang } from "../../lib/i18n";
-import CustomAlert, { AlertButton } from "../../components/modals/CustomAlert";
+import CustomAlert from "../../components/modals/CustomAlert";
+import { useAlert } from "../../hooks/useAlert";
 import { exportBackup, importBackup } from "../../lib/backupUtils";
 import * as Updates from "expo-updates";
 import { parseFirebaseConfig } from "../../lib/firebaseDynamic";
@@ -69,13 +71,7 @@ export default function Settings() {
   const [isDeviceNameModalVisible, setDeviceNameModalVisible] = useState(false);
   const [deviceNameInput, setDeviceNameInput] = useState("");
 
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    title: "",
-    message: "",
-    buttons: [] as AlertButton[],
-    onDismiss: undefined as (() => void) | undefined,
-  });
+  const { showAlert, hideAlert, alertProps } = useAlert(language);
 
   const [localTriple, setLocalTriple] = useState(tripleTerm);
   const [localMiss, setLocalMiss] = useState(missTerm);
@@ -151,36 +147,15 @@ export default function Settings() {
     }
   };
 
-  const showAlert = (
-    title: string,
-    message: string,
-    buttons?: AlertButton[],
-    onDismiss?: () => void,
-  ) => {
-    setAlertConfig({
-      title,
-      message,
-      buttons: buttons || [
-        {
-          text: t(language, "ok") || "OK",
-          style: "default",
-          onPress: () => setAlertVisible(false),
-        },
-      ],
-      onDismiss,
-    });
-    setAlertVisible(true);
-  };
-
   const handleExport = async () => {
     const result = await exportBackup(language as Lang);
     if (result.success) {
       showAlert(
-        t(language, "dataManagement") || "Data Management",
-        t(language, "exportSuccess") || "Backup successfully exported!",
+        t(language, "dataManagement"),
+        t(language, "exportSuccess"),
       );
     } else if (result.error) {
-      showAlert(t(language, "error") || "Error", result.error);
+      showAlert(t(language, "error"), result.error);
     }
   };
 
@@ -188,12 +163,11 @@ export default function Settings() {
     const result = await importBackup(language as Lang);
     if (result.success) {
       showAlert(
-        t(language, "dataManagement") || "Data Management",
-        t(language, "importSuccess") ||
-          "Data successfully imported! Please restart the app.",
+        t(language, "dataManagement"),
+        t(language, "importSuccess"),
         [
           {
-            text: t(language, "restartApp") || "Restart App",
+            text: t(language, "restartApp"),
             style: "default",
             onPress: handleRestartApp,
           },
@@ -201,34 +175,32 @@ export default function Settings() {
         handleRestartApp,
       );
     } else if (result.error) {
-      showAlert(t(language, "error") || "Error", result.error);
+      showAlert(t(language, "error"), result.error);
     }
   };
 
   const handleHardReset = () => {
     showAlert(
-      t(language, "hardResetConfirmTitle") || "Wipe All Data?",
-      t(language, "hardResetConfirmMessage") ||
-        "This action cannot be undone. Are you sure you want to permanently delete all data from this device?",
+      t(language, "hardResetConfirmTitle"),
+      t(language, "hardResetConfirmMessage"),
       [
         {
-          text: t(language, "cancel") || "Cancel",
+          text: t(language, "cancel"),
           style: "cancel",
-          onPress: () => setAlertVisible(false),
+          onPress: hideAlert,
         },
         {
-          text: t(language, "deletePermanently") || "Delete permanently",
+          text: t(language, "deletePermanently"),
           style: "destructive",
           onPress: async () => {
-            setAlertVisible(false);
+            hideAlert();
             await AsyncStorage.clear();
             showAlert(
-              t(language, "hardReset") || "Wipe All Data",
-              t(language, "hardResetSuccess") ||
-                "All data has been wiped. Please restart the app.",
+              t(language, "hardReset"),
+              t(language, "hardResetSuccess"),
               [
                 {
-                  text: t(language, "restartApp") || "Restart App",
+                  text: t(language, "restartApp"),
                   style: "default",
                   onPress: handleRestartApp,
                 },
@@ -261,8 +233,8 @@ export default function Settings() {
         setTimeout(
           () =>
             showAlert(
-              t(language, "error") || "Error",
-              t(language, "invalidFirebaseConfig") || "Invalid configuration",
+              t(language, "error"),
+              t(language, "invalidFirebaseConfig"),
             ),
           400,
         );
@@ -317,7 +289,7 @@ export default function Settings() {
                 />
               </View>
               <Text style={styles.sectionTitle}>
-                {t(language, "language") || "Language"}
+                {t(language, "language")}
               </Text>
             </View>
           </View>
@@ -350,7 +322,7 @@ export default function Settings() {
                 />
               </View>
               <Text style={styles.sectionTitle}>
-                {t(language, "theme") || "Theme"}
+                {t(language, "theme")}
               </Text>
             </View>
           </View>
@@ -368,7 +340,7 @@ export default function Settings() {
             options={[
               {
                 id: "light",
-                label: t(language, "lightTheme") || "Light",
+                label: t(language, "lightTheme"),
                 icon: (isActive: boolean) => (
                   <Ionicons
                     name="sunny"
@@ -379,7 +351,7 @@ export default function Settings() {
               },
               {
                 id: "auto",
-                label: t(language, "autoTheme") || "Auto",
+                label: t(language, "autoTheme"),
                 icon: (isActive: boolean) => (
                   <Ionicons
                     name="contrast"
@@ -390,7 +362,7 @@ export default function Settings() {
               },
               {
                 id: "dark",
-                label: t(language, "darkTheme") || "Dark",
+                label: t(language, "darkTheme"),
                 icon: (isActive: boolean) => (
                   <Ionicons
                     name="moon"
@@ -420,7 +392,7 @@ export default function Settings() {
                 />
               </View>
               <Text style={styles.sectionTitle}>
-                {t(language, "preferences") || "Preferences"}
+                {t(language, "preferences")}
               </Text>
             </View>
             <Ionicons
@@ -441,7 +413,7 @@ export default function Settings() {
                     style={{ marginRight: 10 }}
                   />
                   <Text style={styles.settingLabel}>
-                    {t(language, "speech") || "Announcer"}
+                    {t(language, "speech")}
                   </Text>
                 </View>
                 <Switch
@@ -468,7 +440,7 @@ export default function Settings() {
                     style={{ marginRight: 10 }}
                   />
                   <Text style={styles.settingLabel}>
-                    {t(language, "vibrations") || "Haptics & Vibrations"}
+                    {t(language, "vibrations")}
                   </Text>
                 </View>
                 <Switch
@@ -493,7 +465,7 @@ export default function Settings() {
                 }}
               >
                 <Text style={styles.subLabel}>
-                  {t(language, "intensity") || "Intensity"}
+                  {t(language, "intensity")}
                 </Text>
                 <AnimatedSegmentedControl
                   theme={theme}
@@ -502,9 +474,9 @@ export default function Settings() {
                     setIntensity(val as "light" | "medium" | "heavy")
                   }
                   options={[
-                    { id: "light", label: t(language, "light") || "Light" },
-                    { id: "medium", label: t(language, "medium") || "Medium" },
-                    { id: "heavy", label: t(language, "heavy") || "Heavy" },
+                    { id: "light", label: t(language, "light") },
+                    { id: "medium", label: t(language, "medium") },
+                    { id: "heavy", label: t(language, "heavy") },
                   ]}
                 />
               </View>
@@ -518,7 +490,7 @@ export default function Settings() {
                     style={{ marginRight: 10 }}
                   />
                   <Text style={styles.settingLabel}>
-                    {t(language, "fastBot") || "Fast bot throw"}
+                    {t(language, "fastBot")}
                   </Text>
                 </View>
                 <Switch
@@ -556,7 +528,7 @@ export default function Settings() {
                 />
               </View>
               <Text style={styles.sectionTitle}>
-                {t(language, "terminology") || "Terminology"}
+                {t(language, "terminology")}
               </Text>
             </View>
             <Ionicons
@@ -569,7 +541,7 @@ export default function Settings() {
           {openSections.terminology && (
             <>
               <Text style={styles.subLabel}>
-                {t(language, "x3Multiplier") || "X3 Multiplier"}
+                {t(language, "x3Multiplier")}
               </Text>
               <AnimatedSegmentedControl
                 theme={theme}
@@ -582,13 +554,13 @@ export default function Settings() {
                   );
                 }}
                 options={[
-                  { id: "Triple", label: t(language, "triple") || "Triple" },
-                  { id: "Treble", label: t(language, "treble") || "Treble" },
+                  { id: "Triple", label: t(language, "triple") },
+                  { id: "Treble", label: t(language, "treble") },
                 ]}
               />
 
               <Text style={[styles.subLabel, { marginTop: 16 }]}>
-                {t(language, "miss") || "Miss"}
+                {t(language, "miss")}
               </Text>
               <AnimatedSegmentedControl
                 theme={theme}
@@ -599,12 +571,12 @@ export default function Settings() {
                 }}
                 options={[
                   { id: "0", label: "0" },
-                  { id: "Miss", label: t(language, "miss") || "Miss" },
+                  { id: "Miss", label: t(language, "miss") },
                 ]}
               />
 
               <Text style={[styles.subLabel, { marginTop: 16 }]}>
-                {t(language, "bullseye") || "Bullseye"}
+                {t(language, "bullseye")}
               </Text>
               <AnimatedSegmentedControl
                 theme={theme}
@@ -615,7 +587,7 @@ export default function Settings() {
                 }}
                 options={[
                   { id: "25", label: "25" },
-                  { id: "Bull", label: t(language, "bull") || "Bull" },
+                  { id: "Bull", label: t(language, "bull") },
                 ]}
               />
             </>
@@ -639,7 +611,7 @@ export default function Settings() {
                 />
               </View>
               <Text style={styles.sectionTitle}>
-                {t(language, "multiplayerOptions") || "Multiplayer options"}
+                {t(language, "multiplayerOptions")}
               </Text>
             </View>
             <Ionicons
@@ -664,11 +636,10 @@ export default function Settings() {
                 </View>
                 <View style={styles.actionTextContainer}>
                   <Text style={styles.actionTitle}>
-                    {t(language, "setDeviceName") || "Set device name"}
+                    {t(language, "setDeviceName")}
                   </Text>
                   <Text style={styles.actionDesc}>
-                    {t(language, "deviceNameDesc") ||
-                      "Enter the name under which other players will see this device in the Lobby."}
+                    {t(language, "deviceNameDesc")}
                   </Text>
                 </View>
               </AnimatedPressable>
@@ -686,12 +657,10 @@ export default function Settings() {
                 </View>
                 <View style={styles.actionTextContainer}>
                   <Text style={styles.actionTitle}>
-                    {t(language, "configureHostServer") ||
-                      "Configure custom Host server"}
+                    {t(language, "configureHostServer")}
                   </Text>
                   <Text style={styles.actionDesc}>
-                    {t(language, "firebaseConfigDesc") ||
-                      "Paste your Firebase configuration code here so you can host games for others."}
+                    {t(language, "firebaseConfigDesc")}
                   </Text>
                 </View>
               </AnimatedPressable>
@@ -716,7 +685,7 @@ export default function Settings() {
                 />
               </View>
               <Text style={styles.sectionTitle}>
-                {t(language, "dataManagement") || "Data Management"}
+                {t(language, "dataManagement")}
               </Text>
             </View>
             <Ionicons
@@ -741,10 +710,10 @@ export default function Settings() {
                 </View>
                 <View style={styles.actionTextContainer}>
                   <Text style={styles.actionTitle}>
-                    {t(language, "exportData") || "Export Backup"}
+                    {t(language, "exportData")}
                   </Text>
                   <Text style={styles.actionDesc}>
-                    {t(language, "exportDesc") || "Save a backup to a file"}
+                    {t(language, "exportDesc")}
                   </Text>
                 </View>
               </AnimatedPressable>
@@ -762,10 +731,10 @@ export default function Settings() {
                 </View>
                 <View style={styles.actionTextContainer}>
                   <Text style={styles.actionTitle}>
-                    {t(language, "importData") || "Import Backup"}
+                    {t(language, "importData")}
                   </Text>
                   <Text style={styles.actionDesc}>
-                    {t(language, "importDesc") || "Restore data from file"}
+                    {t(language, "importDesc")}
                   </Text>
                 </View>
               </AnimatedPressable>
@@ -778,29 +747,27 @@ export default function Settings() {
                   style={[
                     styles.actionIconWrapper,
                     {
-                      backgroundColor:
-                        theme.colors.dangerLight || "rgba(255, 59, 48, 0.15)",
+                      backgroundColor: theme.colors.dangerLight,
                     },
                   ]}
                 >
                   <Ionicons
                     name="trash-outline"
                     size={24}
-                    color={theme.colors.danger || "#ff3b30"}
+                    color={theme.colors.danger}
                   />
                 </View>
                 <View style={styles.actionTextContainer}>
                   <Text
                     style={[
                       styles.actionTitle,
-                      { color: theme.colors.danger || "#ff3b30" },
+                      { color: theme.colors.danger },
                     ]}
                   >
-                    {t(language, "hardReset") || "Wipe All Data"}
+                    {t(language, "hardReset")}
                   </Text>
                   <Text style={styles.actionDesc}>
-                    {t(language, "hardResetDesc") ||
-                      "Permanently delete all players, history, and settings"}
+                    {t(language, "hardResetDesc")}
                   </Text>
                 </View>
               </AnimatedPressable>
@@ -845,7 +812,7 @@ export default function Settings() {
             <View style={styles.sheetHeader}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>
-                {t(language, "selectLanguage") || "Select Language"}
+                {t(language, "selectLanguage")}
               </Text>
             </View>
 
@@ -907,16 +874,15 @@ export default function Settings() {
           />
           <View style={styles.modalContentCenter}>
             <Text style={styles.modalTitleCenter}>
-              {t(language, "deviceNameConfig") || "Device Configuration"}
+              {t(language, "deviceNameConfig")}
             </Text>
             <Text style={styles.modalDescCenter}>
-              {t(language, "deviceNameDesc") ||
-                "Enter the name under which other players will see this device in the Lobby."}
+              {t(language, "deviceNameDesc")}
             </Text>
             <TextInput
               style={styles.deviceNameInput}
               placeholder={
-                t(language, "deviceNamePlaceholder") || "e.g. Mike's iPad"
+                t(language, "deviceNamePlaceholder")
               }
               placeholderTextColor={theme.colors.textMuted}
               value={deviceNameInput}
@@ -929,7 +895,7 @@ export default function Settings() {
                 onPress={() => setDeviceNameModalVisible(false)}
               >
                 <Text style={styles.modalBtnCancelText}>
-                  {t(language, "cancel") || "Cancel"}
+                  {t(language, "cancel")}
                 </Text>
               </AnimatedPressable>
               <AnimatedPressable
@@ -937,7 +903,7 @@ export default function Settings() {
                 onPress={saveDeviceNameConfig}
               >
                 <Text style={styles.modalBtnSaveText}>
-                  {t(language, "save") || "Save"}
+                  {t(language, "save")}
                 </Text>
               </AnimatedPressable>
             </View>
@@ -959,12 +925,10 @@ export default function Settings() {
           />
           <View style={styles.modalContentCenter}>
             <Text style={styles.modalTitleCenter}>
-              {t(language, "databaseConfigHost") ||
-                "Database Configuration (Host)"}
+              {t(language, "databaseConfigHost")}
             </Text>
             <Text style={styles.modalDescCenter}>
-              {t(language, "firebaseConfigDesc") ||
-                "Paste your Firebase configuration code here (the one you got in the console) so you can host games for others."}
+              {t(language, "firebaseConfigDesc")}
             </Text>
             <TextInput
               style={styles.configInput}
@@ -980,7 +944,7 @@ export default function Settings() {
                 onPress={() => Linking.openURL("https://example.com/tutorial")}
               >
                 <Text style={styles.modalBtnTutorialText}>
-                  {t(language, "tutorial") || "Tutorial"}
+                  {t(language, "tutorial")}
                 </Text>
               </AnimatedPressable>
               <View style={styles.modalActionsRight}>
@@ -989,7 +953,7 @@ export default function Settings() {
                   onPress={() => setConfigModalVisible(false)}
                 >
                   <Text style={styles.modalBtnCancelText}>
-                    {t(language, "cancel") || "Cancel"}
+                    {t(language, "cancel")}
                   </Text>
                 </AnimatedPressable>
                 <AnimatedPressable
@@ -997,7 +961,7 @@ export default function Settings() {
                   onPress={saveHostConfig}
                 >
                   <Text style={styles.modalBtnSaveText}>
-                    {t(language, "save") || "Save"}
+                    {t(language, "save")}
                   </Text>
                 </AnimatedPressable>
               </View>
@@ -1006,43 +970,24 @@ export default function Settings() {
         </View>
       </Modal>
 
-      <CustomAlert
-        visible={alertVisible}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onRequestClose={() => {
-          setAlertVisible(false);
-          if (alertConfig.onDismiss) {
-            alertConfig.onDismiss();
-          }
-        }}
-      />
+      <CustomAlert {...alertProps} />
     </View>
   );
 }
 
-const getStyles = (theme: { colors: Record<string, string> }) =>
-  StyleSheet.create({
+const getStyles = (theme: { colors: Record<string, string> }) => {
+  const shared = getSharedScreenStyles(theme);
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { padding: 16, paddingBottom: 40 },
     card: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 16,
+      ...shared.card,
       padding: 20,
-      marginBottom: 16,
       borderWidth: 1,
       borderColor: theme.colors.cardBorder,
-      elevation: 2,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 3,
     },
     cardHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+      ...shared.cardHeader,
       marginBottom: 16,
     },
     cardHeaderLeft: {
@@ -1053,15 +998,13 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.15)",
+      backgroundColor: theme.colors.primaryLight,
       justifyContent: "center",
       alignItems: "center",
       marginRight: 12,
     },
     sectionTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      color: theme.colors.textMain,
+      ...shared.sectionTitle,
     },
     dropdownTrigger: {
       flexDirection: "row",
@@ -1183,7 +1126,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     },
     langOptionActive: {
       borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.05)",
+      backgroundColor: theme.colors.primaryLight,
     },
     langOptionText: {
       fontSize: 16,
@@ -1261,3 +1204,4 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
     },
     modalBtnSaveText: { color: "#fff", fontWeight: "700" },
   });
+};

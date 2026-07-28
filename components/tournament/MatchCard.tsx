@@ -24,6 +24,8 @@ export type SharedMatch = {
   loserDropSlot?: "p1" | "p2" | null;
   isBye: boolean;
   isThirdPlace?: boolean;
+  isWalkover?: boolean;
+  forfeitWinnerId?: string;
   isInProgress?: boolean;
   inProgressDeviceName?: string | null;
   inProgressDeviceId?: string | null;
@@ -42,6 +44,7 @@ export const MatchCard = React.memo(
     onMatchPress,
     isReadOnly,
     onResetMatch,
+    onWalkover,
     settings,
   }: {
     match: SharedMatch;
@@ -51,6 +54,7 @@ export const MatchCard = React.memo(
     onMatchPress?: (match: SharedMatch) => void;
     isReadOnly: boolean;
     onResetMatch?: (matchId: string) => void;
+    onWalkover?: (matchId: string) => void;
     settings?: TournamentSettings;
   }) => {
     const { language } = useLanguage();
@@ -66,6 +70,15 @@ export const MatchCard = React.memo(
     const showCheckmarks = match.phase !== "group";
 
     const isLocalOwner = isMatchInProgress;
+    const cardAccessibilityLabel = `${
+      match.player1 ? match.player1.name : t(language, "awaiting")
+    } ${t(language, "vs")} ${
+      match.player2
+        ? match.player2.name
+        : match.isBye
+          ? t(language, "byePlayer")
+          : t(language, "awaiting")
+    }`;
     const hasScoreProgress =
       !!match.score &&
       (match.score.p1Sets > 0 ||
@@ -74,6 +87,12 @@ export const MatchCard = React.memo(
         match.score.p2Legs > 0);
     const isEffectivelyInProgress =
       isLocalOwner || hasScoreProgress || !!match.hasProgress;
+    const canDeclareWalkover =
+      !isReadOnly &&
+      !match.isBye &&
+      !hasWinner &&
+      !isWaiting &&
+      !!onWalkover;
 
     return (
       <AnimatedPressable
@@ -85,23 +104,37 @@ export const MatchCard = React.memo(
         onPress={
           isClickable && onMatchPress ? () => onMatchPress(match) : undefined
         }
+        accessibilityRole={isClickable ? "button" : "none"}
+        accessibilityLabel={isClickable ? cardAccessibilityLabel : undefined}
       >
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
             {match.isThirdPlace && (
               <View style={styles.thirdPlaceBadge}>
                 <Text style={styles.thirdPlaceLabel}>
-                  {t(language, "thirdPlaceMatchLabel") || "3rd Place 🥉"}
+                  {t(language, "thirdPlaceMatchLabel")}
                 </Text>
               </View>
             )}
             {match.phase === "group" && match.groupId && (
               <Text style={styles.groupBadgeLabel}>
-                {(t(language, "groupNumber") || "Group {{number}}").replace(
+                {(t(language, "groupNumber")).replace(
                   "{{number}}",
                   match.groupId,
                 )}
               </Text>
+            )}
+            {hasWinner && match.isWalkover && (
+              <View style={styles.walkoverBadge}>
+                <Ionicons
+                  name="flag"
+                  size={10}
+                  color={theme.colors.warning}
+                />
+                <Text style={styles.walkoverLabel}>
+                  {t(language, "walkoverBadge")}
+                </Text>
+              </View>
             )}
             {match.isInProgress && match.inProgressDeviceName && (
               <View style={styles.devicePlayingBadge}>
@@ -118,6 +151,21 @@ export const MatchCard = React.memo(
           </View>
 
           <View style={styles.cardHeaderRight}>
+            {canDeclareWalkover && (
+              <AnimatedPressable
+                style={styles.walkoverBtn}
+                onPress={() => onWalkover!(match.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={t(language, "walkoverButtonLabel")}
+              >
+                <Ionicons
+                  name="flag-outline"
+                  size={14}
+                  color={theme.colors.warning}
+                />
+              </AnimatedPressable>
+            )}
             {isEffectivelyInProgress &&
               !match.isInProgress &&
               !hasWinner &&
@@ -127,11 +175,13 @@ export const MatchCard = React.memo(
                   style={styles.resetMatchBtn}
                   onPress={() => onResetMatch(match.id)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(language, "resetMatch")}
                 >
                   <Ionicons
                     name="refresh-outline"
                     size={14}
-                    color={theme.colors.danger || "#dc3545"}
+                    color={theme.colors.danger}
                   />
                 </AnimatedPressable>
               )}
@@ -157,7 +207,7 @@ export const MatchCard = React.memo(
             >
               {match.player1
                 ? match.player1.name
-                : t(language, "awaiting") || "Awaiting..."}
+                : t(language, "awaiting")}
             </Text>
 
             {match.score && match.player1 && (
@@ -177,14 +227,14 @@ export const MatchCard = React.memo(
               <Ionicons
                 name="checkmark-circle"
                 size={18}
-                color={theme.colors.success || "#28a745"}
+                color={theme.colors.success}
               />
             )}
             {p1IsLoser && showCheckmarks && (
               <Ionicons
                 name="close-circle"
                 size={18}
-                color={theme.colors.danger || "#dc3545"}
+                color={theme.colors.danger}
               />
             )}
           </View>
@@ -208,8 +258,8 @@ export const MatchCard = React.memo(
               {match.player2
                 ? match.player2.name
                 : match.isBye
-                  ? t(language, "byePlayer") || "Bye"
-                  : t(language, "awaiting") || "Awaiting..."}
+                  ? t(language, "byePlayer")
+                  : t(language, "awaiting")}
             </Text>
 
             {match.score && match.player2 && !match.isBye && (
@@ -229,14 +279,14 @@ export const MatchCard = React.memo(
               <Ionicons
                 name="checkmark-circle"
                 size={18}
-                color={theme.colors.success || "#28a745"}
+                color={theme.colors.success}
               />
             )}
             {p2IsLoser && showCheckmarks && (
               <Ionicons
                 name="close-circle"
                 size={18}
-                color={theme.colors.danger || "#dc3545"}
+                color={theme.colors.danger}
               />
             )}
           </View>
@@ -247,10 +297,12 @@ export const MatchCard = React.memo(
             <AnimatedPressable
               style={styles.statsButton}
               onPress={() => onMatchPress && onMatchPress(match)}
+              accessibilityRole="button"
+              accessibilityLabel={`${t(language, "stats")} - ${cardAccessibilityLabel}`}
             >
               <Ionicons name="stats-chart" size={16} color="#fff" />
               <Text style={styles.playButtonText}>
-                {t(language, "stats") || "Statistics"}
+                {t(language, "stats")}
               </Text>
             </AnimatedPressable>
           ) : !isReadOnly && !match.isBye && !isWaiting ? (
@@ -262,7 +314,7 @@ export const MatchCard = React.memo(
                   color={theme.colors.warning}
                 />
                 <Text style={styles.inProgressText}>
-                  {t(language, "inProgress") || "In progress"}
+                  {t(language, "inProgress")}
                 </Text>
               </View>
             ) : (
@@ -272,6 +324,12 @@ export const MatchCard = React.memo(
                   isEffectivelyInProgress && styles.resumeButton,
                 ]}
                 onPress={() => onPlay(match)}
+                accessibilityRole="button"
+                accessibilityLabel={`${
+                  isEffectivelyInProgress
+                    ? t(language, "resume")
+                    : t(language, "start")
+                } - ${cardAccessibilityLabel}`}
               >
                 <Ionicons
                   name={isEffectivelyInProgress ? "play-forward" : "play"}
@@ -280,14 +338,14 @@ export const MatchCard = React.memo(
                 />
                 <Text style={styles.playButtonText}>
                   {isEffectivelyInProgress
-                    ? t(language, "resume") || "Resume"
-                    : t(language, "start") || "Play"}
+                    ? t(language, "resume")
+                    : t(language, "start")}
                 </Text>
               </AnimatedPressable>
             )
           ) : match.isBye ? (
             <Text style={styles.infoText}>
-              {t(language, "byePlayer") || "Bye"}
+              {t(language, "byePlayer")}
             </Text>
           ) : null}
         </View>
@@ -300,7 +358,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     resetMatchBtn: {
       padding: 4,
-      backgroundColor: theme.colors.dangerLight || "rgba(220, 53, 69, 0.1)",
+      backgroundColor: theme.colors.dangerLight,
       borderRadius: 6,
     },
     matchCard: {
@@ -334,7 +392,32 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       marginRight: 8,
     },
     cardHeaderRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
       justifyContent: "flex-start",
+    },
+    walkoverBtn: {
+      padding: 4,
+      backgroundColor: theme.colors.warning + "20",
+      borderRadius: 6,
+    },
+    walkoverBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: theme.colors.warning + "20",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.warning + "40",
+    },
+    walkoverLabel: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: theme.colors.warning,
+      textTransform: "uppercase",
     },
     devicePlayingBadge: {
       flexDirection: "row",
@@ -386,12 +469,12 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       overflow: "hidden",
     },
     winnerRow: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.05)",
+      backgroundColor: theme.colors.primaryLight,
       borderRadius: 6,
       paddingHorizontal: 6,
       marginHorizontal: -6,
     },
-    winnerText: { color: theme.colors.success || "#28a745", fontWeight: "900" },
+    winnerText: { color: theme.colors.success, fontWeight: "900" },
     loserRow: {
       backgroundColor: "rgba(220, 53, 69, 0.08)",
       borderRadius: 6,
@@ -435,7 +518,7 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       justifyContent: "center",
       gap: 6,
     },
-    resumeButton: { backgroundColor: theme.colors.warning || "#f0ad4e" },
+    resumeButton: { backgroundColor: theme.colors.warning },
     statsButton: {
       flexDirection: "row",
       backgroundColor: "#4b5563",

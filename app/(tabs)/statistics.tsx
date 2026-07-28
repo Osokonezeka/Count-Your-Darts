@@ -136,7 +136,7 @@ export default function Statistics() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: `${t(language, "stats") || "Statistics"} (${t(language, "x01") || "X01"})`,
+      headerTitle: `${t(language, "stats")} (${t(language, "x01")})`,
       headerRight: () => (
         <View
           style={{
@@ -229,7 +229,7 @@ export default function Statistics() {
           const uri = await viewShotRef.current.capture();
           await Sharing.shareAsync(uri, {
             dialogTitle:
-              t(language, "shareDialogTitle") || "Share your Darts Stats!",
+              t(language, "shareDialogTitle"),
             mimeType: "image/jpeg",
           });
         } catch (error) {
@@ -312,12 +312,12 @@ export default function Statistics() {
           id: f,
           label:
             f === "today"
-              ? t(language, "today") || "Today"
+              ? t(language, "today")
               : f === "7d"
-                ? t(language, "week") || "7 days"
+                ? t(language, "week")
                 : f === "30d"
-                  ? t(language, "month") || "30 days"
-                  : t(language, "all") || "All time",
+                  ? t(language, "month")
+                  : t(language, "all"),
         }))}
       />
       <View style={{ flex: 1 }}>
@@ -333,7 +333,7 @@ export default function Statistics() {
 
       <SelectPlayersModal
         visible={showPlayerFilter}
-        title={t(language, "selectPlayers") || "Select players"}
+        title={t(language, "selectPlayers")}
         players={filteredHistoryPlayers}
         selectedPlayers={tempNames}
         onTogglePlayer={(item: string) =>
@@ -352,7 +352,7 @@ export default function Statistics() {
           setShowPlayerFilter(false);
           setFilterSearchQuery("");
         }}
-        confirmText={t(language, "setFilters") || "Set filters"}
+        confirmText={t(language, "setFilters")}
         confirmColor={theme.colors.primary}
         showSearch={true}
         searchQuery={filterSearchQuery}
@@ -389,7 +389,7 @@ export default function Statistics() {
             onStartShouldSetResponder={() => true}
           >
             <Text style={styles.modalTitle}>
-              {t(language, "shareStatsTitle") || "Share Stats"} (X01)
+              {t(language, "shareStatsTitle")} (X01)
             </Text>
             <Text
               style={{
@@ -399,8 +399,7 @@ export default function Statistics() {
                 fontWeight: "600",
               }}
             >
-              {t(language, "shareStatsDesc") ||
-                "Select a player to generate a sharing card"}
+              {t(language, "shareStatsDesc")}
             </Text>
             <FlatList
               data={stats.map((s: AggregatedStats) => s.name)}
@@ -420,8 +419,7 @@ export default function Statistics() {
               )}
               ListEmptyComponent={
                 <Text style={styles.emptyText}>
-                  {t(language, "noDataFilters") ||
-                    "No data available for applied filters."}
+                  {t(language, "noDataFilters")}
                 </Text>
               }
             />
@@ -435,7 +433,7 @@ export default function Statistics() {
               <Text
                 style={[styles.closeBtnText, { color: theme.colors.textMain }]}
               >
-                {t(language, "cancel") || "Cancel"}
+                {t(language, "cancel")}
               </Text>
             </AnimatedPressable>
           </View>
@@ -461,35 +459,34 @@ export default function Statistics() {
               return (
                 <ShareCard
                   playerName={selectedSharePlayer}
-                  subtitle={`${t(language, "sharePlayerStats") || "PLAYER STATS"} • X01`}
+                  subtitle={`${t(language, "sharePlayerStats")} • X01`}
                   topRightBox={{
-                    label: t(language, "shareDartsThrown") || "DARTS THROWN",
+                    label: t(language, "shareDartsThrown"),
                     value: playerStats?.totalDarts?.toString() || "0",
                   }}
                   boxes={[
                     {
-                      label: t(language, "shareGamesWon") || "GAMES / WON",
+                      label: t(language, "shareGamesWon"),
                       value: `${playerStats?.mPlayed || 0} / ${playerStats?.mWon || 0} (${playerStats?.winPct?.toFixed(0) || 0}%)`,
                     },
                     {
-                      label: t(language, "shareFirst9Avg") || "FIRST 9 / AVG",
+                      label: t(language, "shareFirst9Avg"),
                       value: `${playerStats?.calculatedFirst9?.toFixed(1) || "0.0"} / ${playerStats?.calculatedAvg?.toFixed(1) || "0.0"}`,
                     },
                     {
                       label:
-                        t(language, "shareGameDartsHit") ||
-                        "GAME DARTS / HIT %",
+                        t(language, "shareGameDartsHit"),
                       value: `${playerStats?.checkoutDarts || 0} / ${playerStats?.calculatedCheckoutPct?.toFixed(1) || "0.0"}%`,
                     },
                     {
-                      label: t(language, "shareScoring") || "100+ / 140+ / 180",
+                      label: t(language, "shareScoring"),
                       value: `${playerStats?.s100 || 0} / ${playerStats?.s140 || 0} / ${playerStats?.s180 || 0}`,
                     },
                   ]}
                   trendData={trendData[selectedSharePlayer as string]}
                   theme={theme}
                   language={language}
-                  footerText={`${t(language, "shareGeneratedOn") || "Generated on"} ${dayjs().format("DD.MM.YYYY")}`}
+                  footerText={`${t(language, "shareGeneratedOn")} ${dayjs().format("DD.MM.YYYY")}`}
                 />
               );
             })()}
