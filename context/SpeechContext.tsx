@@ -44,7 +44,7 @@ export const SpeechProvider = ({ children }: { children: React.ReactNode }) => {
       await AsyncStorage.setItem(SPEECH_KEY, String(newValue));
 
       if (newValue) {
-        Speech.speak(t(language, "announcerEnabled") || "Announcer enabled", {
+        Speech.speak(t(language, "announcerEnabled"), {
           language: language === "pl" ? "pl-PL" : "en-US",
           pitch: 1.0,
           rate: 1.0,

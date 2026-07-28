@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { AnimatedPressable } from "./AnimatedPressable";
+import { KeyboardActionButton } from "../keyboards/KeyboardActionButton";
 import { t } from "../../lib/i18n";
 
 type BotThrowingOverlayProps = {
@@ -22,14 +22,14 @@ export const BotThrowingOverlay = ({
     <View style={styles.botOverlay}>
       <Ionicons name="hardware-chip" size={64} color={theme.colors.primary} />
       <Text style={styles.botOverlayText}>
-        {playerName} {t(language, "isThrowing") || "is throwing..."}
+        {playerName} {t(language, "isThrowing")}
       </Text>
-      <AnimatedPressable style={styles.botUndoBtn} onPress={onUndo}>
+      <KeyboardActionButton variant="pill" onPress={onUndo} theme={theme}>
         <Ionicons name="arrow-undo" size={20} color="#fff" />
         <Text style={styles.botUndoText}>
-          {t(language, "undoThrow") || "Undo last throw"}
+          {t(language, "undoThrow")}
         </Text>
-      </AnimatedPressable>
+      </KeyboardActionButton>
     </View>
   );
 };
@@ -54,15 +54,6 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       marginTop: 16,
       marginBottom: 24,
       textAlign: "center",
-    },
-    botUndoBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.colors.danger,
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-      gap: 8,
     },
     botUndoText: { color: "#fff", fontSize: 16, fontWeight: "800" },
   });

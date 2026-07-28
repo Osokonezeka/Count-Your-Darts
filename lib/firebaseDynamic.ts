@@ -131,8 +131,7 @@ export const createHostRoom = async (
           () =>
             reject(
               new Error(
-                t(language, "firebaseTimeout") ||
-                  "Connection timed out. Ensure you have network access and that 'Firestore Database' is created in the Firebase console (with proper write rules).",
+                t(language, "firebaseTimeout"),
               ),
             ),
           6000,

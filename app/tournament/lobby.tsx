@@ -26,6 +26,7 @@ import { AnimatedPrimaryButton } from "../../components/common/AnimatedPrimaryBu
 import { getSharedTournamentStyles } from "../../components/common/SharedTournamentStyles";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useAlert } from "../../hooks/useAlert";
 import { t } from "../../lib/i18n";
 import CustomAlert from "../../components/modals/CustomAlert";
 import {
@@ -54,7 +55,6 @@ export default function TournamentLobbyScreen() {
   const [roomData, setRoomData] = useState<any>(null);
   const [firebaseError, setFirebaseError] = useState(false);
 
-  const [hostLeftAlertVisible, setHostLeftAlertVisible] = useState(false);
   const isStartingRef = useRef(false);
   const isExitingRef = useRef(false);
   const hasNavigatedToBracketRef = useRef(false);
@@ -64,11 +64,7 @@ export default function TournamentLobbyScreen() {
   const deviceIdRef = useRef<string | null>(null);
   const registered = useRef(false);
 
-  const [kickedOutAlertVisible, setKickedOutAlertVisible] = useState(false);
-  const [deviceToKick, setDeviceToKick] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
+  const { showAlert, alertProps } = useAlert(language);
 
   const parsedConfig = useMemo(() => {
     if (connectionString) {
@@ -86,13 +82,32 @@ export default function TournamentLobbyScreen() {
     router.navigate("/(tabs)/tournaments");
   };
 
+  const confirmExitLobby = () => {
+    if (isHost === "true") {
+      showAlert(
+        t(language, "leaveLobbyTitle"),
+        t(language, "leaveLobbyHostMsg"),
+        [
+          { text: t(language, "cancel"), style: "cancel" },
+          {
+            text: t(language, "leave"),
+            style: "destructive",
+            onPress: handleExitLobby,
+          },
+        ],
+      );
+    } else {
+      handleExitLobby();
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
       if (isStartingRef.current || isExitingRef.current) return;
 
       if (e.data.action.type === "GO_BACK") {
         e.preventDefault();
-        handleExitLobby();
+        confirmExitLobby();
       }
     });
     return unsubscribe;
@@ -175,7 +190,12 @@ export default function TournamentLobbyScreen() {
           if (data.status === "cancelled" && !isStaleCache) {
             AsyncStorage.removeItem("@current_multiplayer_session");
             if (isHost === "false") {
-              setHostLeftAlertVisible(true);
+              showAlert(
+                t(language, "hostLeftTitle"),
+                t(language, "hostLeftMessage"),
+                undefined,
+                () => router.navigate("/(tabs)/tournaments"),
+              );
             }
             return;
           }
@@ -191,7 +211,12 @@ export default function TournamentLobbyScreen() {
             !isStaleCache
           ) {
             AsyncStorage.removeItem("@current_multiplayer_session");
-            setKickedOutAlertVisible(true);
+            showAlert(
+              t(language, "kickedAlertTitle"),
+              t(language, "kickedAlertMessage"),
+              undefined,
+              () => router.navigate("/(tabs)/tournaments"),
+            );
             return;
           }
 
@@ -216,13 +241,13 @@ export default function TournamentLobbyScreen() {
         }
       },
       (error) => {
-        console.error("Błąd nasłuchiwania Lobby:", error);
+        console.error("Lobby listener error:", error);
         setFirebaseError(true);
       },
     );
 
     return () => unsubscribe();
-  }, [parsedConfig, connectionString, isHost, router]);
+  }, [parsedConfig, connectionString, isHost, router, language, showAlert]);
 
   useEffect(() => {
     if (
@@ -281,20 +306,31 @@ export default function TournamentLobbyScreen() {
     });
   };
 
-  const confirmKickDevice = (device: { id: string; name: string }) => {
-    setDeviceToKick(device);
-  };
-
-  const executeKickDevice = async () => {
-    if (!parsedConfig || !deviceToKick) return;
+  const executeKickDevice = async (device: { id: string; name: string }) => {
+    if (!parsedConfig) return;
     const connection = connectToDynamicFirebase(parsedConfig.configStr);
     if (!connection) return;
     const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
     await updateDoc(roomRef, {
-      connectedDevices: arrayRemove(deviceToKick),
-      [`kickedBans.${deviceToKick.id}`]: Date.now(),
+      connectedDevices: arrayRemove(device),
+      [`kickedBans.${device.id}`]: Date.now(),
     });
-    setDeviceToKick(null);
+  };
+
+  const confirmKickDevice = (device: { id: string; name: string }) => {
+    showAlert(
+      t(language, "kickDeviceTitle"),
+      t(language, "kickDeviceMessage")?.replace("{{name}}", device.name) ||
+        `Are you sure you want to disconnect device '${device.name}' from the tournament?`,
+      [
+        { text: t(language, "cancel"), style: "cancel" },
+        {
+          text: t(language, "delete"),
+          style: "destructive",
+          onPress: () => executeKickDevice(device),
+        },
+      ],
+    );
   };
 
   if (firebaseError) {
@@ -306,10 +342,10 @@ export default function TournamentLobbyScreen() {
           color={theme.colors.danger}
         />
         <Text style={styles.errorText}>
-          {t(language, "roomConnectionError") || "Error connecting to room!"}
+          {t(language, "roomConnectionError")}
         </Text>
         <AnimatedPrimaryButton
-          title={t(language, "goBack") || "Go back"}
+          title={t(language, "goBack")}
           theme={theme}
           onPress={handleExitLobby}
           style={{ marginTop: 20 }}
@@ -323,7 +359,7 @@ export default function TournamentLobbyScreen() {
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={styles.loadingText}>
-          {t(language, "connectingToServer") || "Connecting to server..."}
+          {t(language, "connectingToServer")}
         </Text>
       </View>
     );
@@ -337,7 +373,7 @@ export default function TournamentLobbyScreen() {
           { paddingTop: insets.top > 0 ? insets.top + 10 : 16 },
         ]}
       >
-        <AnimatedPressable onPress={handleExitLobby} style={styles.headerBtn}>
+        <AnimatedPressable onPress={confirmExitLobby} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -352,7 +388,7 @@ export default function TournamentLobbyScreen() {
         {isHost === "true" && (
           <View style={styles.qrCard}>
             <Text style={styles.sectionTitleCenter}>
-              {t(language, "scanToJoin") || "Scan to join"}
+              {t(language, "scanToJoin")}
             </Text>
             <View style={styles.qrWrapper}>
               <QRCode
@@ -366,7 +402,7 @@ export default function TournamentLobbyScreen() {
               {connectionString}
             </Text>
             <Text style={styles.copyHint}>
-              {t(language, "copyHint") || "(Hold to copy the code manually)"}
+              {t(language, "copyHint")}
             </Text>
           </View>
         )}
@@ -374,7 +410,7 @@ export default function TournamentLobbyScreen() {
         <View style={styles.playersCard}>
           <View style={styles.playersHeader}>
             <Text style={styles.sectionTitle}>
-              {t(language, "participants") || "Participants"}
+              {t(language, "participants")}
             </Text>
             <View style={styles.countBadge}>
               <Text style={styles.countBadgeText}>
@@ -399,7 +435,7 @@ export default function TournamentLobbyScreen() {
           <View style={styles.playersCard}>
             <View style={styles.playersHeader}>
               <Text style={styles.sectionTitle}>
-                {t(language, "connectedDevices") || "Connected devices"}
+                {t(language, "connectedDevices")}
               </Text>
               <View style={styles.countBadge}>
                 <Text style={styles.countBadgeText}>
@@ -437,7 +473,7 @@ export default function TournamentLobbyScreen() {
       <View style={styles.fixedBottomContainer}>
         {isHost === "true" ? (
           <AnimatedPrimaryButton
-            title={t(language, "startTournament") || "Start tournament"}
+            title={t(language, "startTournament")}
             iconName="play"
             theme={theme}
             fontSize={18}
@@ -447,82 +483,13 @@ export default function TournamentLobbyScreen() {
           <View style={styles.waitingContainer}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
             <Text style={styles.waitingText}>
-              {t(language, "waitingForHost") || "Waiting for Host to start..."}
+              {t(language, "waitingForHost")}
             </Text>
           </View>
         )}
       </View>
 
-      <CustomAlert
-        visible={kickedOutAlertVisible}
-        title={t(language, "kickedAlertTitle") || "Kicked out"}
-        message={
-          t(language, "kickedAlertMessage") ||
-          "The Host removed this device from the game."
-        }
-        onRequestClose={() => {
-          setKickedOutAlertVisible(false);
-          router.navigate("/(tabs)/tournaments");
-        }}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => {
-              setKickedOutAlertVisible(false);
-              router.navigate("/(tabs)/tournaments");
-            },
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={hostLeftAlertVisible}
-        title={t(language, "hostLeftTitle") || "Lobby closed"}
-        message={
-          t(language, "hostLeftMessage") ||
-          "The Host has left the lobby. You have been disconnected."
-        }
-        onRequestClose={() => {
-          setHostLeftAlertVisible(false);
-          router.navigate("/(tabs)/tournaments");
-        }}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => {
-              setHostLeftAlertVisible(false);
-              router.navigate("/(tabs)/tournaments");
-            },
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={!!deviceToKick}
-        title={t(language, "kickDeviceTitle") || "Disconnect device"}
-        message={
-          t(language, "kickDeviceMessage")?.replace(
-            "{{name}}",
-            deviceToKick?.name || "",
-          ) ||
-          `Are you sure you want to disconnect device '${deviceToKick?.name}' from the tournament?`
-        }
-        onRequestClose={() => setDeviceToKick(null)}
-        buttons={[
-          {
-            text: t(language, "cancel") || "Cancel",
-            style: "cancel",
-            onPress: () => setDeviceToKick(null),
-          },
-          {
-            text: t(language, "delete") || "Delete",
-            style: "destructive",
-            onPress: executeKickDevice,
-          },
-        ]}
-      />
+      <CustomAlert {...alertProps} />
     </View>
   );
 }
@@ -602,7 +569,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMain,
     },
     countBadge: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.15)",
+      backgroundColor: theme.colors.primaryLight,
       paddingHorizontal: 12,
       paddingVertical: 4,
       borderRadius: 12,
@@ -634,7 +601,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
     playerMembers: { fontSize: 13, color: theme.colors.textMuted },
     kickBtn: {
       padding: 6,
-      backgroundColor: theme.colors.dangerLight || "rgba(220, 53, 69, 0.1)",
+      backgroundColor: theme.colors.dangerLight,
       borderRadius: 8,
     },
     fixedBottomContainer: {

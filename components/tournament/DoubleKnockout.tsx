@@ -1,7 +1,5 @@
-import { ReactNativeZoomableView } from "@openspacelabs/react-native-zoomable-view";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Dimensions,
   ScrollView,
@@ -12,15 +10,22 @@ import {
 } from "react-native";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useTournamentBracket } from "../../hooks/useTournamentBracket";
+import {
+  getStandardSeeding,
+  orderPlayersBySeed,
+  usesExplicitSeedOrder,
+} from "../../lib/bracketSeeding";
 import { t } from "../../lib/i18n";
+import { TournamentSettings } from "../../lib/statsUtils";
 import CustomAlert from "../modals/CustomAlert";
+import { BracketTreeShell } from "./common/BracketTreeShell";
+import { WalkoverAlert } from "./common/WalkoverAlert";
 import {
   MatchCard,
   SharedMatch as Match,
   SharedPlayer as Player,
 } from "./MatchCard";
-import { useMatchStore } from "../../store/useMatchStore";
-import { TournamentSettings } from "../../lib/statsUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -103,272 +108,181 @@ export default function DoubleKnockout({
   const styles = getStyles(theme);
   const router = useRouter();
   const { language } = useLanguage();
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [inProgressMatches, setInProgressMatches] = useState<
-    Record<string, boolean>
-  >({});
   const [dkView, setDkView] = useState<"wb" | "lb" | "gf">("wb");
-  const [resetAlert, setResetAlert] = useState({ visible: false, matchId: "" });
 
-  const bracketStorageKey = `bracket_structure_${String(settings?.name || "").replace(/\s/g, "_")}`;
+  const generateBracket = useCallback(
+    async (persistMatches: (newMatches: Match[]) => Promise<void>) => {
+      const bracketOrder = settings.bracketOrder as string | undefined;
+      let playersList = orderPlayersBySeed(players, bracketOrder);
+      const N = playersList.length;
+      const S = Math.max(2, Math.pow(2, Math.ceil(Math.log2(N))));
+      const W = Math.log2(S);
 
-  useEffect(() => {
-    if (initialBracket) {
-      setMatches(initialBracket);
-      (async () => {
-        const progressObj: Record<string, boolean> = {};
-        for (const m of initialBracket) {
-          const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
-          if (savedScore) progressObj[m.id] = true;
+      while (playersList.length < S) {
+        playersList.push({ id: "bye", name: t(language, "byePlayer") });
+      }
+
+      const newMatches: Match[] = [];
+      const prefix = Date.now().toString(36);
+
+      const round1Slots = new Array(S / 2)
+        .fill(null)
+        .map(() => ({ p1: null as Player | null, p2: null as Player | null }));
+
+      if (usesExplicitSeedOrder(bracketOrder)) {
+        const seedPattern = getStandardSeeding(S);
+        for (let i = 0; i < S / 2; i++) {
+          const p1Index = seedPattern[i * 2] - 1;
+          const p2Index = seedPattern[i * 2 + 1] - 1;
+          round1Slots[i].p1 = playersList[p1Index] || null;
+          round1Slots[i].p2 = playersList[p2Index] || null;
         }
-        setInProgressMatches(progressObj);
-      })();
-    }
-  }, [initialBracket]);
+      } else {
+        let pIdx = 0;
+        for (let i = 0; i < S / 2 && pIdx < S; i++)
+          round1Slots[i].p1 = playersList[pIdx++];
+        for (let i = 0; i < S / 2 && pIdx < S; i++)
+          round1Slots[i].p2 = playersList[pIdx++];
+      }
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadTournamentState = async () => {
-        try {
-          let currentMatches: Match[] = [];
-          if (initialBracket) {
-            currentMatches = initialBracket;
-            setMatches(currentMatches);
+      for (let r = 1; r <= W; r++) {
+        const matchesInRound = S / Math.pow(2, r);
+        for (let m = 0; m < matchesInRound; m++) {
+          const isGF = r === W;
+          const matchId = `match_${prefix}_wb_r${r}_m${m}`;
+          const nextMatchId = isGF
+            ? `match_${prefix}_gf_m0`
+            : `match_${prefix}_wb_r${r + 1}_m${Math.floor(m / 2)}`;
+          const nextMatchSlot = isGF ? "p1" : m % 2 === 0 ? "p1" : "p2";
+
+          let loserDropMatchId = null;
+          let loserDropSlot: "p1" | "p2" | null = null;
+
+          if (r === 1) {
+            loserDropMatchId = `match_${prefix}_lb_r1_m${Math.floor(m / 2)}`;
+            loserDropSlot = m % 2 === 0 ? "p1" : "p2";
           } else {
-            const savedBracketStr =
-              await AsyncStorage.getItem(bracketStorageKey);
-            if (savedBracketStr) {
-              currentMatches = JSON.parse(savedBracketStr) as Match[];
-              setMatches(currentMatches);
-            } else if (players.length > 0 && !isReadOnly && isHost) {
-              generateBracket();
-              return;
+            const dropRound = 2 * r - 2;
+            const dropMatches = S / Math.pow(2, r);
+            const targetM = dropMatches - 1 - m;
+            loserDropMatchId = `match_${prefix}_lb_r${dropRound}_m${targetM}`;
+            loserDropSlot = "p2";
+          }
+
+          newMatches.push({
+            id: matchId,
+            bracket: "wb",
+            round: r,
+            matchIndex: m,
+            player1: r === 1 ? round1Slots[m].p1 : null,
+            player2: r === 1 ? round1Slots[m].p2 : null,
+            winner: null,
+            nextMatchId,
+            nextMatchSlot,
+            loserDropMatchId,
+            loserDropSlot,
+            isBye: false,
+          });
+        }
+      }
+
+      let lbSizes: number[] = [];
+      let currentSize = S / 4;
+      for (let r = 1; r <= 2 * W - 2; r++) {
+        lbSizes.push(currentSize);
+        if (r % 2 === 0) currentSize /= 2;
+      }
+
+      for (let r = 1; r <= 2 * W - 2; r++) {
+        const matchesInRound = lbSizes[r - 1];
+        for (let m = 0; m < matchesInRound; m++) {
+          let nextMatchId = `match_${prefix}_gf_m0`;
+          let nextMatchSlot: "p1" | "p2" = "p2";
+
+          if (r < 2 * W - 2) {
+            if (r % 2 === 1) {
+              nextMatchId = `match_${prefix}_lb_r${r + 1}_m${m}`;
+              nextMatchSlot = "p1";
             } else {
-              return;
+              nextMatchId = `match_${prefix}_lb_r${r + 1}_m${Math.floor(m / 2)}`;
+              nextMatchSlot = m % 2 === 0 ? "p1" : "p2";
             }
           }
 
-          const progressObj: Record<string, boolean> = {};
-          for (const m of currentMatches) {
-            const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
-            if (savedScore) progressObj[m.id] = true;
-          }
-          setInProgressMatches(progressObj);
-        } catch (e) {
-          console.error(e);
+          newMatches.push({
+            id: `match_${prefix}_lb_r${r}_m${m}`,
+            bracket: "lb",
+            round: r,
+            matchIndex: m,
+            player1: null,
+            player2: null,
+            winner: null,
+            nextMatchId,
+            nextMatchSlot,
+            loserDropMatchId: null,
+            loserDropSlot: null,
+            isBye: false,
+          });
         }
-      };
-      loadTournamentState();
-    }, [players, initialBracket, isReadOnly]),
+      }
+
+      newMatches.push({
+        id: `match_${prefix}_gf_m0`,
+        bracket: "gf",
+        round: 1,
+        matchIndex: 0,
+        player1: null,
+        player2: null,
+        winner: null,
+        nextMatchId: `match_${prefix}_gf_m1`,
+        nextMatchSlot: "p1",
+        loserDropMatchId: null,
+        loserDropSlot: null,
+        isBye: false,
+      });
+      newMatches.push({
+        id: `match_${prefix}_gf_m1`,
+        bracket: "gf",
+        round: 2,
+        matchIndex: 1,
+        player1: null,
+        player2: null,
+        winner: null,
+        nextMatchId: null,
+        nextMatchSlot: null,
+        loserDropMatchId: null,
+        loserDropSlot: null,
+        isBye: false,
+      });
+
+      const resolvedMatches = resolveAutoMatches(newMatches);
+      await persistMatches(resolvedMatches);
+    },
+    [players, settings, language],
   );
 
-  const generateBracket = async () => {
-    let playersList = [...players];
-    if (settings.bracketOrder === "random" || !settings.bracketOrder) {
-      playersList = playersList.sort(() => 0.5 - Math.random());
-    } else if (settings.bracketOrder === "bottom_to_top") {
-      playersList = playersList.reverse();
-    }
-    const N = playersList.length;
-    const S = Math.max(2, Math.pow(2, Math.ceil(Math.log2(N))));
-    const W = Math.log2(S);
-
-    while (playersList.length < S) {
-      playersList.push({ id: "bye", name: "Bye" });
-    }
-
-    const newMatches: Match[] = [];
-    const prefix = Date.now().toString(36);
-
-    const getStandardSeeding = (numPlayers: number) => {
-      let rounds = Math.log2(numPlayers);
-      let pls = [1, 2];
-      for (let i = 1; i < rounds; i++) {
-        let out: number[] = [];
-        let length = pls.length * 2 + 1;
-        pls.forEach((d) => {
-          out.push(d);
-          out.push(length - d);
-        });
-        pls = out;
-      }
-      return pls;
-    };
-
-    const round1Slots = new Array(S / 2)
-      .fill(null)
-      .map(() => ({ p1: null as Player | null, p2: null as Player | null }));
-
-    if (
-      settings.bracketOrder === "top_to_bottom" ||
-      settings.bracketOrder === "bottom_to_top"
-    ) {
-      const seedPattern = getStandardSeeding(S);
-      for (let i = 0; i < S / 2; i++) {
-        const p1Index = seedPattern[i * 2] - 1;
-        const p2Index = seedPattern[i * 2 + 1] - 1;
-        round1Slots[i].p1 = playersList[p1Index] || null;
-        round1Slots[i].p2 = playersList[p2Index] || null;
-      }
-    } else {
-      let pIdx = 0;
-      for (let i = 0; i < S / 2 && pIdx < S; i++)
-        round1Slots[i].p1 = playersList[pIdx++];
-      for (let i = 0; i < S / 2 && pIdx < S; i++)
-        round1Slots[i].p2 = playersList[pIdx++];
-    }
-
-    for (let r = 1; r <= W; r++) {
-      const matchesInRound = S / Math.pow(2, r);
-      for (let m = 0; m < matchesInRound; m++) {
-        const isGF = r === W;
-        const matchId = `match_${prefix}_wb_r${r}_m${m}`;
-        const nextMatchId = isGF
-          ? `match_${prefix}_gf_m0`
-          : `match_${prefix}_wb_r${r + 1}_m${Math.floor(m / 2)}`;
-        const nextMatchSlot = isGF ? "p1" : m % 2 === 0 ? "p1" : "p2";
-
-        let loserDropMatchId = null;
-        let loserDropSlot: "p1" | "p2" | null = null;
-
-        if (r === 1) {
-          loserDropMatchId = `match_${prefix}_lb_r1_m${Math.floor(m / 2)}`;
-          loserDropSlot = m % 2 === 0 ? "p1" : "p2";
-        } else {
-          const dropRound = 2 * r - 2;
-          const dropMatches = S / Math.pow(2, r);
-          const targetM = dropMatches - 1 - m;
-          loserDropMatchId = `match_${prefix}_lb_r${dropRound}_m${targetM}`;
-          loserDropSlot = "p2";
-        }
-
-        newMatches.push({
-          id: matchId,
-          bracket: "wb",
-          round: r,
-          matchIndex: m,
-          player1: r === 1 ? round1Slots[m].p1 : null,
-          player2: r === 1 ? round1Slots[m].p2 : null,
-          winner: null,
-          nextMatchId,
-          nextMatchSlot,
-          loserDropMatchId,
-          loserDropSlot,
-          isBye: false,
-        });
-      }
-    }
-
-    let lbSizes: number[] = [];
-    let currentSize = S / 4;
-    for (let r = 1; r <= 2 * W - 2; r++) {
-      lbSizes.push(currentSize);
-      if (r % 2 === 0) currentSize /= 2;
-    }
-
-    for (let r = 1; r <= 2 * W - 2; r++) {
-      const matchesInRound = lbSizes[r - 1];
-      for (let m = 0; m < matchesInRound; m++) {
-        let nextMatchId = `match_${prefix}_gf_m0`;
-        let nextMatchSlot: "p1" | "p2" = "p2";
-
-        if (r < 2 * W - 2) {
-          if (r % 2 === 1) {
-            nextMatchId = `match_${prefix}_lb_r${r + 1}_m${m}`;
-            nextMatchSlot = "p1";
-          } else {
-            nextMatchId = `match_${prefix}_lb_r${r + 1}_m${Math.floor(m / 2)}`;
-            nextMatchSlot = m % 2 === 0 ? "p1" : "p2";
-          }
-        }
-
-        newMatches.push({
-          id: `match_${prefix}_lb_r${r}_m${m}`,
-          bracket: "lb",
-          round: r,
-          matchIndex: m,
-          player1: null,
-          player2: null,
-          winner: null,
-          nextMatchId,
-          nextMatchSlot,
-          loserDropMatchId: null,
-          loserDropSlot: null,
-          isBye: false,
-        });
-      }
-    }
-
-    newMatches.push({
-      id: `match_${prefix}_gf_m0`,
-      bracket: "gf",
-      round: 1,
-      matchIndex: 0,
-      player1: null,
-      player2: null,
-      winner: null,
-      nextMatchId: `match_${prefix}_gf_m1`,
-      nextMatchSlot: "p1",
-      loserDropMatchId: null,
-      loserDropSlot: null,
-      isBye: false,
-    });
-    newMatches.push({
-      id: `match_${prefix}_gf_m1`,
-      bracket: "gf",
-      round: 2,
-      matchIndex: 1,
-      player1: null,
-      player2: null,
-      winner: null,
-      nextMatchId: null,
-      nextMatchSlot: null,
-      loserDropMatchId: null,
-      loserDropSlot: null,
-      isBye: false,
-    });
-
-    const resolvedMatches = resolveAutoMatches(newMatches);
-    setMatches(resolvedMatches);
-    await AsyncStorage.setItem(
-      bracketStorageKey,
-      JSON.stringify(resolvedMatches),
-    );
-    if (onBracketGenerated) onBracketGenerated(resolvedMatches);
-  };
-
-  const performResetMatch = async () => {
-    if (!resetAlert.matchId) return;
-    try {
-      await AsyncStorage.removeItem(`match_save_${resetAlert.matchId}`);
-      useMatchStore.getState().clearMultipleMatches([resetAlert.matchId]);
-      setInProgressMatches((prev: Record<string, boolean>) => {
-        const updated = { ...prev };
-        delete updated[resetAlert.matchId];
-        return updated;
-      });
-
-      const newMatches = matches.map((m) => {
-        if (m.id === resetAlert.matchId) {
-          const {
-            score,
-            gameState,
-            inProgressDeviceName,
-            inProgressDeviceId,
-            ...rest
-          } = m;
-          return { ...rest, isInProgress: false, hasProgress: false };
-        }
-        return m;
-      });
-      setMatches(newMatches);
-      await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
-      if (onBracketGenerated) onBracketGenerated(newMatches);
-    } catch (e) {
-      console.error(e);
-    }
-    setResetAlert({ visible: false, matchId: "" });
-  };
+  const {
+    matches,
+    inProgressMatches,
+    resetAlert,
+    requestReset,
+    cancelReset,
+    performResetMatch,
+    walkoverAlert,
+    requestWalkover,
+    cancelWalkover,
+    performWalkover,
+    markMatchInProgress,
+  } = useTournamentBracket({
+    settings,
+    players,
+    language,
+    initialBracket,
+    isReadOnly,
+    isHost,
+    onBracketGenerated,
+    generateBracket,
+  });
 
   const matchesByRound = useMemo(() => {
     return matches.reduce(
@@ -383,26 +297,7 @@ export default function DoubleKnockout({
 
   const handlePlayMatch = useCallback(
     async (match: Match) => {
-      const dName =
-        (await AsyncStorage.getItem("@device_name")) || "Unknown Device";
-      const dId = (await AsyncStorage.getItem("@device_id")) || "Unknown ID";
-      const updatedMatches = matches.map((m) =>
-        m.id === match.id
-          ? {
-              ...m,
-              isInProgress: true,
-              inProgressDeviceName: dName,
-              inProgressDeviceId: dId,
-            }
-          : m,
-      );
-      setMatches(updatedMatches);
-      await AsyncStorage.setItem(
-        bracketStorageKey,
-        JSON.stringify(updatedMatches),
-      );
-      await AsyncStorage.setItem("@bracket_needs_sync", "true");
-      if (onBracketGenerated) onBracketGenerated(updatedMatches);
+      await markMatchInProgress(match.id);
 
       let matchSettings = { ...settings };
       if (settings.customFinals && match.bracket === "gf") {
@@ -433,7 +328,7 @@ export default function DoubleKnockout({
         },
       });
     },
-    [matches, settings, router, bracketStorageKey, onBracketGenerated],
+    [markMatchInProgress, matches, settings, router],
   );
 
   const renderCard = useCallback(
@@ -445,7 +340,8 @@ export default function DoubleKnockout({
         isMatchInProgress={inProgressMatches[match.id]}
         theme={theme}
         isReadOnly={isReadOnly}
-        onResetMatch={(id) => setResetAlert({ visible: true, matchId: id })}
+        onResetMatch={requestReset}
+        onWalkover={requestWalkover}
         onPlay={handlePlayMatch}
         onMatchPress={() => onMatchPress(match)}
       />
@@ -455,9 +351,16 @@ export default function DoubleKnockout({
       inProgressMatches,
       theme,
       isReadOnly,
+      requestReset,
+      requestWalkover,
       handlePlayMatch,
       onMatchPress,
     ],
+  );
+
+  const walkoverMatch = useMemo(
+    () => matches.find((m) => m.id === walkoverAlert.matchId) || null,
+    [matches, walkoverAlert.matchId],
   );
 
   const wbRounds = Math.max(
@@ -482,110 +385,100 @@ export default function DoubleKnockout({
   return (
     <>
       {viewMode === "tree" ? (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-          <ReactNativeZoomableView
-            maxZoom={1.5}
-            minZoom={0.2}
-            zoomStep={0.5}
-            initialZoom={1}
-            bindToBorders={true}
-            contentWidth={calculatedWidth}
-            contentHeight={calculatedHeight}
-            panBoundaryPadding={50}
-            style={{ flex: 1 }}
+        <BracketTreeShell
+          theme={theme}
+          contentWidth={calculatedWidth}
+          contentHeight={calculatedHeight}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 30,
+              padding: 24,
+              width: calculatedWidth,
+              height: calculatedHeight,
+            }}
           >
+            {Object.keys(matchesByRound).map((roundKey) => {
+              const ms = matchesByRound[parseInt(roundKey)].filter(
+                (m) => m.bracket === "wb",
+              );
+              if (ms.length === 0) return null;
+              return (
+                <View key={`wb-col-${roundKey}`} style={styles.treeColumn}>
+                  <Text style={styles.treeRoundTitle}>
+                    {t(language, "wbRound")?.replace("{{round}}", roundKey)}
+                  </Text>
+                  <View style={styles.treeMatchesWrapper}>
+                    {ms.map((match, idx) => (
+                      <React.Fragment key={match.id}>
+                        <View style={styles.treeMatchContainer}>
+                          {renderCard(match)}
+                        </View>
+                        {idx % 2 === 1 && idx !== ms.length - 1 ? (
+                          <View style={styles.treeSeparator} />
+                        ) : null}
+                      </React.Fragment>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
             <View
               style={{
-                flexDirection: "row",
-                gap: 30,
-                padding: 24,
-                width: calculatedWidth,
-                height: calculatedHeight,
+                width: 2,
+                backgroundColor: theme.colors.cardBorder,
+                marginHorizontal: 20,
               }}
-            >
-              {Object.keys(matchesByRound).map((roundKey) => {
-                const ms = matchesByRound[parseInt(roundKey)].filter(
-                  (m) => m.bracket === "wb",
-                );
-                if (ms.length === 0) return null;
-                return (
-                  <View key={`wb-col-${roundKey}`} style={styles.treeColumn}>
-                    <Text style={styles.treeRoundTitle}>
-                      {t(language, "wbRound")?.replace("{{round}}", roundKey) ||
-                        `WB Round ${roundKey}`}
-                    </Text>
-                    <View style={styles.treeMatchesWrapper}>
-                      {ms.map((match, idx) => (
-                        <React.Fragment key={match.id}>
-                          <View style={styles.treeMatchContainer}>
-                            {renderCard(match)}
-                          </View>
-                          {idx % 2 === 1 && idx !== ms.length - 1 ? (
-                            <View style={styles.treeSeparator} />
-                          ) : null}
-                        </React.Fragment>
-                      ))}
-                    </View>
-                  </View>
-                );
-              })}
-              <View
-                style={{
-                  width: 2,
-                  backgroundColor: theme.colors.cardBorder,
-                  marginHorizontal: 20,
-                }}
-              />
-              {Object.keys(matchesByRound).map((roundKey) => {
-                const ms = matchesByRound[parseInt(roundKey)].filter(
-                  (m) => m.bracket === "lb",
-                );
-                if (ms.length === 0) return null;
-                return (
-                  <View key={`lb-col-${roundKey}`} style={styles.treeColumn}>
-                    <Text style={styles.treeRoundTitle}>
-                      {t(language, "lbRound")?.replace("{{round}}", roundKey) ||
-                        `LB Round ${roundKey}`}
-                    </Text>
-                    <View style={styles.treeMatchesWrapper}>
-                      {ms.map((match, idx) => (
-                        <React.Fragment key={match.id}>
-                          <View style={styles.treeMatchContainer}>
-                            {renderCard(match)}
-                          </View>
-                          {idx % 2 === 1 && idx !== ms.length - 1 ? (
-                            <View style={styles.treeSeparator} />
-                          ) : null}
-                        </React.Fragment>
-                      ))}
-                    </View>
-                  </View>
-                );
-              })}
-              <View
-                style={{
-                  width: 2,
-                  backgroundColor: theme.colors.cardBorder,
-                  marginHorizontal: 20,
-                }}
-              />
-              <View style={styles.treeColumn}>
-                <Text style={styles.treeRoundTitle}>
-                  {t(language, "grandFinals") || "Grand Finals"}
-                </Text>
-                <View style={styles.treeMatchesWrapper}>
-                  {matches
-                    .filter((m) => m.bracket === "gf")
-                    .map((match) => (
-                      <View key={match.id} style={styles.treeMatchContainer}>
-                        {renderCard(match)}
-                      </View>
+            />
+            {Object.keys(matchesByRound).map((roundKey) => {
+              const ms = matchesByRound[parseInt(roundKey)].filter(
+                (m) => m.bracket === "lb",
+              );
+              if (ms.length === 0) return null;
+              return (
+                <View key={`lb-col-${roundKey}`} style={styles.treeColumn}>
+                  <Text style={styles.treeRoundTitle}>
+                    {t(language, "lbRound")?.replace("{{round}}", roundKey)}
+                  </Text>
+                  <View style={styles.treeMatchesWrapper}>
+                    {ms.map((match, idx) => (
+                      <React.Fragment key={match.id}>
+                        <View style={styles.treeMatchContainer}>
+                          {renderCard(match)}
+                        </View>
+                        {idx % 2 === 1 && idx !== ms.length - 1 ? (
+                          <View style={styles.treeSeparator} />
+                        ) : null}
+                      </React.Fragment>
                     ))}
+                  </View>
                 </View>
+              );
+            })}
+            <View
+              style={{
+                width: 2,
+                backgroundColor: theme.colors.cardBorder,
+                marginHorizontal: 20,
+              }}
+            />
+            <View style={styles.treeColumn}>
+              <Text style={styles.treeRoundTitle}>
+                {t(language, "grandFinals")}
+              </Text>
+              <View style={styles.treeMatchesWrapper}>
+                {matches
+                  .filter((m) => m.bracket === "gf")
+                  .map((match) => (
+                    <View key={match.id} style={styles.treeMatchContainer}>
+                      {renderCard(match)}
+                    </View>
+                  ))}
               </View>
             </View>
-          </ReactNativeZoomableView>
-        </View>
+          </View>
+        </BracketTreeShell>
       ) : (
         <View style={{ flex: 1 }}>
           <View style={styles.phaseTabsContainer}>
@@ -602,7 +495,7 @@ export default function DoubleKnockout({
                   dkView === "wb" && styles.phaseTabTextActive,
                 ]}
               >
-                {t(language, "winnersBracket") || "WINNERS"}
+                {t(language, "winnersBracket")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -618,7 +511,7 @@ export default function DoubleKnockout({
                   dkView === "lb" && styles.phaseTabTextActive,
                 ]}
               >
-                {t(language, "losersBracket") || "LOSERS"}
+                {t(language, "losersBracket")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -634,7 +527,7 @@ export default function DoubleKnockout({
                   dkView === "gf" && styles.phaseTabTextActive,
                 ]}
               >
-                {t(language, "finals")?.toUpperCase() || "FINALS"}
+                {t(language, "finals")?.toUpperCase()}
               </Text>
             </TouchableOpacity>
           </View>
@@ -655,13 +548,13 @@ export default function DoubleKnockout({
                         ? t(language, "wbRound")?.replace(
                             "{{round}}",
                             roundKey,
-                          ) || `WB Round ${roundKey}`
+                          )
                         : dkView === "lb"
                           ? t(language, "lbRound")?.replace(
                               "{{round}}",
                               roundKey,
-                            ) || `LB Round ${roundKey}`
-                          : t(language, "grandFinals") || "Grand Finals"}
+                            )
+                          : t(language, "grandFinals")}
                     </Text>
                   </View>
                   {ms.map(renderCard)}
@@ -674,24 +567,31 @@ export default function DoubleKnockout({
 
       <CustomAlert
         visible={resetAlert.visible}
-        title={t(language, "resetMatch") || "Restart match"}
+        title={t(language, "resetMatch")}
         message={
-          t(language, "resetMatchConfirm") ||
-          "Restart this match? All progress will be lost."
+          t(language, "resetMatchConfirm")
         }
-        onRequestClose={() => setResetAlert({ visible: false, matchId: "" })}
+        onRequestClose={cancelReset}
         buttons={[
           {
-            text: t(language, "cancel") || "Cancel",
+            text: t(language, "cancel"),
             style: "cancel",
-            onPress: () => setResetAlert({ visible: false, matchId: "" }),
+            onPress: cancelReset,
           },
           {
-            text: t(language, "reset") || "Reset",
+            text: t(language, "reset"),
             style: "destructive",
             onPress: performResetMatch,
           },
         ]}
+      />
+
+      <WalkoverAlert
+        visible={walkoverAlert.visible}
+        match={walkoverMatch}
+        language={language}
+        onCancel={cancelWalkover}
+        onSelectForfeiter={performWalkover}
       />
     </>
   );

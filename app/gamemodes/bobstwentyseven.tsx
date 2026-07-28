@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { current, produce } from "immer";
 import React, {
@@ -31,8 +29,8 @@ import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
+import { useMatchLifecycle } from "../../hooks/useMatchLifecycle";
 import { resolveBotAverage, simulateBobsBotThrow } from "../../lib/bot";
-import { formatTime } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -166,7 +164,7 @@ const bobsReducer = produce((draft: GameState, action: Action) => {
 });
 
 export default function BobsTwentySeven() {
-  const { players } = useGame();
+  const { selectedPlayers } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
@@ -183,7 +181,12 @@ export default function BobsTwentySeven() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({
@@ -198,7 +201,7 @@ export default function BobsTwentySeven() {
     parsedResume
       ? parsedResume.gameState
       : {
-          playerStates: players.map((name) => ({
+          playerStates: selectedPlayers.map((name) => ({
             name,
             score: 27,
             highScore: 27,
@@ -235,8 +238,8 @@ export default function BobsTwentySeven() {
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
         const baseline = await getPlayersHistoricalBaseline(
           humanNames,
           "Bob's 27",
@@ -246,7 +249,7 @@ export default function BobsTwentySeven() {
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
@@ -281,83 +284,44 @@ export default function BobsTwentySeven() {
 
   useEffect(() => {
     if (state.speechEvent) {
-      speak(state.speechEvent.text);
+      speak(t(language, state.speechEvent.text));
     }
   }, [state.speechEvent]);
 
   const saveBobsStats = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
+    const mappedPlayers = state.playerStates
+      .map((p) => ({
+        name: p.name,
+        score: p.score,
+        highScore: p.highScore,
+        darts: p.darts,
+        rank: p.rank,
+        isBust: p.isBust,
+      }))
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0));
 
-      const isUnfinished = !allDone;
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "Bob's 27",
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
-        players: state.playerStates
-          .map((p) => ({
-            name: p.name,
-            score: p.score,
-            highScore: p.highScore,
-            darts: p.darts,
-            rank: p.rank,
-            status: p.isBust ? "BUST" : "CLEARED",
-          }))
-          .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
-      };
-
-      const existingHistoryStr = await AsyncStorage.getItem(
-        "@dart_match_history",
-      );
-      const existingHistory = existingHistoryStr
-        ? JSON.parse(existingHistoryStr)
-        : [];
-
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
-      );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
-
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (e) {
-      console.error("Save Bob's 27 error", e);
-      if (navigateAway) router.push("/play");
-    }
+    await persistMatchToHistory({
+      mode: "Bob's 27",
+      players: mappedPlayers,
+      isUnfinished: !allDone,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || allDone) return;
-      e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.darts > 0);
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
-      showExitConfirm(() => {
-        saveBobsStats(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+  const hasMatchStarted = state.playerStates.some((p) => p.darts > 0);
+
+  useExitGuard(hasMatchStarted || allDone, () => {
+    if (allDone) {
+      saveBobsStats(false).then(confirmExit);
+      return;
+    }
+
+    showExitConfirm(() => {
+      saveBobsStats(false).then(confirmExit);
     });
-    return unsubscribe;
-  }, [navigation, allDone, state]);
+  });
 
   const handleThrow = (hit: boolean) => {
     if (allDone) return;
@@ -377,8 +341,12 @@ export default function BobsTwentySeven() {
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </AnimatedPressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>BOB'S 27</Text>
-          <Text style={styles.headerSub}>D1 ➔ D20 ➔ D-BULL</Text>
+          <Text style={styles.headerTitle}>
+            {t(language, "bobs27")?.toUpperCase()}
+          </Text>
+          <Text style={styles.headerSub}>
+            D1 ➔ D20 ➔ D{bullTerm.toUpperCase()}
+          </Text>
         </View>
         <View style={styles.headerRight}>
           <TimerBadge
@@ -475,7 +443,9 @@ export default function BobsTwentySeven() {
                       <Text style={styles.statBold}>{p.darts}</Text>
                     </View>
                     <View style={styles.statusBadge}>
-                      <Text style={styles.statusText}>ACTIVE</Text>
+                      <Text style={styles.statusText}>
+                      {t(language, "active")?.toUpperCase()}
+                    </Text>
                     </View>
                   </View>
                 </>
@@ -500,7 +470,9 @@ export default function BobsTwentySeven() {
                       },
                     ]}
                   >
-                    {p.isBust ? "BUST" : "CLEARED"}
+                    {p.isBust
+                      ? t(language, "bust")?.toUpperCase()
+                      : t(language, "cleared")?.toUpperCase()}
                   </Text>
                 </View>
               )}
@@ -519,14 +491,14 @@ export default function BobsTwentySeven() {
         >
           <TrainingKeyboard
             playerName={currentPlayer.name}
-            instructionText={(t(language, "hitLower") || "hit") + ":"}
+            instructionText={(t(language, "hitLower")) + ":"}
             targetValue={
               "D" +
               (TARGETS[currentPlayer.currentTargetIdx] === 25
                 ? bullTerm
                 : TARGETS[currentPlayer.currentTargetIdx])
             }
-            hitLabel="HIT DOUBLE"
+            hitLabel={`${t(language, "hit")} ${t(language, "double")}`.toUpperCase()}
             missLabel={missTerm}
             onHit={() => handleThrow(true)}
             onMiss={() => handleThrow(false)}
@@ -540,14 +512,13 @@ export default function BobsTwentySeven() {
         visible={allDone}
         title={
           isGameOver
-            ? t(language, "gameOver") || "Game Over!"
-            : t(language, "trainingFinished") || "Training Finished!"
+            ? t(language, "gameOver")
+            : t(language, "trainingFinished")
         }
         subtitle={
           isGameOver
-            ? t(language, "allBust") || "All players are bust. Try again!"
-            : t(language, "trainingSaved") ||
-              "Your results have been saved to history."
+            ? t(language, "allBust")
+            : t(language, "trainingSaved")
         }
         icon={isGameOver ? "💀" : "🏆"}
         iconBgColor={isGameOver ? theme.colors.danger : theme.colors.warning}
@@ -555,7 +526,7 @@ export default function BobsTwentySeven() {
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
-            title={t(language, "endMatch") || "End"}
+            title={t(language, "endMatch")}
             theme={theme}
             color={isGameOver ? theme.colors.danger : undefined}
             onPress={() => saveBobsStats(true)}

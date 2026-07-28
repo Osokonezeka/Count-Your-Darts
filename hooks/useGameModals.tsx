@@ -15,19 +15,16 @@ export function useGameModals(language: Parameters<typeof t>[0]) {
   const showExitConfirm = useCallback(
     (onSaveAndExit: () => void, customMsg?: string) => {
       setAlertConfig({
-        title: t(language, "exitMatchTitle") || "Exit match?",
-        message:
-          customMsg ||
-          t(language, "exitMatchMsg") ||
-          "Do you want to exit? The score will be saved and you can continue later.",
+        title: t(language, "exitMatchTitle"),
+        message: customMsg || t(language, "exitMatchMsg"),
         buttons: [
           {
-            text: t(language, "cancel") || "Cancel",
+            text: t(language, "cancel"),
             style: "cancel",
             onPress: hideAlert,
           },
           {
-            text: t(language, "exitAndSave") || "Exit and save",
+            text: t(language, "exitAndSave"),
             style: "default",
             onPress: () => {
               hideAlert();
@@ -44,16 +41,16 @@ export function useGameModals(language: Parameters<typeof t>[0]) {
   const showLeaveNoHistoryConfirm = useCallback(
     (onLeave: () => void) => {
       setAlertConfig({
-        title: t(language, "leaveGame") || "Leave game?",
-        message: t(language, "leaveGameNoHistory") || "Progress will be lost.",
+        title: t(language, "leaveGame"),
+        message: t(language, "leaveGameNoHistory"),
         buttons: [
           {
-            text: t(language, "cancel") || "Cancel",
+            text: t(language, "cancel"),
             style: "cancel",
             onPress: hideAlert,
           },
           {
-            text: t(language, "leave") || "Leave",
+            text: t(language, "leave"),
             style: "destructive",
             onPress: () => {
               hideAlert();
@@ -70,19 +67,19 @@ export function useGameModals(language: Parameters<typeof t>[0]) {
   const showUndoConfirm = useCallback(
     (playerName: string, onUndo: () => void) => {
       setAlertConfig({
-        title: t(language, "undoThrowTitle") || "Undo throw?",
-        message: (
-          t(language, "undoThrowPlayerConfirm") ||
-          "Do you want to undo the throw for {{name}}?"
-        ).replace("{{name}}", playerName),
+        title: t(language, "undoThrowTitle"),
+        message: t(language, "undoThrowPlayerConfirm").replace(
+          "{{name}}",
+          playerName,
+        ),
         buttons: [
           {
-            text: t(language, "cancel") || "Cancel",
+            text: t(language, "cancel"),
             style: "cancel",
             onPress: hideAlert,
           },
           {
-            text: t(language, "continue") || "Continue",
+            text: t(language, "continue"),
             style: "destructive",
             onPress: () => {
               hideAlert();
@@ -96,13 +93,57 @@ export function useGameModals(language: Parameters<typeof t>[0]) {
     [language, hideAlert],
   );
 
+  const showForfeitConfirm = useCallback(
+    (
+      player1Name: string,
+      player2Name: string,
+      onForfeit: (forfeitingPlayer: "p1" | "p2") => void,
+    ) => {
+      setAlertConfig({
+        title: t(language, "walkoverTitle"),
+        message: t(language, "walkoverMsg"),
+        buttons: [
+          {
+            text: t(language, "walkoverPlayerForfeits").replace(
+              "{{name}}",
+              player1Name,
+            ),
+            style: "destructive",
+            onPress: () => {
+              hideAlert();
+              onForfeit("p1");
+            },
+          },
+          {
+            text: t(language, "walkoverPlayerForfeits").replace(
+              "{{name}}",
+              player2Name,
+            ),
+            style: "destructive",
+            onPress: () => {
+              hideAlert();
+              onForfeit("p2");
+            },
+          },
+          {
+            text: t(language, "cancel"),
+            style: "cancel",
+            onPress: hideAlert,
+          },
+        ],
+      });
+      setAlertVisible(true);
+    },
+    [language, hideAlert],
+  );
+
   const showInvalidScoreAlert = useCallback(() => {
     setAlertConfig({
-      title: t(language, "invalidScoreTitle") || "Error",
-      message: t(language, "invalidScoreMsg") || "Invalid score for 3 darts.",
+      title: t(language, "invalidScoreTitle"),
+      message: t(language, "invalidScoreMsg"),
       buttons: [
         {
-          text: t(language, "ok") || "OK",
+          text: t(language, "ok"),
           style: "default",
           onPress: hideAlert,
         },
@@ -126,6 +167,7 @@ export function useGameModals(language: Parameters<typeof t>[0]) {
     showExitConfirm,
     showLeaveNoHistoryConfirm,
     showUndoConfirm,
+    showForfeitConfirm,
     showInvalidScoreAlert,
   };
 }

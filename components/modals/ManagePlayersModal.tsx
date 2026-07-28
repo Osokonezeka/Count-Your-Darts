@@ -5,13 +5,13 @@ import {
   Dimensions,
   Easing,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { AnimatedPressable } from "../common/AnimatedPressable";
+import { BaseModal, MODAL_BACKDROP_OPACITY } from "./BaseModal";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -67,14 +67,9 @@ export function ManagePlayersModal({
         useNativeDriver: true,
       }).start(() => setIsRendered(false));
     }
-  }, [visible]);
+  }, [visible, animValue]);
 
   if (!isRendered) return null;
-
-  const backdropOpacity = animValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.5],
-  });
 
   const sheetTranslateY = animValue.interpolate({
     inputRange: [0, 1],
@@ -84,101 +79,96 @@ export function ManagePlayersModal({
   const styles = getStyles(theme);
 
   return (
-    <Modal
-      transparent
-      animationType="none"
+    <BaseModal
       visible={isRendered}
-      onRequestClose={onClose}
-      statusBarTranslucent
-      navigationBarTranslucent
+      onClose={onClose}
+      dismissableOnBackdropPress={false}
+      backdropOpacity={MODAL_BACKDROP_OPACITY}
+      animationType="none"
+      overlayStyle={styles.sheetOverlay}
     >
-      <View style={styles.sheetOverlay}>
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.sheetBackdrop,
-            { opacity: backdropOpacity },
-          ]}
-          pointerEvents="none"
-        />
-        <Animated.View
-          style={[
-            styles.sheetContent,
-            { transform: [{ translateY: sheetTranslateY }] },
-          ]}
-        >
-          <View style={styles.sheetHeader}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>{title}</Text>
-          </View>
-          <FlatList
-            data={players}
-            keyExtractor={(item) => item.id}
-            style={{ maxHeight: SCREEN_HEIGHT * 0.5, marginBottom: 16 }}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item: p }) => (
-              <View style={styles.dbPlayerRow}>
-                <AnimatedPressable
-                  style={{ flex: 1 }}
-                  onPress={() => onEditPress(p)}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={styles.dbPlayerName}>{p.name}</Text>
-                    {p.subtitle && (
-                      <Text style={styles.dbPlayerSubtitle}>
-                        {" "}
-                        ({p.subtitle})
-                      </Text>
-                    )}
-                    <Ionicons
-                      name="pencil"
-                      size={14}
-                      color={theme.colors.textLight}
-                      style={{ marginLeft: 8 }}
-                    />
-                  </View>
-                </AnimatedPressable>
-                <AnimatedPressable
-                  onPress={() => onDeletePress(p)}
-                  style={styles.dbDeleteBtn}
-                >
+      <Pressable style={styles.sheetDismissArea} onPress={onClose} />
+      <Animated.View
+        style={[
+          styles.sheetContent,
+          { transform: [{ translateY: sheetTranslateY }] },
+        ]}
+      >
+        <View style={styles.sheetHeader}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>{title}</Text>
+        </View>
+        <FlatList
+          data={players}
+          keyExtractor={(item) => item.id}
+          style={{ maxHeight: SCREEN_HEIGHT * 0.5, marginBottom: 16 }}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item: p }) => (
+            <View style={styles.dbPlayerRow}>
+              <AnimatedPressable
+                style={{ flex: 1 }}
+                onPress={() => onEditPress(p)}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text style={styles.dbPlayerName}>{p.name}</Text>
+                  {p.subtitle && (
+                    <Text style={styles.dbPlayerSubtitle}>
+                      {" "}
+                      ({p.subtitle})
+                    </Text>
+                  )}
                   <Ionicons
-                    name="trash-outline"
-                    size={20}
-                    color={theme.colors.danger}
+                    name="pencil"
+                    size={14}
+                    color={theme.colors.textLight}
+                    style={{ marginLeft: 8 }}
                   />
-                </AnimatedPressable>
-              </View>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyPlayers}>
+                </View>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => onDeletePress(p)}
+                style={styles.dbDeleteBtn}
+              >
                 <Ionicons
-                  name="person-outline"
-                  size={40}
-                  color={theme.colors.textLight}
+                  name="trash-outline"
+                  size={20}
+                  color={theme.colors.danger}
                 />
-                <Text style={styles.emptyPlayersText}>{emptyText}</Text>
-              </View>
-            }
-          />
-          <AnimatedPressable
-            style={styles.addNewPlayerBtn}
-            onPress={onAddPress}
-          >
-            <Ionicons name="add-circle" size={24} color="#fff" />
-            <Text style={styles.addNewPlayerText}>{addLabel}</Text>
-          </AnimatedPressable>
-        </Animated.View>
-      </View>
-    </Modal>
+              </AnimatedPressable>
+            </View>
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyPlayers}>
+              <Ionicons
+                name="person-outline"
+                size={40}
+                color={theme.colors.textLight}
+              />
+              <Text style={styles.emptyPlayersText}>{emptyText}</Text>
+            </View>
+          }
+        />
+        <AnimatedPressable
+          style={styles.addNewPlayerBtn}
+          onPress={onAddPress}
+        >
+          <Ionicons name="add-circle" size={24} color="#fff" />
+          <Text style={styles.addNewPlayerText}>{addLabel}</Text>
+        </AnimatedPressable>
+      </Animated.View>
+    </BaseModal>
   );
 }
 
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
-    sheetOverlay: { flex: 1, justifyContent: "flex-end" },
-    sheetBackdrop: { backgroundColor: "#000" },
+    sheetOverlay: {
+      justifyContent: "flex-end",
+      padding: 0,
+    },
+    sheetDismissArea: {
+      flex: 1,
+    },
     sheetContent: {
       backgroundColor: theme.colors.card,
       borderTopLeftRadius: 24,

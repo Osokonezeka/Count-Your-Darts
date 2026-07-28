@@ -12,7 +12,6 @@ export const exportBackup = async (
   try {
     const keys = await AsyncStorage.getAllKeys();
 
-    // Odsączamy dane tymczasowe, trwające gry, sesje multiplayer i cache statystyk
     const keysToExport = keys.filter((key) => {
       if (key === "@active_tournaments") return false;
       if (key === "@current_multiplayer_session") return false;
@@ -53,15 +52,14 @@ export const exportBackup = async (
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(file.uri, {
         mimeType: "application/zip",
-        dialogTitle: t(language, "backupDialogTitle") || "Export Darts Backup",
+        dialogTitle: t(language, "backupDialogTitle"),
       });
       return { success: true };
     }
     return {
       success: false,
       error:
-        t(language, "noShareOption") ||
-        "No sharing option available on this device.",
+        t(language, "noShareOption"),
     };
   } catch (error) {
     console.error("Backup export error:", error);
@@ -70,7 +68,7 @@ export const exportBackup = async (
       error:
         error instanceof Error
           ? error.message
-          : t(language, "unknownExportError") || "Unknown error during export.",
+          : t(language, "unknownExportError"),
     };
   }
 };
@@ -100,8 +98,7 @@ export const importBackup = async (
       return {
         success: false,
         error:
-          t(language, "noJsonInZip") ||
-          "No JSON file found in the ZIP archive.",
+          t(language, "noJsonInZip"),
       };
     jsonString = strFromU8(unzipped[jsonFileName]);
 
@@ -110,7 +107,7 @@ export const importBackup = async (
     if (typeof backupData !== "object" || backupData === null) {
       return {
         success: false,
-        error: t(language, "invalidBackupFormat") || "Invalid backup format.",
+        error: t(language, "invalidBackupFormat"),
       };
     }
 
@@ -118,8 +115,7 @@ export const importBackup = async (
       return {
         success: false,
         error:
-          t(language, "notDartsBackup") ||
-          "Selected JSON file is not a valid Count Your Darts backup.",
+          t(language, "notDartsBackup"),
       };
     }
 
@@ -206,7 +202,7 @@ export const importBackup = async (
     }
     return {
       success: false,
-      error: t(language, "noNewData") || "No new data to import.",
+      error: t(language, "noNewData"),
     };
   } catch (error) {
     console.error("Backup import error:", error);
@@ -215,7 +211,7 @@ export const importBackup = async (
       error:
         error instanceof Error
           ? error.message
-          : t(language, "unknownImportError") || "An unknown error occurred.",
+          : t(language, "unknownImportError"),
     };
   }
 };

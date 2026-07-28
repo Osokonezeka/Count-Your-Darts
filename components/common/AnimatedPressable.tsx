@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import {
   Pressable,
+  PressableProps,
   Animated,
   StyleProp,
   ViewStyle,
@@ -10,7 +11,17 @@ import {
 
 const AnimatedPressableComponent = Animated.createAnimatedComponent(Pressable);
 
-export interface AnimatedPressableProps {
+export interface AnimatedPressableProps
+  extends Omit<
+    PressableProps,
+    | "style"
+    | "children"
+    | "onPress"
+    | "onLongPress"
+    | "hitSlop"
+    | "onPressIn"
+    | "onPressOut"
+  > {
   onPress?: ((event: GestureResponderEvent) => void) | (() => void);
   onLongPress?: ((event: GestureResponderEvent) => void) | (() => void);
   delayLongPress?: number;
@@ -32,6 +43,8 @@ export function AnimatedPressable({
   children,
   scaleTo = 0.95,
   opacityTo = 0.8,
+  accessibilityRole = "button",
+  ...accessibilityAndTouchProps
 }: AnimatedPressableProps) {
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -65,6 +78,7 @@ export function AnimatedPressable({
 
   return (
     <AnimatedPressableComponent
+      {...accessibilityAndTouchProps}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={delayLongPress}
@@ -72,6 +86,7 @@ export function AnimatedPressable({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={disabled}
+      accessibilityRole={accessibilityRole}
       style={[style, { transform: [{ scale }], opacity }]}
     >
       {children}

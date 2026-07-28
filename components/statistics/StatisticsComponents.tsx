@@ -19,6 +19,10 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import { useTheme } from "../../context/ThemeContext";
+import {
+  DARTBOARD_RADII,
+  sectorDividerEnd,
+} from "../../lib/dartboardGeometry";
 import { t } from "../../lib/i18n";
 import { AggregatedStats } from "../../lib/statsUtils";
 import { getStatisticsStyles } from "./StatisticsStyles";
@@ -204,7 +208,7 @@ export const ShareCard = ({
                 paddingLeft: 12,
               }}
             >
-              {t(language, "shareAvgLast10") || "AVERAGE OVER LAST 10"}
+              {t(language, "shareAvgLast10")}
             </Text>
             {(() => {
               const chartWidth = 310;
@@ -334,7 +338,7 @@ export const TrendCard = ({
                 style={{ marginRight: 10, opacity: isOpen ? 0.3 : 1 }}
               />
               <Text style={styles.sectionTitle}>
-                {t(language, "averageTrend") || "Average Trend"}
+                {t(language, "averageTrend")}
               </Text>
             </View>
             <Ionicons
@@ -347,7 +351,7 @@ export const TrendCard = ({
             <View style={{ paddingBottom: 10 }}>
               {playerNames.length === 0 ? (
                 <Text style={[styles.emptyText, { paddingVertical: 40 }]}>
-                  {t(language, "insufficientDataTrend") || "Not enough data"}
+                  {t(language, "insufficientDataTrend")}
                 </Text>
               ) : (
                 playerNames.map((playerName, index) => {
@@ -516,25 +520,21 @@ export const HeatmapBoard = ({
 }: HeatmapBoardProps) => {
   const cx = size / 2;
   const cy = size / 2;
-  const rDoubleOut = 0.82 * cx;
-  const rDoubleIn = 0.74 * cx;
-  const rTripleOut = 0.48 * cx;
-  const rTripleIn = 0.4 * cx;
-  const rOuterBull = 0.1 * cx;
-  const rInnerBull = 0.05 * cx;
+  const rDoubleOut = DARTBOARD_RADII.doubleOut * cx;
+  const rDoubleIn = DARTBOARD_RADII.doubleIn * cx;
+  const rTripleOut = DARTBOARD_RADII.tripleOut * cx;
+  const rTripleIn = DARTBOARD_RADII.tripleIn * cx;
+  const rOuterBull = DARTBOARD_RADII.outerBull * cx;
+  const rInnerBull = DARTBOARD_RADII.innerBull * cx;
 
   const { themeMode } = useTheme();
   const systemColorScheme = useColorScheme();
   const isLightTheme =
     (themeMode === "auto" ? systemColorScheme : themeMode) !== "dark";
 
-  const lines = Array.from({ length: 20 }, (_, i) => {
-    const angle = (i * 18 - 9) * (Math.PI / 180);
-    return {
-      x: cx + rDoubleOut * Math.sin(angle),
-      y: cy - rDoubleOut * Math.cos(angle),
-    };
-  });
+  const lines = Array.from({ length: 20 }, (_, i) =>
+    sectorDividerEnd(cx, cy, i, rDoubleOut),
+  );
 
   const heatmapDots = useMemo(() => {
     const gridSize = 40;
@@ -736,15 +736,15 @@ export const StatCard = React.memo(
 
     const translatedTitles: Record<string, string> = {
       tournaments:
-        t(language, "tournamentsHeader") || "Tournaments (Played / 1st / 2nd)",
-      games: t(language, "gamesWonHeader") || "Matches / Won / %",
-      performance: t(language, "avgHeader") || "First 9 / Average",
-      checkouts: t(language, "gameDartsHeader") || "Checkouts / Hit %",
+        t(language, "tournamentsHeader"),
+      games: t(language, "gamesWonHeader"),
+      performance: t(language, "avgHeader"),
+      checkouts: t(language, "gameDartsHeader"),
       scoring:
-        t(language, "scoringHeader") || "Scoring (60+ / 100+ / 140+ / 180)",
-      favorite_double: t(language, "favoriteDoubleHeader") || "Favorite Double",
-      hit_chart: t(language, "sectorsHeader") || "Targets hitted (S / D / T)",
-      heatmap: t(language, "heatmap") || "Heatmap",
+        t(language, "scoringHeader"),
+      favorite_double: t(language, "favoriteDoubleHeader"),
+      hit_chart: t(language, "sectorsHeader"),
+      heatmap: t(language, "heatmap"),
     };
     const title = translatedTitles[item.id] || item.id;
 
@@ -759,18 +759,18 @@ export const StatCard = React.memo(
       tournaments: [
         {
           key: "name",
-          label: t(language, "player") || "Player",
+          label: t(language, "player"),
           isName: true,
           render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
         },
         {
           key: "tPlayed",
-          label: t(language, "playedShort") || "Played",
+          label: t(language, "playedShort"),
           render: (s) => <Text style={styles.cell}>{s.tPlayed}</Text>,
         },
         {
           key: "t1st",
-          label: t(language, "firstPlaceShort") || "1st",
+          label: t(language, "firstPlaceShort"),
           render: (s) => (
             <Text
               style={[
@@ -784,7 +784,7 @@ export const StatCard = React.memo(
         },
         {
           key: "t2nd",
-          label: t(language, "secondPlaceShort") || "2nd",
+          label: t(language, "secondPlaceShort"),
           render: (s) => (
             <Text
               style={[
@@ -800,18 +800,18 @@ export const StatCard = React.memo(
       games: [
         {
           key: "name",
-          label: t(language, "player") || "Player",
+          label: t(language, "player"),
           isName: true,
           render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
         },
         {
           key: "mPlayed",
-          label: t(language, "matches") || "Matches",
+          label: t(language, "matches"),
           render: (s) => <Text style={styles.cell}>{s.mPlayed}</Text>,
         },
         {
           key: "mWon",
-          label: t(language, "winsShort") || "W",
+          label: t(language, "winsShort"),
           render: (s) => (
             <Text style={[styles.cell, { color: theme.colors.success }]}>
               {s.mWon}
@@ -820,7 +820,7 @@ export const StatCard = React.memo(
         },
         {
           key: "winPct",
-          label: t(language, "winPctShort") || "W %",
+          label: t(language, "winPctShort"),
           render: (s) => (
             <Text style={styles.cell}>{(s.winPct || 0).toFixed(0)}%</Text>
           ),
@@ -829,13 +829,13 @@ export const StatCard = React.memo(
       performance: [
         {
           key: "name",
-          label: t(language, "player") || "Player",
+          label: t(language, "player"),
           isName: true,
           render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
         },
         {
           key: "first9",
-          label: t(language, "firstNine") || "First 9",
+          label: t(language, "firstNine"),
           render: (s) => (
             <Text style={styles.cell}>
               {(s.calculatedFirst9 || 0).toFixed(1)}
@@ -844,7 +844,7 @@ export const StatCard = React.memo(
         },
         {
           key: "avg",
-          label: t(language, "average") || "Average",
+          label: t(language, "average"),
           render: (s) => (
             <Text
               style={[
@@ -860,18 +860,18 @@ export const StatCard = React.memo(
       checkouts: [
         {
           key: "name",
-          label: t(language, "player") || "Player",
+          label: t(language, "player"),
           isName: true,
           render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
         },
         {
           key: "checkoutDarts",
-          label: t(language, "attemptsShort") || "Att",
+          label: t(language, "attemptsShort"),
           render: (s) => <Text style={styles.cell}>{s.checkoutDarts}</Text>,
         },
         {
           key: "checkoutPct",
-          label: t(language, "hitPercent") || "Hit %",
+          label: t(language, "hitPercent"),
           render: (s) => (
             <Text style={[styles.cell, { color: theme.colors.success }]}>
               {(s.calculatedCheckoutPct || 0).toFixed(1)}%
@@ -882,7 +882,7 @@ export const StatCard = React.memo(
       scoring: [
         {
           key: "name",
-          label: t(language, "player") || "Player",
+          label: t(language, "player"),
           isName: true,
           render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
         },
@@ -919,13 +919,13 @@ export const StatCard = React.memo(
       favorite_double: [
         {
           key: "name",
-          label: t(language, "player") || "Player",
+          label: t(language, "player"),
           isName: true,
           render: (s) => <Text style={styles.cellName}>{s.name}</Text>,
         },
         {
           key: "favDouble",
-          label: t(language, "favoriteDouble") || "Favorite",
+          label: t(language, "favoriteDouble"),
           render: (s) => {
             const data = getFavDoubleData(s);
             const label =
@@ -948,7 +948,7 @@ export const StatCard = React.memo(
         },
         {
           key: "favDoubleHits",
-          label: t(language, "hitLower") || "hits",
+          label: t(language, "hitLower"),
           render: (s) => {
             const data = getFavDoubleData(s);
             return <Text style={styles.cell}>{data.hits}</Text>;
@@ -956,7 +956,7 @@ export const StatCard = React.memo(
         },
         {
           key: "favDoublePct",
-          label: t(language, "pctOfTotal") || "% of total",
+          label: t(language, "pctOfTotal"),
           render: (s) => {
             const data = getFavDoubleData(s);
             return (
@@ -1106,8 +1106,7 @@ export const StatCard = React.memo(
                           <Text
                             style={[styles.emptyText, { paddingBottom: 20 }]}
                           >
-                            {t(language, "insufficientDataTrend") ||
-                              "Not enough data"}
+                            {t(language, "insufficientDataTrend")}
                           </Text>
                         );
                       }
@@ -1165,15 +1164,15 @@ export const StatCard = React.memo(
                                 <View style={styles.rowHeader}>
                                   <View style={styles.colNameWrap}>
                                     <Text style={styles.colText}>
-                                      {t(language, "target") || "Target"}
+                                      {t(language, "target")}
                                     </Text>
                                   </View>
                                   {renderSortableHeader(
-                                    t(language, "single") || "Single",
+                                    t(language, "single"),
                                     "S",
                                   )}
                                   {renderSortableHeader(
-                                    t(language, "double") || "Double",
+                                    t(language, "double"),
                                     "D",
                                   )}
                                   {renderSortableHeader(
@@ -1232,8 +1231,7 @@ export const StatCard = React.memo(
                           <Text
                             style={[styles.emptyText, { paddingBottom: 20 }]}
                           >
-                            {t(language, "insufficientDataTrend") ||
-                              "Not enough data"}
+                            {t(language, "insufficientDataTrend")}
                           </Text>
                         );
                       }
@@ -1281,10 +1279,8 @@ export const StatCard = React.memo(
                 {stats.length === 0 && (
                   <Text style={styles.emptyText}>
                     {noPlayersSelected
-                      ? t(language, "noPlayersSelected") ||
-                        "No players selected"
-                      : t(language, "noData") ||
-                        "No data is available for this period"}
+                      ? t(language, "noPlayersSelected")
+                      : t(language, "noData")}
                   </Text>
                 )}
               </View>

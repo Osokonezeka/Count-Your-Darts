@@ -10,11 +10,13 @@ import {
   View,
 } from "react-native";
 import Svg, { Circle, G, Path, Text as SvgText } from "react-native-svg";
+import {
+  DARTBOARD_RADII,
+  DARTBOARD_SECTORS,
+  createWedgePath,
+  sectorLabelPosition,
+} from "../../lib/dartboardGeometry";
 import { t } from "../../lib/i18n";
-
-const SECTORS = [
-  20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
-];
 
 interface StaticBoardBackgroundProps {
   cx: number;
@@ -28,36 +30,19 @@ interface StaticBoardBackgroundProps {
 
 const StaticBoardBackground = memo(
   ({ cx, cy, onSectorPress }: StaticBoardBackgroundProps) => {
-    const rDoubleOut = 0.82;
-    const rDoubleIn = 0.74;
-    const rOuterSingleIn = 0.48;
-    const rTripleIn = 0.4;
-    const rOuterBull = 0.1;
-    const rInnerBull = 0.05;
+    const {
+      doubleOut: rDoubleOut,
+      doubleIn: rDoubleIn,
+      tripleOut: rOuterSingleIn,
+      tripleIn: rTripleIn,
+      outerBull: rOuterBull,
+      innerBull: rInnerBull,
+    } = DARTBOARD_RADII;
 
-    const createWedge = (rInnerPct: number, rOuterPct: number) => {
-      const rInner = rInnerPct * cx;
-      const rOuter = rOuterPct * cx;
-      const a1 = (-9 * Math.PI) / 180;
-      const a2 = (9 * Math.PI) / 180;
-
-      const x1_in = cx + rInner * Math.sin(a1);
-      const y1_in = cy - rInner * Math.cos(a1);
-      const x2_in = cx + rInner * Math.sin(a2);
-      const y2_in = cy - rInner * Math.cos(a2);
-
-      const x1_out = cx + rOuter * Math.sin(a1);
-      const y1_out = cy - rOuter * Math.cos(a1);
-      const x2_out = cx + rOuter * Math.sin(a2);
-      const y2_out = cy - rOuter * Math.cos(a2);
-
-      return `M ${x1_in} ${y1_in} L ${x1_out} ${y1_out} A ${rOuter} ${rOuter} 0 0 1 ${x2_out} ${y2_out} L ${x2_in} ${y2_in} A ${rInner} ${rInner} 0 0 0 ${x1_in} ${y1_in} Z`;
-    };
-
-    const pathDouble = createWedge(rDoubleIn, rDoubleOut);
-    const pathOuterSingle = createWedge(rOuterSingleIn, rDoubleIn);
-    const pathTriple = createWedge(rTripleIn, rOuterSingleIn);
-    const pathInnerSingle = createWedge(rOuterBull, rTripleIn);
+    const pathDouble = createWedgePath(cx, cy, rDoubleIn, rDoubleOut);
+    const pathOuterSingle = createWedgePath(cx, cy, rOuterSingleIn, rDoubleIn);
+    const pathTriple = createWedgePath(cx, cy, rTripleIn, rOuterSingleIn);
+    const pathInnerSingle = createWedgePath(cx, cy, rOuterBull, rTripleIn);
 
     const colorBlack = "#121212";
     const colorWhite = "#f0ebd8";
@@ -74,7 +59,7 @@ const StaticBoardBackground = memo(
           onPress={(e) => onSectorPress(e, 0, 1)}
         />
 
-        {SECTORS.map((value, index) => {
+        {DARTBOARD_SECTORS.map((value, index) => {
           const isEven = index % 2 === 0;
           const cSingle = isEven ? colorBlack : colorWhite;
           const cMult = isEven ? colorRed : colorGreen;
@@ -110,11 +95,8 @@ const StaticBoardBackground = memo(
           );
         })}
 
-        {SECTORS.map((value, index) => {
-          const angle = ((index * 18 - 90) * Math.PI) / 180;
-          const radius = 0.91 * cx;
-          const lx = cx + radius * Math.cos(angle);
-          const ly = cy + radius * Math.sin(angle);
+        {DARTBOARD_SECTORS.map((value, index) => {
+          const { x: lx, y: ly } = sectorLabelPosition(cx, cy, index);
           return (
             <SvgText
               key={`label-${value}`}
@@ -197,8 +179,7 @@ export function InteractiveDartboard({
   return (
     <View style={styles.container}>
       <Text style={[styles.hintText, { color: theme.colors.textMuted }]}>
-        {t(language, "boardZoomHint") ||
-          "Przytrzymaj / Uszczypnij, aby przybliżyć i precyzyjnie celować 🔍"}
+        {t(language, "boardZoomHint")}
       </Text>
 
       <View style={styles.boardWrapper}>
@@ -248,7 +229,7 @@ export function InteractiveDartboard({
       >
         <Ionicons name="arrow-undo" size={20} color="#fff" />
         <Text style={styles.undoTxt}>
-          {t(language, "undoThrow") || "Undo throw"}
+          {t(language, "undoThrow")}
         </Text>
       </TouchableOpacity>
     </View>

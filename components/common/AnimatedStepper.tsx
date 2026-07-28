@@ -40,10 +40,7 @@ const StepperButton = ({
 
   const backgroundColor = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [
-      theme.colors.background,
-      theme.colors.primaryLight || "rgba(0, 122, 255, 0.15)",
-    ],
+    outputRange: [theme.colors.background, theme.colors.primaryLight],
   });
 
   const borderColor = anim.interpolate({

@@ -63,7 +63,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="play"
           options={{
-            title: t(language, "start") || "Start",
+            title: t(language, "start"),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="play" size={size} color={color} />
             ),
@@ -73,7 +73,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="statistics"
           options={{
-            title: t(language, "stats") || "Statystyki",
+            title: t(language, "stats"),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="stats-chart" size={size} color={color} />
             ),
@@ -83,7 +83,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="history"
           options={{
-            title: t(language, "history") || "Historia",
+            title: t(language, "history"),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="time" size={size} color={color} />
             ),
@@ -92,7 +92,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="tournaments"
           options={{
-            title: t(language, "tournament") || "Turniej",
+            title: t(language, "tournament"),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="trophy" size={size} color={color} />
             ),
@@ -101,7 +101,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="settings"
           options={{
-            title: t(language, "settings") || "Ustawienia",
+            title: t(language, "settings"),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="settings" size={size} color={color} />
             ),

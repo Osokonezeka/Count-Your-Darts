@@ -1,7 +1,8 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../context/ThemeContext";
 import { AnimatedPressable } from "../common/AnimatedPressable";
+import { BaseModal, MODAL_BACKDROP_OPACITY } from "./BaseModal";
 
 export type AlertButton = {
   text: string;
@@ -30,62 +31,57 @@ export default function CustomAlert({
   if (!visible) return null;
 
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onRequestClose}
-      statusBarTranslucent
-      navigationBarTranslucent
+      onClose={onRequestClose}
+      backdropOpacity={MODAL_BACKDROP_OPACITY}
+      overlayStyle={styles.overlay}
     >
-      <Pressable style={styles.overlay} onPress={onRequestClose}>
-        <View style={styles.alertBox} onStartShouldSetResponder={() => true}>
-          <Text style={styles.title}>{title}</Text>
-          {!!message && <Text style={styles.message}>{message}</Text>}
+      <View style={styles.alertBox} onStartShouldSetResponder={() => true}>
+        <Text style={styles.title}>{title}</Text>
+        {!!message && <Text style={styles.message}>{message}</Text>}
 
-          <View style={styles.buttonContainer}>
-            {buttons.map((btn, index) => {
-              const isCancel = btn.style === "cancel";
-              const isDestructive = btn.style === "destructive";
+        <View style={styles.buttonContainer}>
+          {buttons.map((btn, index) => {
+            const isCancel = btn.style === "cancel";
+            const isDestructive = btn.style === "destructive";
 
-              return (
-                <AnimatedPressable
-                  key={index}
+            return (
+              <AnimatedPressable
+                key={index}
+                style={[
+                  styles.button,
+                  isCancel && styles.buttonCancel,
+                  isDestructive && styles.buttonDestructive,
+                  !isCancel && !isDestructive && styles.buttonDefault,
+                ]}
+                onPress={() => {
+                  if (btn.onPress) btn.onPress();
+                  onRequestClose();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={btn.text}
+              >
+                <Text
                   style={[
-                    styles.button,
-                    isCancel && styles.buttonCancel,
-                    isDestructive && styles.buttonDestructive,
-                    !isCancel && !isDestructive && styles.buttonDefault,
+                    styles.buttonText,
+                    isCancel && styles.buttonTextCancel,
                   ]}
-                  onPress={() => {
-                    if (btn.onPress) btn.onPress();
-                    onRequestClose();
-                  }}
                 >
-                  <Text
-                    style={[
-                      styles.buttonText,
-                      isCancel && styles.buttonTextCancel,
-                    ]}
-                  >
-                    {btn.text}
-                  </Text>
-                </AnimatedPressable>
-              );
-            })}
-          </View>
+                  {btn.text}
+                </Text>
+              </AnimatedPressable>
+            );
+          })}
         </View>
-      </Pressable>
-    </Modal>
+      </View>
+    </BaseModal>
   );
 }
 
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     overlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.75)",
-      justifyContent: "center",
       alignItems: "center",
       padding: 24,
     },

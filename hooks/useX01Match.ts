@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { debounce } from "lodash";
 import { useEffect, useMemo, useState } from "react";
 import { useSpeech } from "../context/SpeechContext";
+import { advanceBracketAfterMatchWin } from "../lib/bracketAdvancement";
 import {
   calculateX01BotTurnDetails,
   getBotDifficultyFromName,
@@ -420,57 +421,14 @@ export function useX01Match(
             );
             bracket[idx].logs = newHistory;
 
-            const nextId = bracket[idx].nextMatchId;
-            if (nextId) {
-              const nIdx = bracket.findIndex((m: Match) => m.id === nextId);
-              if (nIdx > -1) {
-                if (bracket[idx].nextMatchSlot === "p1")
-                  bracket[nIdx].player1 = mWinnerObj;
-                else if (bracket[idx].nextMatchSlot === "p2")
-                  bracket[nIdx].player2 = mWinnerObj;
-                else {
-                  if ((bracket[idx].matchIndex || 0) % 2 === 0)
-                    bracket[nIdx].player1 = mWinnerObj;
-                  else bracket[nIdx].player2 = mWinnerObj;
-                }
-              }
-            }
-
-            const dropId = bracket[idx].loserDropMatchId;
-            if (dropId) {
-              const dIdx = bracket.findIndex((m: Match) => m.id === dropId);
-              if (dIdx > -1) {
-                const mLoserObj = isP1 ? match.player2 : match.player1;
-                if (bracket[idx].loserDropSlot === "p1")
-                  bracket[dIdx].player1 = mLoserObj;
-                else bracket[dIdx].player2 = mLoserObj;
-              }
-            }
-
-            if (bracket[idx].bracket === "gf" && bracket[idx].round === 1) {
-              const gfM1 = bracket.find(
-                (x: Match) => x.bracket === "gf" && x.round === 2,
+            if (mWinnerObj) {
+              const loserObj = isP1 ? match.player2 : match.player1;
+              advanceBracketAfterMatchWin(
+                bracket,
+                match.id,
+                mWinnerObj,
+                loserObj,
               );
-              if (gfM1) {
-                if (mWinnerObj?.id === bracket[idx].player1?.id) {
-                  gfM1.isBye = true;
-                  gfM1.winner = mWinnerObj;
-                } else {
-                  gfM1.player1 = bracket[idx].player1;
-                  gfM1.player2 = bracket[idx].player2;
-                }
-              }
-            }
-
-            const totalR = Math.max(...bracket.map((m: Match) => m.round || 0));
-            if (bracket[idx].round === totalR - 1) {
-              const loser = isP1 ? match.player2 : match.player1;
-              const tpIdx = bracket.findIndex((m: Match) => m.isThirdPlace);
-              if (tpIdx > -1) {
-                if ((bracket[idx].matchIndex || 0) % 2 === 0)
-                  bracket[tpIdx].player1 = loser;
-                else bracket[tpIdx].player2 = loser;
-              }
             }
             await AsyncStorage.setItem(bKey, JSON.stringify(bracket));
           }

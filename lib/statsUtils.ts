@@ -82,15 +82,23 @@ export interface MatchStatItem {
 
 export interface TournamentSettings {
   format?: string;
+  name?: string;
+  desc?: string;
   targetSets?: number;
+  targetLegs?: number;
   teamSize?: string;
   startPoints?: number;
+  startingPoints?: number;
   points?: number;
   customSemis?: boolean;
   customFinals?: boolean;
   cricketMode?: string;
+  advancingPerGroup?: number;
   [key: string]: string | number | boolean | undefined;
 }
+
+export const DEFAULT_ADVANCING_PER_GROUP = 2;
+export const MAX_GROUP_SIZE = 4;
 
 export interface Match {
   id: string;
@@ -104,6 +112,8 @@ export interface Match {
   winner?: PlayerMatchStats;
   isBye?: boolean;
   isThirdPlace?: boolean;
+  isWalkover?: boolean;
+  forfeitWinnerId?: string;
   round?: number;
   phase?: string;
   bracket?: string;

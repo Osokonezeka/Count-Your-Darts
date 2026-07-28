@@ -37,6 +37,7 @@ import RoundRobin from "../../components/tournament/RoundRobin";
 import SingleKnockout from "../../components/tournament/SingleKnockout";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useAlert } from "../../hooks/useAlert";
 import { t } from "../../lib/i18n";
 import {
   Match,
@@ -115,11 +116,7 @@ export default function TournamentBracketScreen() {
     { id: string; name: string }[]
   >([]);
   const [isDevicesModalVisible, setDevicesModalVisible] = useState(false);
-  const [deviceToKick, setDeviceToKick] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [kickedOutAlertVisible, setKickedOutAlertVisible] = useState(false);
+  const { showAlert, alertProps } = useAlert(language);
 
   useEffect(() => {
     const initDevice = async () => {
@@ -209,7 +206,12 @@ export default function TournamentBracketScreen() {
             !isStaleCache
           ) {
             DeviceEventEmitter.emit("force_exit_match");
-            setKickedOutAlertVisible(true);
+            showAlert(
+              t(language, "kickedAlertTitle"),
+              t(language, "kickedAlertMessage"),
+              [{ text: t(language, "ok"), style: "default" }],
+              () => router.navigate("/(tabs)/tournaments"),
+            );
             return;
           }
         }
@@ -359,13 +361,32 @@ export default function TournamentBracketScreen() {
     router.navigate("/(tabs)/tournaments");
   };
 
+  const confirmExitTournament = () => {
+    if (isHostBool && parsedConfig) {
+      showAlert(
+        t(language, "leaveTournamentTitle"),
+        t(language, "leaveTournamentHostMsg"),
+        [
+          { text: t(language, "cancel"), style: "cancel" },
+          {
+            text: t(language, "leave"),
+            style: "destructive",
+            onPress: handleExitTournament,
+          },
+        ],
+      );
+    } else {
+      handleExitTournament();
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", (e) => {
       if (isHistoryView === "true" || isExitingRef.current) return;
 
       if (e.data.action.type === "GO_BACK") {
         e.preventDefault();
-        handleExitTournament();
+        confirmExitTournament();
       }
     });
     return unsubscribe;
@@ -382,35 +403,49 @@ export default function TournamentBracketScreen() {
     }
   };
 
-  const executeKickDevice = async () => {
-    if (!parsedConfig || !deviceToKick) return;
+  const executeKickDevice = async (device: { id: string; name: string }) => {
+    if (!parsedConfig) return;
     const connection = connectToDynamicFirebase(parsedConfig.configStr);
     if (!connection) return;
     const roomRef = doc(connection.db, "rooms", parsedConfig.roomId);
     await updateDoc(roomRef, {
-      connectedDevices: arrayRemove(deviceToKick),
-      [`kickedBans.${deviceToKick.id}`]: Date.now(),
+      connectedDevices: arrayRemove(device),
+      [`kickedBans.${device.id}`]: Date.now(),
     });
-    setDeviceToKick(null);
+  };
+
+  const confirmKickDevice = (device: { id: string; name: string }) => {
+    showAlert(
+      t(language, "kickDeviceTitle"),
+      t(language, "kickDeviceMessage")?.replace("{{name}}", device.name) ||
+        `Are you sure you want to disconnect device '${device.name}' from the tournament?`,
+      [
+        { text: t(language, "cancel"), style: "cancel" },
+        {
+          text: t(language, "delete"),
+          style: "destructive",
+          onPress: () => executeKickDevice(device),
+        },
+      ],
+    );
   };
 
   const statLabels: Record<string, string> = useMemo(
     () => ({
-      Legs: t(language, "legs") || "Legs",
-      "Darts Thrown": t(language, "dartsThrown") || "Darts Thrown",
-      "3 Darts": t(language, "threeDartsAvg") || "3 Darts",
-      "First 9": t(language, "firstNine") || "First 9",
-      "High Finish": t(language, "highFinish") || "High Finish",
-      "100+ Finishes": t(language, "hundredPlusFinishes") || "100+ Finishes",
-      "Best Leg": t(language, "bestLeg") || "Best Leg",
-      "Worst Leg": t(language, "worstLeg") || "Worst Leg",
-      "Checkout %": t(language, "checkoutPct") || "Checkout %",
+      Legs: t(language, "legs"),
+      "Darts Thrown": t(language, "dartsThrown"),
+      "3 Darts": t(language, "threeDartsAvg"),
+      "First 9": t(language, "firstNine"),
+      "High Finish": t(language, "highFinish"),
+      "100+ Finishes": t(language, "hundredPlusFinishes"),
+      "Best Leg": t(language, "bestLeg"),
+      "Worst Leg": t(language, "worstLeg"),
+      "Checkout %": t(language, "checkoutPct"),
     }),
     [language],
   );
 
   const [viewMode, setViewMode] = useState<"list" | "tree">("tree");
-  const [isFinishedPromptVisible, setFinishedPromptVisible] = useState(false);
   const [isQrModalVisible, setQrModalVisible] = useState(false);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
 
@@ -446,11 +481,15 @@ export default function TournamentBracketScreen() {
             const koMatches = bracket.filter(
               (m: SharedMatch) => m.phase === "knockout",
             );
-            if (koMatches.length > 0) {
+            const relevantKoMatches =
+              settings.format === "groups_and_double_knockout"
+                ? koMatches.filter((m: SharedMatch) => m.bracket === "gf")
+                : koMatches;
+            if (relevantKoMatches.length > 0) {
               const totalR = Math.max(
-                ...koMatches.map((m: SharedMatch) => m.round || 0),
+                ...relevantKoMatches.map((m: SharedMatch) => m.round || 0),
               );
-              const finalRoundMatches = koMatches.filter(
+              const finalRoundMatches = relevantKoMatches.filter(
                 (m: SharedMatch) => m.round === totalR,
               );
               isFinished =
@@ -460,10 +499,14 @@ export default function TournamentBracketScreen() {
                 );
             }
           } else {
+            const relevantMatches =
+              settings.format === "double_knockout"
+                ? bracket.filter((m: SharedMatch) => m.bracket === "gf")
+                : bracket;
             const totalR = Math.max(
-              ...bracket.map((m: SharedMatch) => m.round || 0),
+              ...relevantMatches.map((m: SharedMatch) => m.round || 0),
             );
-            const finalRoundMatches = bracket.filter(
+            const finalRoundMatches = relevantMatches.filter(
               (m: SharedMatch) => m.round === totalR,
             );
             isFinished =
@@ -473,7 +516,11 @@ export default function TournamentBracketScreen() {
               );
           }
           if (isFinished) {
-            setFinishedPromptVisible(true);
+            showAlert(
+              t(language, "tournamentFinishedTitle"),
+              t(language, "tournamentFinishedMsg"),
+              [{ text: t(language, "ok"), onPress: handleSaveAndStay }],
+            );
           }
         }
       } catch (error) {
@@ -484,7 +531,6 @@ export default function TournamentBracketScreen() {
   }, [settings, isHistoryView, isSaved, firebaseBracket]);
 
   const handleSaveAndStay = async () => {
-    setFinishedPromptVisible(false);
     setIsSaved(true);
     if (!settings) return;
     try {
@@ -559,8 +605,7 @@ export default function TournamentBracketScreen() {
         ]}
       >
         <Text style={{ color: theme.colors.textMain }}>
-          {t(language, "tournamentLoadError") ||
-            "Error loading tournament data."}
+          {t(language, "tournamentLoadError")}
         </Text>
         <TouchableOpacity
           onPress={() => {
@@ -570,7 +615,7 @@ export default function TournamentBracketScreen() {
           style={{ marginTop: 20 }}
         >
           <Text style={{ color: theme.colors.primary }}>
-            {t(language, "goBack") || "Go back"}
+            {t(language, "goBack")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -583,7 +628,7 @@ export default function TournamentBracketScreen() {
         <TouchableOpacity
           onPress={() => {
             if (isHistoryView === "true") router.back();
-            else handleExitTournament();
+            else confirmExitTournament();
           }}
           style={styles.headerBtn}
         >
@@ -592,8 +637,7 @@ export default function TournamentBracketScreen() {
 
         <Text style={styles.headerTitle} numberOfLines={1}>
           {settings.name ||
-            t(language, "tournamentBracket") ||
-            "Tournament Bracket"}
+            t(language, "tournamentBracket")}
         </Text>
 
         <View style={styles.headerRight}>
@@ -677,8 +721,8 @@ export default function TournamentBracketScreen() {
             }}
           >
             {isDescExpanded
-              ? t(language, "showLess") || "Show less"
-              : t(language, "showMore") || "Show more"}
+              ? t(language, "showLess")
+              : t(language, "showMore")}
           </Text>
         </Pressable>
       )}
@@ -752,7 +796,7 @@ export default function TournamentBracketScreen() {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
-                  {t(language, "matchStatsTitle") || "Match Statistics"}
+                  {t(language, "matchStatsTitle")}
                 </Text>
                 <AnimatedPressable
                   onPress={() => setStatsModalVisible(false)}
@@ -824,8 +868,7 @@ export default function TournamentBracketScreen() {
                         textAlign: "center",
                       }}
                     >
-                      {t(language, "noStatsData") ||
-                        "No statistical data available for this match."}
+                      {t(language, "noStatsData")}
                     </Text>
                   </View>
                 )}
@@ -847,37 +890,18 @@ export default function TournamentBracketScreen() {
                 >
                   <Ionicons name="list-outline" size={18} color="#fff" />
                   <Text style={styles.showLogsBtnText}>
-                    {t(language, "showPlayedLegs") || "Show played legs"}
+                    {t(language, "showPlayedLegs")}
                   </Text>
                 </AnimatedPressable>
               ) : (
                 <Text style={styles.disclaimerText}>
-                  {t(language, "statsDisclaimer") ||
-                    "Statistics are generated automatically after the match ends."}
+                  {t(language, "statsDisclaimer")}
                 </Text>
               )}
             </View>
           )}
         </View>
       </Modal>
-
-      <CustomAlert
-        visible={isFinishedPromptVisible}
-        title={
-          t(language, "tournamentFinishedTitle") || "Tournament Finished 🏆"
-        }
-        message={
-          t(language, "tournamentFinishedMsg") ||
-          "All matches have been played! Do you want to save this tournament to history and remove it from the active list?"
-        }
-        onRequestClose={() => setFinishedPromptVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            onPress: handleSaveAndStay,
-          },
-        ]}
-      />
 
       <Modal
         visible={isQrModalVisible}
@@ -906,7 +930,7 @@ export default function TournamentBracketScreen() {
                 />
               </AnimatedPressable>
               <Text style={styles.qrModalTitle}>
-                {t(language, "scanToJoin") || "Scan to join"}
+                {t(language, "scanToJoin")}
               </Text>
               <View style={{ width: 28 }} />
             </View>
@@ -923,11 +947,11 @@ export default function TournamentBracketScreen() {
                 {connectionString}
               </Text>
               <Text style={styles.copyHint}>
-                {t(language, "copyHint") || "(Hold to copy the code manually)"}
+                {t(language, "copyHint")}
               </Text>
 
               <AnimatedPrimaryButton
-                title={t(language, "viewDevices") || "View devices"}
+                title={t(language, "viewDevices")}
                 theme={theme}
                 onPress={() => {
                   setQrModalVisible(false);
@@ -967,7 +991,7 @@ export default function TournamentBracketScreen() {
                 />
               </AnimatedPressable>
               <Text style={styles.qrModalTitle}>
-                {t(language, "connectedDevices") || "Connected devices"}
+                {t(language, "connectedDevices")}
               </Text>
               <View style={{ width: 28 }} />
             </View>
@@ -981,7 +1005,7 @@ export default function TournamentBracketScreen() {
                     marginTop: 20,
                   }}
                 >
-                  {t(language, "noDevices") || "No devices"}
+                  {t(language, "noDevices")}
                 </Text>
               ) : (
                 connectedDevices.map((device, index) => (
@@ -992,7 +1016,7 @@ export default function TournamentBracketScreen() {
                     </Text>
                     {isHostBool && (
                       <AnimatedPressable
-                        onPress={() => setDeviceToKick(device)}
+                        onPress={() => confirmKickDevice(device)}
                         style={styles.kickBtn}
                       >
                         <Ionicons
@@ -1010,53 +1034,7 @@ export default function TournamentBracketScreen() {
         </View>
       </Modal>
 
-      <CustomAlert
-        visible={!!deviceToKick}
-        title={t(language, "kickDeviceTitle") || "Disconnect device"}
-        message={
-          t(language, "kickDeviceMessage")?.replace(
-            "{{name}}",
-            deviceToKick?.name || "",
-          ) ||
-          `Are you sure you want to disconnect device '${deviceToKick?.name}' from the tournament?`
-        }
-        onRequestClose={() => setDeviceToKick(null)}
-        buttons={[
-          {
-            text: t(language, "cancel") || "Cancel",
-            style: "cancel",
-            onPress: () => setDeviceToKick(null),
-          },
-          {
-            text: t(language, "delete") || "Delete",
-            style: "destructive",
-            onPress: executeKickDevice,
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={kickedOutAlertVisible}
-        title={t(language, "kickedAlertTitle") || "Kicked out"}
-        message={
-          t(language, "kickedAlertMessage") ||
-          "The Host removed this device from the game. You can rejoin after 3 minutes."
-        }
-        onRequestClose={() => {
-          setKickedOutAlertVisible(false);
-          router.navigate("/(tabs)/tournaments");
-        }}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => {
-              setKickedOutAlertVisible(false);
-              router.navigate("/(tabs)/tournaments");
-            },
-          },
-        ]}
-      />
+      <CustomAlert {...alertProps} />
     </View>
   );
 }
@@ -1098,7 +1076,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMain,
       textAlign: "center",
     },
-    winnerName: { color: theme.colors.success || "#28a745" },
+    winnerName: { color: theme.colors.success },
     vsText: {
       width: 40,
       textAlign: "center",
@@ -1220,7 +1198,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
     },
     kickBtn: {
       padding: 6,
-      backgroundColor: theme.colors.dangerLight || "rgba(220, 53, 69, 0.1)",
+      backgroundColor: theme.colors.dangerLight,
       borderRadius: 8,
     },
   });

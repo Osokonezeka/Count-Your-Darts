@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Dimensions,
   Modal,
@@ -13,16 +12,18 @@ import {
 } from "react-native";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useTournamentBracket } from "../../hooks/useTournamentBracket";
 import { t } from "../../lib/i18n";
 import { TournamentSettings } from "../../lib/statsUtils";
 import { AnimatedPressable } from "../common/AnimatedPressable";
 import CustomAlert from "../modals/CustomAlert";
+import { StandingsTable } from "./common/StandingsTable";
+import { WalkoverAlert } from "./common/WalkoverAlert";
 import {
   SharedMatch as Match,
   MatchCard,
   SharedPlayer as Player,
 } from "./MatchCard";
-import { useMatchStore } from "../../store/useMatchStore";
 
 export interface RoundRobinProps {
   players: Player[];
@@ -49,145 +50,76 @@ export default function RoundRobin({
   const styles = getStyles(theme);
   const router = useRouter();
   const { language } = useLanguage();
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [inProgressMatches, setInProgressMatches] = useState<
-    Record<string, boolean>
-  >({});
-  const [resetAlert, setResetAlert] = useState({ visible: false, matchId: "" });
   const [selectedPlayerMatches, setSelectedPlayerMatches] = useState<{
     player: Player;
     matches: Match[];
   } | null>(null);
 
-  const bracketStorageKey = `bracket_structure_${String(settings?.name || "").replace(/\s/g, "_")}`;
+  const generateBracket = useCallback(
+    async (persistMatches: (newMatches: Match[]) => Promise<void>) => {
+      let pls = [...players];
 
-  useEffect(() => {
-    if (initialBracket) {
-      setMatches(initialBracket);
-      (async () => {
-        const progressObj: Record<string, boolean> = {};
-        for (const m of initialBracket) {
-          const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
-          if (savedScore) progressObj[m.id] = true;
+      if (settings.bracketOrder === "random" || !settings.bracketOrder) {
+        pls = pls.sort(() => 0.5 - Math.random());
+      }
+
+      if (pls.length % 2 !== 0) {
+        pls.push({ id: "bye", name: t(language, "byePlayer") });
+      }
+
+      const N = pls.length;
+      const rounds = N - 1;
+      const matchesPerRound = N / 2;
+      const newMatches: Match[] = [];
+      const generationPrefix = Date.now().toString(36);
+
+      for (let r = 0; r < rounds; r++) {
+        for (let m = 0; m < matchesPerRound; m++) {
+          const p1 = pls[m];
+          const p2 = pls[N - 1 - m];
+          const isBye = p1.id === "bye" || p2.id === "bye";
+
+          newMatches.push({
+            id: `match_${generationPrefix}_r${r + 1}_m${m}`,
+            round: r + 1,
+            matchIndex: m,
+            player1: p1.id === "bye" ? null : p1,
+            player2: p2.id === "bye" ? null : p2,
+            winner: isBye ? (p1.id === "bye" ? p2 : p1) : null,
+            nextMatchId: null,
+            isBye,
+          });
         }
-        setInProgressMatches(progressObj);
-      })();
-    }
-  }, [initialBracket]);
+        pls = [pls[0], pls[N - 1], ...pls.slice(1, N - 1)];
+      }
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadTournamentState = async () => {
-        try {
-          let currentMatches: Match[] = [];
-          if (initialBracket) {
-            currentMatches = initialBracket;
-            setMatches(currentMatches);
-          } else {
-            const savedBracketStr =
-              await AsyncStorage.getItem(bracketStorageKey);
-            if (savedBracketStr) {
-              currentMatches = JSON.parse(savedBracketStr) as Match[];
-              setMatches(currentMatches);
-            } else if (players.length > 0 && !isReadOnly && isHost) {
-              generateBracket();
-              return;
-            } else {
-              return;
-            }
-          }
-
-          const progressObj: Record<string, boolean> = {};
-          for (const m of currentMatches) {
-            const savedScore = await AsyncStorage.getItem(`match_save_${m.id}`);
-            if (savedScore) progressObj[m.id] = true;
-          }
-          setInProgressMatches(progressObj);
-        } catch (e) {
-          console.error(e);
-        }
-      };
-      loadTournamentState();
-    }, [players, initialBracket, isReadOnly]),
+      await persistMatches(newMatches);
+    },
+    [players, settings, language],
   );
 
-  const generateBracket = async () => {
-    let pls = [...players];
-
-    if (settings.bracketOrder === "random" || !settings.bracketOrder) {
-      pls = pls.sort(() => 0.5 - Math.random());
-    }
-
-    if (pls.length % 2 !== 0) {
-      pls.push({ id: "bye", name: "Bye" });
-    }
-
-    const N = pls.length;
-    const rounds = N - 1;
-    const matchesPerRound = N / 2;
-    const newMatches: Match[] = [];
-    const generationPrefix = Date.now().toString(36);
-
-    for (let r = 0; r < rounds; r++) {
-      for (let m = 0; m < matchesPerRound; m++) {
-        const p1 = pls[m];
-        const p2 = pls[N - 1 - m];
-        const isBye = p1.id === "bye" || p2.id === "bye";
-
-        newMatches.push({
-          id: `match_${generationPrefix}_r${r + 1}_m${m}`,
-          round: r + 1,
-          matchIndex: m,
-          player1: p1.id === "bye" ? null : p1,
-          player2: p2.id === "bye" ? null : p2,
-          winner: isBye ? (p1.id === "bye" ? p2 : p1) : null,
-          nextMatchId: null,
-          isBye,
-        });
-      }
-      pls = [pls[0], pls[N - 1], ...pls.slice(1, N - 1)];
-    }
-
-    setMatches(newMatches);
-    await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
-    if (onBracketGenerated) onBracketGenerated(newMatches);
-  };
-
-  const performResetMatch = async () => {
-    if (!resetAlert.matchId) return;
-    try {
-      await AsyncStorage.removeItem(`match_save_${resetAlert.matchId}`);
-      useMatchStore.getState().clearMultipleMatches([resetAlert.matchId]);
-      setInProgressMatches((prev: Record<string, boolean>) => {
-        const updated = { ...prev };
-        delete updated[resetAlert.matchId];
-        return updated;
-      });
-
-      const newMatches = matches.map((m) => {
-        if (m.id === resetAlert.matchId) {
-          const {
-            score,
-            gameState,
-            inProgressDeviceName,
-            inProgressDeviceId,
-            ...rest
-          } = m;
-          return { ...rest, isInProgress: false, hasProgress: false };
-        }
-        return m;
-      });
-      setMatches(newMatches);
-      await AsyncStorage.setItem(bracketStorageKey, JSON.stringify(newMatches));
-      if (onBracketGenerated) onBracketGenerated(newMatches);
-    } catch (e) {
-      console.error(
-        t(language, "resetMatchError") || "Error resetting match:",
-        e,
-      );
-    }
-    setResetAlert({ visible: false, matchId: "" });
-  };
+  const {
+    matches,
+    inProgressMatches,
+    resetAlert,
+    requestReset,
+    cancelReset,
+    performResetMatch,
+    walkoverAlert,
+    requestWalkover,
+    cancelWalkover,
+    performWalkover,
+    markMatchInProgress,
+  } = useTournamentBracket({
+    settings,
+    players,
+    language,
+    initialBracket,
+    isReadOnly,
+    isHost,
+    onBracketGenerated,
+    generateBracket,
+  });
 
   const standings = useMemo(() => {
     const stats: Record<
@@ -268,32 +200,9 @@ export default function RoundRobin({
     );
   }, [matches]);
 
-  const handleResetRequest = useCallback((matchId: string) => {
-    setResetAlert({ visible: true, matchId });
-  }, []);
-
   const handlePlayMatch = useCallback(
     async (match: Match) => {
-      const dName =
-        (await AsyncStorage.getItem("@device_name")) || "Unknown Device";
-      const dId = (await AsyncStorage.getItem("@device_id")) || "Unknown ID";
-      const updatedMatches = matches.map((m) =>
-        m.id === match.id
-          ? {
-              ...m,
-              isInProgress: true,
-              inProgressDeviceName: dName,
-              inProgressDeviceId: dId,
-            }
-          : m,
-      );
-      setMatches(updatedMatches);
-      await AsyncStorage.setItem(
-        bracketStorageKey,
-        JSON.stringify(updatedMatches),
-      );
-      await AsyncStorage.setItem("@bracket_needs_sync", "true");
-      if (onBracketGenerated) onBracketGenerated(updatedMatches);
+      await markMatchInProgress(match.id);
 
       setSelectedPlayerMatches(null);
       router.push({
@@ -304,7 +213,7 @@ export default function RoundRobin({
         },
       });
     },
-    [matches, settings, router, bracketStorageKey, onBracketGenerated],
+    [markMatchInProgress, settings, router],
   );
 
   const handlePressMatch = useCallback(
@@ -324,7 +233,8 @@ export default function RoundRobin({
         isMatchInProgress={inProgressMatches[match.id]}
         theme={theme}
         isReadOnly={isReadOnly}
-        onResetMatch={handleResetRequest}
+        onResetMatch={requestReset}
+        onWalkover={requestWalkover}
         onPlay={handlePlayMatch}
         onMatchPress={handlePressMatch}
       />
@@ -334,10 +244,16 @@ export default function RoundRobin({
       inProgressMatches,
       theme,
       isReadOnly,
-      handleResetRequest,
+      requestReset,
+      requestWalkover,
       handlePlayMatch,
       handlePressMatch,
     ],
+  );
+
+  const walkoverMatch = useMemo(
+    () => matches.find((m) => m.id === walkoverAlert.matchId) || null,
+    [matches, walkoverAlert.matchId],
   );
 
   return (
@@ -351,7 +267,7 @@ export default function RoundRobin({
             <View key={roundKey} style={styles.roundSection}>
               <View style={styles.roundHeader}>
                 <Text style={styles.roundTitle}>
-                  {t(language, "round") || "Round"} {roundKey}
+                  {t(language, "round")} {roundKey}
                 </Text>
               </View>
               {matchesByRound[parseInt(roundKey)].map(renderCard)}
@@ -363,104 +279,47 @@ export default function RoundRobin({
           style={styles.listContainer}
           contentContainerStyle={{ paddingBottom: 40 }}
         >
-          <View style={styles.tableCard}>
-            <View style={styles.tableHeaderRow}>
-              <Text style={[styles.tableCell, styles.cellRank]}>#</Text>
-              <Text style={[styles.tableCell, styles.cellName]}>
-                {t(language, "player") || "Player"}
-              </Text>
-              <Text style={styles.tableCell}>M</Text>
-              <Text style={styles.tableCell}>W</Text>
-              <Text style={styles.tableCell}>L</Text>
-              <Text style={styles.tableCell}>+/-</Text>
-              <Text style={[styles.tableCell, styles.cellPoints]}>Pts</Text>
-            </View>
-            {standings.map((s, idx) => {
-              const diff = s.legsFor - s.legsAgainst;
-              return (
-                <AnimatedPressable
-                  key={s.player.id}
-                  style={styles.tableRow}
-                  onPress={() => {
-                    const pMatches = matches.filter(
-                      (m) =>
-                        m.player1?.id === s.player.id ||
-                        m.player2?.id === s.player.id,
-                    );
-                    setSelectedPlayerMatches({
-                      player: s.player,
-                      matches: pMatches,
-                    });
-                  }}
-                >
-                  <Text style={[styles.tableCellData, styles.cellRank]}>
-                    {idx + 1}.
-                  </Text>
-                  <Text
-                    style={[
-                      styles.tableCellData,
-                      styles.cellName,
-                      { fontWeight: "800", color: theme.colors.primary },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {s.player.name}
-                  </Text>
-                  <Text style={styles.tableCellData}>{s.played}</Text>
-                  <Text
-                    style={[
-                      styles.tableCellData,
-                      { color: theme.colors.success },
-                    ]}
-                  >
-                    {s.won}
-                  </Text>
-                  <Text style={styles.tableCellData}>{s.lost}</Text>
-                  <Text
-                    style={[
-                      styles.tableCellData,
-                      {
-                        color:
-                          diff > 0
-                            ? theme.colors.success
-                            : diff < 0
-                              ? theme.colors.danger
-                              : theme.colors.textMuted,
-                      },
-                    ]}
-                  >
-                    {diff > 0 ? `+${diff}` : diff}
-                  </Text>
-                  <Text style={[styles.tableCellData, styles.cellPoints]}>
-                    {s.points}
-                  </Text>
-                </AnimatedPressable>
+          <StandingsTable
+            theme={theme}
+            language={language}
+            standings={standings}
+            onPressPlayer={(player) => {
+              const pMatches = matches.filter(
+                (m) => m.player1?.id === player.id || m.player2?.id === player.id,
               );
-            })}
-          </View>
+              setSelectedPlayerMatches({ player, matches: pMatches });
+            }}
+          />
         </ScrollView>
       )}
 
       <CustomAlert
         visible={resetAlert.visible}
-        title={t(language, "resetMatch") || "Restart match"}
+        title={t(language, "resetMatch")}
         message={
-          t(language, "resetMatchConfirm") ||
-          "Restart this match? All progress will be lost."
+          t(language, "resetMatchConfirm")
         }
-        onRequestClose={() => setResetAlert({ visible: false, matchId: "" })}
+        onRequestClose={cancelReset}
         buttons={[
           {
-            text: t(language, "cancel") || "Cancel",
+            text: t(language, "cancel"),
             style: "cancel",
-            onPress: () => setResetAlert({ visible: false, matchId: "" }),
+            onPress: cancelReset,
           },
           {
-            text: t(language, "reset") || "Reset",
+            text: t(language, "reset"),
             style: "destructive",
             onPress: performResetMatch,
           },
         ]}
+      />
+
+      <WalkoverAlert
+        visible={walkoverAlert.visible}
+        match={walkoverMatch}
+        language={language}
+        onCancel={cancelWalkover}
+        onSelectForfeiter={performWalkover}
       />
 
       <Modal
@@ -526,48 +385,6 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       color: "#fff",
       textTransform: "uppercase",
       letterSpacing: 1,
-    },
-    tableCard: {
-      backgroundColor: theme.colors.card,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: theme.colors.cardBorder,
-      overflow: "hidden",
-    },
-    tableHeaderRow: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.cardBorder,
-      paddingVertical: 12,
-      paddingHorizontal: 10,
-    },
-    tableRow: {
-      flexDirection: "row",
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.background,
-      paddingVertical: 14,
-      paddingHorizontal: 10,
-      alignItems: "center",
-    },
-    tableCell: {
-      flex: 1,
-      fontSize: 11,
-      fontWeight: "800",
-      color: theme.colors.textMuted,
-      textAlign: "center",
-    },
-    tableCellData: {
-      flex: 1,
-      fontSize: 13,
-      fontWeight: "700",
-      color: theme.colors.textMain,
-      textAlign: "center",
-    },
-    cellRank: { flex: 0.5, textAlign: "left" },
-    cellName: { flex: 3, textAlign: "left" },
-    cellPoints: {
-      fontWeight: "900",
-      color: theme.colors.textMain,
-      fontSize: 14,
     },
     modalOverlay: {
       flex: 1,

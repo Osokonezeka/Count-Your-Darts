@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { AnimatedPressable } from "../common/AnimatedPressable";
+import { KeyboardActionButton } from "./KeyboardActionButton";
 
 export interface TrainingKeyboardProps {
   playerName: string;
@@ -39,25 +39,24 @@ export function TrainingKeyboard({
         </Text>
       </View>
       <View style={styles.keyRow}>
-        <AnimatedPressable onPress={onMiss} style={styles.keyAction}>
+        <KeyboardActionButton onPress={onMiss} theme={theme}>
           <Text style={styles.keyTextAction}>{missLabel}</Text>
-        </AnimatedPressable>
+        </KeyboardActionButton>
 
-        <AnimatedPressable
+        <KeyboardActionButton
           onPress={onHit}
-          style={[styles.keyAction, styles.keyHit]}
+          theme={theme}
+          active
+          activeColor={theme.colors.primary}
         >
           <Text style={[styles.keyTextAction, { color: "#fff" }]}>
             {hitLabel}
           </Text>
-        </AnimatedPressable>
+        </KeyboardActionButton>
 
-        <AnimatedPressable
-          onPress={onUndo}
-          style={[styles.keyAction, styles.undoKey]}
-        >
+        <KeyboardActionButton onPress={onUndo} theme={theme} undo>
           <Ionicons name="arrow-undo" size={28} color={theme.colors.danger} />
-        </AnimatedPressable>
+        </KeyboardActionButton>
       </View>
     </View>
   );
@@ -77,17 +76,6 @@ const getStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMain,
     },
     keyRow: { flexDirection: "row", gap: 6 },
-    keyAction: {
-      flex: 1,
-      height: 58,
-      backgroundColor: theme.colors.card,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 8,
-      elevation: 2,
-    },
-    keyHit: { backgroundColor: theme.colors.primary },
-    undoKey: { backgroundColor: theme.colors.dangerLight },
     keyTextAction: {
       fontSize: 15,
       fontWeight: "800",

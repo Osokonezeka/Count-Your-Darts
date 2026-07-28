@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { current, produce } from "immer";
 import React, {
@@ -34,11 +32,16 @@ import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
 import {
+    popHistorySnapshot,
+    pushHistorySnapshot,
+    useMatchLifecycle,
+} from "../../hooks/useMatchLifecycle";
+import {
     resolveBotAverage,
     simulateBobsBotThrow,
     simulateCricketBotThrow,
 } from "../../lib/bot";
-import { formatTime } from "../../lib/gameUtils";
+import { formatThrow } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -101,9 +104,7 @@ const killerReducer = produce((draft: GameState, action: Action) => {
   switch (action.type) {
     case "ADD_THROW": {
       const { value, multiplier, coords } = action.payload;
-      const snapshot = current(draft);
-      draft.history.push({ ...snapshot, history: [] });
-      draft.isUndoing = false;
+      pushHistorySnapshot(draft, current(draft));
 
       const player = draft.playerStates[draft.currentIndex];
       player.dartsCount += 1;
@@ -130,7 +131,7 @@ const killerReducer = produce((draft: GameState, action: Action) => {
               (draft.settings.killerMode === "treble" && multiplier === 3);
             if (becomesKiller) {
               player.isKiller = true;
-              speechText = "Killer";
+              speechText = "killer";
             }
           }
         } else {
@@ -202,8 +203,8 @@ const killerReducer = produce((draft: GameState, action: Action) => {
     }
 
     case "UNDO": {
-      if (!draft.history || draft.history.length === 0) return;
-      const prevState = draft.history[draft.history.length - 1];
+      const prevState = popHistorySnapshot(draft);
+      if (!prevState) return;
       let restoredPlayers = prevState.playerStates;
       if (prevState.throwsThisTurn === 0) {
         restoredPlayers = restoredPlayers.map((p, idx) =>
@@ -213,9 +214,7 @@ const killerReducer = produce((draft: GameState, action: Action) => {
       return {
         ...prevState,
         playerStates: restoredPlayers,
-        history: draft.history.slice(0, -1),
         speechEvent: null,
-        isUndoing: true,
       };
     }
 
@@ -241,15 +240,8 @@ const killerReducer = produce((draft: GameState, action: Action) => {
   }
 });
 
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
-};
-
 export default function Killer() {
-  const { players, settings } = useGame();
+  const { selectedPlayers, settings } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
@@ -266,7 +258,12 @@ export default function Killer() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({
@@ -283,8 +280,8 @@ export default function Killer() {
       : (() => {
           const isRandom = settings?.killerAssignMode === "random";
           const initialTargets = isRandom
-            ? assignRandomTargets(players.length)
-            : Array(players.length).fill(null);
+            ? assignRandomTargets(selectedPlayers.length)
+            : Array(selectedPlayers.length).fill(null);
 
           return {
             settings: {
@@ -293,7 +290,7 @@ export default function Killer() {
               killerMode: settings?.killerMode || "double",
               killerSelfPenalty: settings?.killerSelfPenalty || false,
             },
-            playerStates: players.map((name, i) => ({
+            playerStates: selectedPlayers.map((name, i) => ({
               name,
               target: initialTargets[i],
               lives: settings?.lives || 3,
@@ -324,7 +321,7 @@ export default function Killer() {
   const { GameAlerts, showExitConfirm } = useGameModals(language);
 
   useEffect(() => {
-    if (state.speechEvent) speak(state.speechEvent.text);
+    if (state.speechEvent) speak(t(language, state.speechEvent.text));
   }, [state.speechEvent]);
 
   const isGameOver = !!state.matchWinner;
@@ -341,15 +338,18 @@ export default function Killer() {
 
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
-        const baseline = await getPlayersHistoricalBaseline(humanNames, "X01");
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
+        const baseline = await getPlayersHistoricalBaseline(
+          humanNames,
+          "Killer",
+        );
         setHistoricalBaseline(baseline);
         setIsBaselineLoaded(true);
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
@@ -449,78 +449,43 @@ export default function Killer() {
   }, [isGameOver]);
 
   const saveMatchStats = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
-      const isUnfinished = !isGameOver;
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "Killer",
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
-        players: state.playerStates
-          .map((p) => ({
-            name: p.name,
-            score: p.lives,
-            darts: p.dartsCount,
-            rank: p.rank,
-            status:
-              state.matchWinner?.name === p.name
-                ? "WINNER"
-                : p.lives <= 0
-                  ? "ELIMINATED"
-                  : "ALIVE",
-          }))
-          .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
-      };
+    const mappedPlayers = state.playerStates
+      .map((p) => ({
+        name: p.name,
+        score: p.lives,
+        darts: p.dartsCount,
+        rank: p.rank,
+        status:
+          state.matchWinner?.name === p.name
+            ? "winner"
+            : p.lives <= 0
+              ? "eliminated"
+              : "alive",
+      }))
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0));
 
-      const existingHistoryStr = await AsyncStorage.getItem(
-        "@dart_match_history",
-      );
-      const existingHistory = existingHistoryStr
-        ? JSON.parse(existingHistoryStr)
-        : [];
-
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
-      );
-      if (existingIndex > -1) existingHistory[existingIndex] = historyItem;
-      else existingHistory.unshift(historyItem);
-
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (e) {
-      console.error("Save Killer error", e);
-      if (navigateAway) router.push("/play");
-    }
+    await persistMatchToHistory({
+      mode: "Killer",
+      players: mappedPlayers,
+      isUnfinished: !isGameOver,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || isGameOver) return;
-      e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
-      showExitConfirm(() => {
-        saveMatchStats(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+  const hasMatchStarted = state.playerStates.some((p) => p.dartsCount > 0);
+
+  useExitGuard(hasMatchStarted || isGameOver, () => {
+    if (isGameOver) {
+      saveMatchStats(false).then(confirmExit);
+      return;
+    }
+
+    showExitConfirm(() => {
+      saveMatchStats(false).then(confirmExit);
     });
-    return unsubscribe;
-  }, [navigation, isGameOver, state]);
+  });
 
   const handleThrow = (
     value: number,
@@ -569,14 +534,14 @@ export default function Killer() {
         </AnimatedPressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
-            {t(language, "killer")?.toUpperCase() || "KILLER"}
+            {t(language, "killer")?.toUpperCase()}
           </Text>
           <Text style={styles.headerSub}>
             {state.settings.killerMode === "double"
-              ? t(language, "double")?.toUpperCase() || "DOUBLE"
+              ? t(language, "double")?.toUpperCase()
               : state.settings.killerMode === "treble"
                 ? tripleTerm.toUpperCase()
-                : t(language, "anyHit")?.toUpperCase() || "ANY HIT"}
+                : t(language, "anyHit")?.toUpperCase()}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -672,8 +637,8 @@ export default function Killer() {
                     </View>
                     <Text style={styles.targetLabel}>
                       {p.target !== null
-                        ? `${t(language, "target")?.toUpperCase() || "TARGET"}: ${p.target}`
-                        : `${t(language, "assignNumbers")?.toUpperCase() || "ASSIGN TARGET"}`}
+                        ? `${t(language, "target")?.toUpperCase()}: ${p.target}`
+                        : `${t(language, "assignNumbers")?.toUpperCase()}`}
                     </Text>
                   </View>
 
@@ -737,17 +702,14 @@ export default function Killer() {
 
       <FinishModal
         visible={isGameOver}
-        title={`${state.matchWinner?.name || "Player"} wins! 🏆`}
-        subtitle={
-          t(language, "trainingSaved") ||
-          "Your results have been saved to history."
-        }
+        title={`${state.matchWinner?.name || t(language, "player")} ${t(language, "wins")} 🏆`}
+        subtitle={t(language, "trainingSaved")}
         theme={theme}
         iconBgColor={theme.colors.danger}
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
-            title={t(language, "endMatch") || "End"}
+            title={t(language, "endMatch")}
             theme={theme}
             onPress={() => saveMatchStats(true)}
           />

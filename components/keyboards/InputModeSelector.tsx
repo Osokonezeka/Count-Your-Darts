@@ -32,9 +32,9 @@ export function InputModeSelector({
         activeOption={inputMode}
         onSelect={handleSelect}
         options={[
-          { id: "dart", label: t(language, "inputModeDart") || "Dart" },
-          { id: "score", label: t(language, "inputModeScore") || "Score" },
-          { id: "board", label: t(language, "inputModeBoard") || "Board" },
+          { id: "dart", label: t(language, "inputModeDart") },
+          { id: "score", label: t(language, "inputModeScore") },
+          { id: "board", label: t(language, "inputModeBoard") },
         ]}
       />
     </View>

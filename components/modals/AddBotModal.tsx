@@ -1,11 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
+  AccessibilityActionEvent,
   PanResponder,
-  Platform,
-  Pressable,
   StyleSheet,
   Switch,
   Text,
@@ -14,6 +11,7 @@ import {
 import { getBotCheckoutChance } from "../../lib/bot";
 import { t } from "../../lib/i18n";
 import { AnimatedPressable } from "../common/AnimatedPressable";
+import { BaseModal } from "./BaseModal";
 
 interface CustomSliderProps {
   value: number;
@@ -22,6 +20,8 @@ interface CustomSliderProps {
   max: number;
   step: number;
   theme: { colors: Record<string, string> };
+  accessibilityLabel: string;
+  valueText?: string;
 }
 
 const CustomSlider = ({
@@ -31,6 +31,8 @@ const CustomSlider = ({
   max,
   step,
   theme,
+  accessibilityLabel,
+  valueText,
 }: CustomSliderProps) => {
   const [width, setWidth] = useState(0);
   const widthRef = useRef(0);
@@ -68,6 +70,18 @@ const CustomSlider = ({
 
   const percentage = (value - min) / (max - min);
 
+  const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
+    let newVal = valueRef.current;
+    if (event.nativeEvent.actionName === "increment") {
+      newVal = Math.min(max, valueRef.current + step);
+    } else if (event.nativeEvent.actionName === "decrement") {
+      newVal = Math.max(min, valueRef.current - step);
+    } else {
+      return;
+    }
+    onValueChange(newVal);
+  };
+
   return (
     <View style={{ width: "100%", paddingHorizontal: 12, marginVertical: 10 }}>
       <View
@@ -78,6 +92,15 @@ const CustomSlider = ({
         }}
         {...panResponder.panHandlers}
         pointerEvents="box-only"
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityValue={{ min, max, now: value, text: valueText }}
+        accessibilityActions={[
+          { name: "increment" },
+          { name: "decrement" },
+        ]}
+        onAccessibilityAction={handleAccessibilityAction}
       >
         <View
           style={{
@@ -182,6 +205,13 @@ export const AddBotModal = ({
   const isCricketMode = gameMode === "Cricket";
   const isBobs27Mode = gameMode === "Training" && trainingMode === "bobs_27";
 
+  const botValueText = getBotValueText(
+    difficulty,
+    isCricketMode,
+    isHitPercentMode,
+    isBobs27Mode,
+  );
+
   const handleAddClick = async () => {
     if (!isAdaptive) {
       await AsyncStorage.setItem("@last_bot_difficulty", difficulty.toString());
@@ -192,132 +222,117 @@ export const AddBotModal = ({
   };
 
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-      navigationBarTranslucent
+      onClose={onClose}
+      useKeyboardAvoidingView
+      overlayStyle={styles.modalOverlay}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <Pressable style={styles.modalOverlay} onPress={onClose}>
+      <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+        <Text style={styles.modalTitle}>
+          {t(language, "addBot")}
+        </Text>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: isAdaptive ? 32 : 16,
+          }}
+        >
+          <Text style={[styles.stepperLabel, { marginBottom: 0 }]}>
+            {t(language, "adaptiveBot")}
+          </Text>
+          <Switch
+            value={isAdaptive}
+            onValueChange={setIsAdaptive}
+            trackColor={{
+              false: theme.colors.cardBorder,
+              true: theme.colors.primaryLight,
+            }}
+            thumbColor={
+              isAdaptive ? theme.colors.primary : theme.colors.textLight
+            }
+            accessibilityLabel={t(language, "adaptiveBot")}
+            accessibilityRole="switch"
+          />
+        </View>
+
+        {!isAdaptive && (
           <View
-            style={styles.modalContent}
-            onStartShouldSetResponder={() => true}
+            style={{
+              marginBottom: 28,
+              width: "100%",
+              alignItems: "center",
+            }}
           >
-            <Text style={styles.modalTitle}>
-              {t(language, "addBot") || "Add Bot"}
-            </Text>
-
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: isAdaptive ? 32 : 16,
-              }}
-            >
-              <Text style={[styles.stepperLabel, { marginBottom: 0 }]}>
-                {t(language, "adaptiveBot") || "Adaptive Bot"}
-              </Text>
-              <Switch
-                value={isAdaptive}
-                onValueChange={setIsAdaptive}
-                trackColor={{
-                  false: theme.colors.cardBorder,
-                  true: theme.colors.primaryLight,
-                }}
-                thumbColor={
-                  isAdaptive ? theme.colors.primary : theme.colors.textLight
-                }
-              />
-            </View>
-
-            {!isAdaptive && (
-              <View
-                style={{
-                  marginBottom: 28,
-                  width: "100%",
-                  alignItems: "center",
-                }}
-              >
-                <View style={styles.statsRow}>
-                  <View style={styles.statColumn}>
-                    <Text style={styles.stepperLabel}>
-                      {t(language, "botLevel") || "Bot level"}
-                    </Text>
-                    <Text style={styles.sliderValueText}>
-                      {(difficulty - 20) / 5}
-                    </Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.statColumn}>
-                    <Text style={styles.stepperLabel}>
-                      {isCricketMode
-                        ? "MPR"
-                        : isHitPercentMode
-                          ? t(language, "hitPercent") || "Hit %"
-                          : t(language, "botAverage") || "Average"}
-                    </Text>
-                    <Text style={styles.sliderValueText}>
-                      {getBotValueText(
-                        difficulty,
-                        isCricketMode,
-                        isHitPercentMode,
-                        isBobs27Mode,
-                      )}
-                    </Text>
-                  </View>
-                </View>
-
-                <CustomSlider
-                  value={difficulty}
-                  onValueChange={setDifficulty}
-                  min={20}
-                  max={120}
-                  step={5}
-                  theme={theme}
-                />
+            <View style={styles.statsRow}>
+              <View style={styles.statColumn}>
+                <Text style={styles.stepperLabel}>
+                  {t(language, "botLevel")}
+                </Text>
+                <Text style={styles.sliderValueText}>
+                  {(difficulty - 20) / 5}
+                </Text>
               </View>
-            )}
-
-            <View style={styles.modalButtons}>
-              <AnimatedPressable
-                onPress={onClose}
-                style={styles.modalCancelBtn}
-              >
-                <Text style={styles.modalCancelText}>
-                  {t(language, "cancel") || "Cancel"}
+              <View style={styles.statDivider} />
+              <View style={styles.statColumn}>
+                <Text style={styles.stepperLabel}>
+                  {isCricketMode
+                    ? "MPR"
+                    : isHitPercentMode
+                      ? t(language, "hitPercent")
+                      : t(language, "botAverage")}
                 </Text>
-              </AnimatedPressable>
-              <AnimatedPressable
-                onPress={handleAddClick}
-                style={styles.modalSaveBtn}
-              >
-                <Text style={styles.modalSaveText}>
-                  {t(language, "add") || "Add"}
-                </Text>
-              </AnimatedPressable>
+                <Text style={styles.sliderValueText}>{botValueText}</Text>
+              </View>
             </View>
+
+            <CustomSlider
+              value={difficulty}
+              onValueChange={setDifficulty}
+              min={20}
+              max={120}
+              step={5}
+              theme={theme}
+              accessibilityLabel={t(language, "adjustBotLevel")}
+              valueText={botValueText}
+            />
           </View>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+        )}
+
+        <View style={styles.modalButtons}>
+          <AnimatedPressable
+            onPress={onClose}
+            style={styles.modalCancelBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t(language, "cancel")}
+          >
+            <Text style={styles.modalCancelText}>
+              {t(language, "cancel")}
+            </Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={handleAddClick}
+            style={styles.modalSaveBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t(language, "add")}
+          >
+            <Text style={styles.modalSaveText}>
+              {t(language, "add")}
+            </Text>
+          </AnimatedPressable>
+        </View>
+      </View>
+    </BaseModal>
   );
 };
 
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
       alignItems: "center",
-      padding: 20,
     },
     modalContent: {
       backgroundColor: theme.colors.card,

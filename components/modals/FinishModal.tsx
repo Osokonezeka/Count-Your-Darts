@@ -1,5 +1,6 @@
 import React from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { BaseModal, MODAL_BACKDROP_OPACITY } from "./BaseModal";
 
 export interface FinishModalProps {
   visible: boolean;
@@ -23,48 +24,39 @@ export function FinishModal({
   const styles = getStyles(theme);
 
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
+      dismissableOnBackdropPress={false}
+      backdropOpacity={MODAL_BACKDROP_OPACITY}
+      overlayStyle={styles.modalOverlay}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View
-            style={[
-              styles.trophyWrapper,
-              iconBgColor && { backgroundColor: iconBgColor },
-            ]}
-          >
-            <Text style={{ fontSize: 40 }}>{icon}</Text>
-          </View>
-
-          {!!title && (
-            <Text
-              style={[styles.modalTitle, !subtitle && { marginBottom: 20 }]}
-            >
-              {title}
-            </Text>
-          )}
-          {!!subtitle && <Text style={styles.modalSub}>{subtitle}</Text>}
-
-          {children}
+      <View style={styles.modalContent}>
+        <View
+          style={[
+            styles.trophyWrapper,
+            iconBgColor && { backgroundColor: iconBgColor },
+          ]}
+        >
+          <Text style={{ fontSize: 40 }}>{icon}</Text>
         </View>
+
+        {!!title && (
+          <Text style={[styles.modalTitle, !subtitle && { marginBottom: 20 }]}>
+            {title}
+          </Text>
+        )}
+        {!!subtitle && <Text style={styles.modalSub}>{subtitle}</Text>}
+
+        {children}
       </View>
-    </Modal>
+    </BaseModal>
   );
 }
 
 const getStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "center",
       alignItems: "center",
-      padding: 20,
     },
     modalContent: {
       backgroundColor: theme.colors.card,

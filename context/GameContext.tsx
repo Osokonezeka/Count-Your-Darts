@@ -32,8 +32,8 @@ export type Settings = {
 };
 
 type GameContextType = {
-  players: string[];
-  setPlayers: (players: string[]) => void;
+  selectedPlayers: string[];
+  setSelectedPlayers: (selectedPlayers: string[]) => void;
   settings: Settings;
   setSettings: (settings: Settings) => void;
 };
@@ -43,7 +43,7 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [players, setPlayers] = useState<string[]>([]);
+  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [settings, setSettings] = useState<Settings>({
     inRule: "straight",
     outRule: "double",
@@ -62,8 +62,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const value = useMemo(
-    () => ({ players, setPlayers, settings, setSettings }),
-    [players, settings],
+    () => ({ selectedPlayers, setSelectedPlayers, settings, setSettings }),
+    [selectedPlayers, settings],
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

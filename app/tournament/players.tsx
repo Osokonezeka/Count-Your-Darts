@@ -32,8 +32,10 @@ import { getSharedTournamentStyles } from "../../components/common/SharedTournam
 import CustomAlert from "../../components/modals/CustomAlert";
 import { ManagePlayersModal } from "../../components/modals/ManagePlayersModal";
 import { PlayerModal } from "../../components/modals/PlayerModal";
+import { SeedOrderModal, SeedPlayer } from "../../components/modals/SeedOrderModal";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useAlert } from "../../hooks/useAlert";
 import { t } from "../../lib/i18n";
 import { Match } from "../../lib/statsUtils";
 import { useMatchStore } from "../../store/useMatchStore";
@@ -127,13 +129,13 @@ export default function TournamentPlayersScreen() {
   const minPlayers = 2;
 
   const formatLabels: Record<string, string> = {
-    single_knockout: t(language, "singleKnockout") || "Single Knockout",
-    double_knockout: t(language, "doubleKnockout") || "Double Knockout",
-    round_robin: t(language, "roundRobin") || "Round Robin",
+    single_knockout: t(language, "singleKnockout"),
+    double_knockout: t(language, "doubleKnockout"),
+    round_robin: t(language, "roundRobin"),
     groups_and_knockout:
-      t(language, "groupsAndKnockout") || "Groups + Knockout",
+      t(language, "groupsAndKnockout"),
     groups_and_double_knockout:
-      t(language, "groupsAndDoubleKnockout") || "Groups + Double Knockout",
+      t(language, "groupsAndDoubleKnockout"),
   };
 
   const [isDbLoaded, setIsDbLoaded] = useState(false);
@@ -143,6 +145,7 @@ export default function TournamentPlayersScreen() {
   const [visibleCount, setVisibleCount] = useState(25);
 
   const [isManageVisible, setManageVisible] = useState(false);
+  const [isSeedModalVisible, setSeedModalVisible] = useState(false);
   const [isPlayerModalVisible, setPlayerModalVisible] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [playerNameInput, setPlayerNameInput] = useState("");
@@ -152,25 +155,47 @@ export default function TournamentPlayersScreen() {
   const [teamMembers, setTeamMembers] = useState<string[]>([]);
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
 
-  const [isBackModalVisible, setBackModalVisible] = useState(false);
-  const [duplicateErrorVisible, setDuplicateErrorVisible] = useState(false);
-  const [duplicateTeamErrorVisible, setDuplicateTeamErrorVisible] =
-    useState(false);
-  const [overlapAlertVisible, setOverlapAlertVisible] = useState(false);
-  const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
+  const { showAlert, alertProps } = useAlert(language);
 
   const [hasExistingBracket, setHasExistingBracket] = useState(false);
-  const [resetAlertVisible, setResetAlertVisible] = useState(false);
-  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const [isCreating, setIsCreating] = useState(false);
-  const [firebaseErrorVisible, setFirebaseErrorVisible] = useState(false);
-  const [firebaseErrorMsg, setFirebaseErrorMsg] = useState("");
 
   const isExiting = useRef(false);
   const pendingNavAction = useRef<
     Parameters<typeof navigation.dispatch>[0] | null
   >(null);
+
+  const showBackConfirm = useCallback(() => {
+    showAlert(t(language, "backToSettings"), t(language, "backToSettingsMsg"), [
+      { text: t(language, "cancel"), style: "cancel" },
+      {
+        text: t(language, "goBack"),
+        style: "destructive",
+        onPress: async () => {
+          if (!hasExistingBracket && selectedPlayersKey) {
+            await AsyncStorage.removeItem(selectedPlayersKey);
+            await AsyncStorage.removeItem(bracketStorageKey);
+          }
+          setSelectedPlayerIds([]);
+          isExiting.current = true;
+          if (pendingNavAction.current) {
+            navigation.dispatch(pendingNavAction.current);
+          } else {
+            router.back();
+          }
+        },
+      },
+    ]);
+  }, [
+    showAlert,
+    language,
+    hasExistingBracket,
+    selectedPlayersKey,
+    bracketStorageKey,
+    navigation,
+    router,
+  ]);
 
   useEffect(() => {
     const loadDb = async () => {
@@ -196,11 +221,11 @@ export default function TournamentPlayersScreen() {
       if (isExiting.current) return;
       e.preventDefault();
       pendingNavAction.current = e.data.action;
-      setBackModalVisible(true);
+      showBackConfirm();
     });
 
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, showBackConfirm]);
 
   useFocusEffect(
     useCallback(() => {
@@ -264,13 +289,26 @@ export default function TournamentPlayersScreen() {
   const executeWithCheck = useCallback(
     (action: () => void) => {
       if (hasExistingBracket) {
-        setPendingAction(() => action);
-        setResetAlertVisible(true);
+        showAlert(
+          t(language, "resetTournament"),
+          t(language, "resetTournamentMsg"),
+          [
+            { text: t(language, "cancel"), style: "cancel" },
+            {
+              text: t(language, "reset"),
+              style: "destructive",
+              onPress: async () => {
+                await wipeTournamentProgress();
+                action();
+              },
+            },
+          ],
+        );
       } else {
         action();
       }
     },
-    [hasExistingBracket],
+    [hasExistingBracket, showAlert, language],
   );
 
   const handleSavePlayer = async () => {
@@ -284,7 +322,9 @@ export default function TournamentPlayersScreen() {
         !p.isTeam,
     );
     if (exists) {
-      setDuplicateErrorVisible(true);
+      showAlert(t(language, "error"), t(language, "playerExistsMsg"), [
+        { text: t(language, "ok"), style: "default" },
+      ]);
       return;
     }
 
@@ -332,7 +372,9 @@ export default function TournamentPlayersScreen() {
         p.members.includes(p2),
     );
     if (identicalTeamExists) {
-      setDuplicateTeamErrorVisible(true);
+      showAlert(t(language, "error"), t(language, "teamAlreadyExists"), [
+        { text: t(language, "ok"), style: "default" },
+      ]);
       return;
     }
 
@@ -345,7 +387,9 @@ export default function TournamentPlayersScreen() {
         p.isTeam,
     );
     if (exists) {
-      setDuplicateErrorVisible(true);
+      showAlert(t(language, "error"), t(language, "playerExistsMsg"), [
+        { text: t(language, "ok"), style: "default" },
+      ]);
       return;
     }
 
@@ -376,7 +420,15 @@ export default function TournamentPlayersScreen() {
             selectedPlayersKey,
             JSON.stringify(newSelection),
           );
-        setTimeout(() => setOverlapAlertVisible(true), 0);
+        setTimeout(
+          () =>
+            showAlert(
+              t(language, "teamOverlapTitle"),
+              t(language, "teamOverlapMsg"),
+              [{ text: t(language, "ok"), style: "default" }],
+            ),
+          0,
+        );
       }
     } else {
       const newTeam: Player = {
@@ -396,7 +448,15 @@ export default function TournamentPlayersScreen() {
           );
         }
       } else {
-        setTimeout(() => setOverlapAlertVisible(true), 0);
+        setTimeout(
+          () =>
+            showAlert(
+              t(language, "teamOverlapTitle"),
+              t(language, "teamOverlapMsg"),
+              [{ text: t(language, "ok"), style: "default" }],
+            ),
+          0,
+        );
       }
       setPlayerSearchQuery("");
     }
@@ -453,7 +513,15 @@ export default function TournamentPlayersScreen() {
                 t.members.some((m) => teamToSelect.members?.includes(m)),
             );
             if (hasOverlap) {
-              setTimeout(() => setOverlapAlertVisible(true), 0);
+              setTimeout(
+                () =>
+                  showAlert(
+                    t(language, "teamOverlapTitle"),
+                    t(language, "teamOverlapMsg"),
+                    [{ text: t(language, "ok"), style: "default" }],
+                  ),
+                0,
+              );
               return prev;
             }
           }
@@ -472,7 +540,13 @@ export default function TournamentPlayersScreen() {
         return newSelection;
       });
     },
-    [selectedPlayersKey, tournamentPlayersDb, settings?.teamSize],
+    [
+      selectedPlayersKey,
+      tournamentPlayersDb,
+      settings?.teamSize,
+      showAlert,
+      language,
+    ],
   );
 
   const handleToggle = useCallback(
@@ -482,21 +556,12 @@ export default function TournamentPlayersScreen() {
     [executeWithCheck, togglePlayerSelection],
   );
 
-  const confirmDelete = useCallback((player: Player) => {
-    setPlayerToDelete(player);
-  }, []);
-
-  const handleDeletePlayer = async () => {
-    if (!playerToDelete) return;
-    const updatedDb = tournamentPlayersDb.filter(
-      (p) => p.id !== playerToDelete.id,
-    );
+  const handleDeletePlayer = async (player: Player) => {
+    const updatedDb = tournamentPlayersDb.filter((p) => p.id !== player.id);
     setTournamentPlayersDb(updatedDb);
     saveToDb(updatedDb);
 
-    const newSelection = selectedPlayerIds.filter(
-      (id) => id !== playerToDelete.id,
-    );
+    const newSelection = selectedPlayerIds.filter((id) => id !== player.id);
     setSelectedPlayerIds(newSelection);
     if (selectedPlayersKey) {
       await AsyncStorage.setItem(
@@ -504,9 +569,21 @@ export default function TournamentPlayersScreen() {
         JSON.stringify(newSelection),
       );
     }
-
-    setPlayerToDelete(null);
   };
+
+  const confirmDelete = useCallback(
+    (player: Player) => {
+      showAlert(t(language, "delete"), `${t(language, "delete")} ${player.name}?`, [
+        { text: t(language, "cancel"), style: "cancel" },
+        {
+          text: t(language, "delete"),
+          style: "destructive",
+          onPress: () => handleDeletePlayer(player),
+        },
+      ]);
+    },
+    [showAlert, language, tournamentPlayersDb, selectedPlayerIds, selectedPlayersKey],
+  );
 
   const sortedFilteredPlayers = useMemo(() => {
     const isTeamMode = settings?.teamSize === "team";
@@ -529,6 +606,39 @@ export default function TournamentPlayersScreen() {
     return tournamentPlayersDb.filter((p) => !p.isTeam).map((p) => p.name);
   }, [tournamentPlayersDb]);
 
+  const isSeedingRelevant =
+    settings?.bracketOrder === "top_to_bottom" ||
+    settings?.bracketOrder === "bottom_to_top" ||
+    settings?.bracketOrder === "custom";
+
+  const selectedPlayersOrdered = useMemo<SeedPlayer[]>(() => {
+    const byId = new Map(tournamentPlayersDb.map((p) => [p.id, p]));
+    return selectedPlayerIds
+      .map((id) => byId.get(id))
+      .filter((p): p is Player => !!p);
+  }, [selectedPlayerIds, tournamentPlayersDb]);
+
+  const applySeedOrder = useCallback(
+    (newOrder: SeedPlayer[]) => {
+      const newSelection = newOrder.map((p) => p.id);
+      setSelectedPlayerIds(newSelection);
+      if (selectedPlayersKey) {
+        AsyncStorage.setItem(
+          selectedPlayersKey,
+          JSON.stringify(newSelection),
+        ).catch((e) => console.error("Error saving seed order", e));
+      }
+    },
+    [selectedPlayersKey],
+  );
+
+  const handleReorderSeeds = useCallback(
+    (newOrder: SeedPlayer[]) => {
+      executeWithCheck(() => applySeedOrder(newOrder));
+    },
+    [executeWithCheck, applySeedOrder],
+  );
+
   const visiblePlayersData = useMemo(() => {
     return sortedFilteredPlayers.slice(0, visibleCount);
   }, [sortedFilteredPlayers, visibleCount]);
@@ -542,7 +652,7 @@ export default function TournamentPlayersScreen() {
         ]}
       >
         <Text style={styles.summaryTitle}>
-          {t(language, "noTournamentData") || "No tournament data."}
+          {t(language, "noTournamentData")}
         </Text>
         <TouchableOpacity
           onPress={async () => {
@@ -552,7 +662,7 @@ export default function TournamentPlayersScreen() {
           style={{ marginTop: 20 }}
         >
           <Text style={{ color: theme.colors.primary, fontSize: 18 }}>
-            {t(language, "goBack") || "Go back"}
+            {t(language, "goBack")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -568,15 +678,15 @@ export default function TournamentPlayersScreen() {
         ]}
       >
         <TouchableOpacity
-          onPress={() => setBackModalVisible(true)}
+          onPress={showBackConfirm}
           style={styles.headerBtn}
         >
           <Ionicons name="arrow-back" size={26} color={theme.colors.textMain} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {settings?.teamSize === "team"
-            ? t(language, "selectTeamsTitle") || "Select teams"
-            : t(language, "selectPlayersTitle") || "Select players"}
+            ? t(language, "selectTeamsTitle")
+            : t(language, "selectPlayersTitle")}
         </Text>
         <TouchableOpacity
           onPress={() => setManageVisible(true)}
@@ -623,8 +733,8 @@ export default function TournamentPlayersScreen() {
                 />
                 <Text style={styles.summaryText}>
                   {settings.teamSize === "single"
-                    ? t(language, "singleFormat") || "1 vs 1 (Single)"
-                    : t(language, "pairsFormat") || "2 vs 2 (Pairs)"}
+                    ? t(language, "singleFormat")
+                    : t(language, "pairsFormat")}
                 </Text>
               </View>
               <View style={styles.summaryRow}>
@@ -634,28 +744,47 @@ export default function TournamentPlayersScreen() {
                   color={theme.colors.primary}
                 />
                 <Text style={styles.summaryText}>
-                  {settings.sets} {t(language, "set") || "Set"} /{" "}
-                  {settings.legs} {t(language, "leg") || "Leg"} /{" "}
+                  {settings.targetSets || settings.sets || 1}{" "}
+                  {t(language, "set")} /{" "}
+                  {settings.targetLegs || settings.legs || 1}{" "}
+                  {t(language, "leg")} /{" "}
                   {settings.startingPoints || settings.points}{" "}
-                  {t(language, "pts") || "Pts"}
+                  {t(language, "pts")}
                   {settings.customSemis
-                    ? t(language, "plusSemi") || " (+ Semifinal)"
+                    ? t(language, "plusSemi")
                     : ""}
                   {settings.customFinals
-                    ? t(language, "plusFinal") || " (+ Final)"
+                    ? t(language, "plusFinal")
                     : ""}
                 </Text>
               </View>
             </View>
 
             <View style={styles.cardTop}>
-              <Text style={styles.sectionTitle}>
-                {t(language, "selected") || "Selected:"}{" "}
-                {selectedPlayerIds.length}{" "}
-                {settings?.teamSize === "team"
-                  ? t(language, "teamsCount") || "teams"
-                  : t(language, "playersCount") || "players"}
-              </Text>
+              <View style={styles.sectionTitleRow}>
+                <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                  {t(language, "selected")}{" "}
+                  {selectedPlayerIds.length}{" "}
+                  {settings?.teamSize === "team"
+                    ? t(language, "teamsCount")
+                    : t(language, "playersCount")}
+                </Text>
+                {isSeedingRelevant && selectedPlayerIds.length >= 2 && (
+                  <AnimatedPressable
+                    style={styles.editSeedBtn}
+                    onPress={() => setSeedModalVisible(true)}
+                  >
+                    <Ionicons
+                      name="reorder-four"
+                      size={16}
+                      color={theme.colors.primary}
+                    />
+                    <Text style={styles.editSeedBtnText}>
+                      {t(language, "editSeedOrder")}
+                    </Text>
+                  </AnimatedPressable>
+                )}
+              </View>
               <View style={styles.searchContainer}>
                 <Ionicons
                   name="search"
@@ -666,9 +795,8 @@ export default function TournamentPlayersScreen() {
                   style={styles.searchInput}
                   placeholder={
                     settings?.teamSize === "team"
-                      ? t(language, "searchTeamOrPlayer") ||
-                        "Search team / player..."
-                      : t(language, "searchPlayer") || "Search player..."
+                      ? t(language, "searchTeamOrPlayer")
+                      : t(language, "searchPlayer")
                   }
                   placeholderTextColor={theme.colors.textMuted}
                   value={playerSearchQuery}
@@ -677,8 +805,7 @@ export default function TournamentPlayersScreen() {
               </View>
               {sortedFilteredPlayers.length === 0 && (
                 <Text style={styles.emptyPlayersText}>
-                  {t(language, "noPlayersMatch") ||
-                    "No players match the criteria."}
+                  {t(language, "noPlayersMatch")}
                 </Text>
               )}
             </View>
@@ -708,10 +835,10 @@ export default function TournamentPlayersScreen() {
         <AnimatedPrimaryButton
           title={
             isCreating
-              ? t(language, "awaiting") || "Awaiting..."
+              ? t(language, "awaiting")
               : hasExistingBracket
-                ? t(language, "returnToTournament") || "Return to tournament"
-                : t(language, "startTournament") || "Start tournament"
+                ? t(language, "returnToTournament")
+                : t(language, "startTournament")
           }
           iconName="play"
           theme={theme}
@@ -734,11 +861,9 @@ export default function TournamentPlayersScreen() {
 
                 if (!configStr) {
                   setIsCreating(false);
-                  setFirebaseErrorMsg(
-                    t(language, "firebaseNoConfig") ||
-                      "No Firebase configuration for Host.",
-                  );
-                  setFirebaseErrorVisible(true);
+                  showAlert(t(language, "error"), t(language, "firebaseNoConfig"), [
+                    { text: t(language, "ok"), style: "default" },
+                  ]);
                   return;
                 }
 
@@ -819,21 +944,21 @@ export default function TournamentPlayersScreen() {
                     },
                   });
                 } else {
-                  setFirebaseErrorMsg(
-                    t(language, "firebaseUnknownError") ||
-                      "An unknown error occurred while connecting to Firestore.",
+                  showAlert(
+                    t(language, "error"),
+                    t(language, "firebaseUnknownError"),
+                    [{ text: t(language, "ok"), style: "default" }],
                   );
-                  setFirebaseErrorVisible(true);
                 }
               } catch (error) {
                 setIsCreating(false);
-                setFirebaseErrorMsg(
+                showAlert(
+                  t(language, "error"),
                   error instanceof Error && error.message
                     ? error.message
-                    : t(language, "firebaseDbError") ||
-                        "Firebase database error.",
+                    : t(language, "firebaseDbError"),
+                  [{ text: t(language, "ok"), style: "default" }],
                 );
-                setFirebaseErrorVisible(true);
               }
             } else {
               const savedArrStr = await AsyncStorage.getItem(
@@ -862,36 +987,10 @@ export default function TournamentPlayersScreen() {
         />
       </View>
 
-      <CustomAlert
-        visible={resetAlertVisible}
-        title={t(language, "resetTournament") || "Reset tournament?"}
-        message={
-          t(language, "resetTournamentMsg") ||
-          "The tournament has already started. Changing players will reset the current bracket and delete existing results. Are you sure you want to do this?"
-        }
-        onRequestClose={() => {
-          setResetAlertVisible(false);
-          setPendingAction(null);
-        }}
-        buttons={[
-          { text: t(language, "cancel") || "Cancel", style: "cancel" },
-          {
-            text: t(language, "reset") || "Reset",
-            style: "destructive",
-            onPress: async () => {
-              await wipeTournamentProgress();
-              if (pendingAction) pendingAction();
-              setResetAlertVisible(false);
-              setPendingAction(null);
-            },
-          },
-        ]}
-      />
-
       <ManagePlayersModal
         visible={isManageVisible}
         onClose={() => setManageVisible(false)}
-        title={t(language, "managePlayers") || "Manage players"}
+        title={t(language, "managePlayers")}
         players={tournamentPlayersDb
           .filter((p) => (settings?.teamSize === "team" ? p.isTeam : !p.isTeam))
           .map((p) => ({
@@ -921,48 +1020,19 @@ export default function TournamentPlayersScreen() {
         }
         addLabel={
           settings?.teamSize === "team"
-            ? t(language, "addTeam") || "Add team"
-            : t(language, "addNewPlayer") || "Add new player"
+            ? t(language, "addTeam")
+            : t(language, "addNewPlayer")
         }
-        emptyText={t(language, "noPlayers") || "No more players"}
+        emptyText={t(language, "noPlayers")}
         theme={theme}
-      />
-
-      <CustomAlert
-        visible={!!playerToDelete}
-        title={t(language, "delete") || "Delete"}
-        message={`${t(language, "delete")} ${playerToDelete?.name}?`}
-        onRequestClose={() => setPlayerToDelete(null)}
-        buttons={[
-          { text: t(language, "cancel") || "Cancel", style: "cancel" },
-          {
-            text: t(language, "delete") || "Delete",
-            style: "destructive",
-            onPress: handleDeletePlayer,
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={firebaseErrorVisible}
-        title={t(language, "error") || "Error"}
-        message={firebaseErrorMsg}
-        onRequestClose={() => setFirebaseErrorVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setFirebaseErrorVisible(false),
-          },
-        ]}
       />
 
       <PlayerModal
         visible={isPlayerModalVisible}
         title={
           editingPlayer
-            ? t(language, "editPlayer") || "Edit player"
-            : t(language, "addPlayer") || "Add player"
+            ? t(language, "editPlayer")
+            : t(language, "addPlayer")
         }
         value={playerNameInput}
         onChangeText={setPlayerNameInput}
@@ -995,13 +1065,13 @@ export default function TournamentPlayersScreen() {
             >
               <Text style={styles.modalTitleInline}>
                 {editingPlayer
-                  ? t(language, "editTeam") || "Edit team"
-                  : t(language, "addTeam") || "Add team"}
+                  ? t(language, "editTeam")
+                  : t(language, "addTeam")}
               </Text>
               <TextInput
                 style={styles.addPlayerInputInline}
                 placeholder={
-                  t(language, "teamNameOptional") || "Team name (optional)"
+                  t(language, "teamNameOptional")
                 }
                 placeholderTextColor={theme.colors.textMuted}
                 value={teamNameInput}
@@ -1041,8 +1111,8 @@ export default function TournamentPlayersScreen() {
                     ) : (
                       <Text style={styles.memberSlotPlaceholder}>
                         {index === 0
-                          ? t(language, "player1") || "Player 1"
-                          : t(language, "player2") || "Player 2"}
+                          ? t(language, "player1")
+                          : t(language, "player2")}
                       </Text>
                     )}
                   </View>
@@ -1060,8 +1130,7 @@ export default function TournamentPlayersScreen() {
                     <TextInput
                       style={styles.searchInputInline}
                       placeholder={
-                        t(language, "searchOrAddPlayer") ||
-                        "Search or add player..."
+                        t(language, "searchOrAddPlayer")
                       }
                       placeholderTextColor={theme.colors.textMuted}
                       value={teamSearchQuery}
@@ -1128,7 +1197,7 @@ export default function TournamentPlayersScreen() {
                               }}
                             >
                               <Text style={styles.availablePlayerTextHighlight}>
-                                {t(language, "addNew") || "Add new:"} "{newName}
+                                {t(language, "addNew")} "{newName}
                                 "
                               </Text>
                               <Ionicons
@@ -1169,7 +1238,7 @@ export default function TournamentPlayersScreen() {
                   onPress={closeTeamModal}
                 >
                   <Text style={styles.modalBtnCancelTextInline}>
-                    {t(language, "cancel") || "Cancel"}
+                    {t(language, "cancel")}
                   </Text>
                 </AnimatedPressable>
                 <AnimatedPressable
@@ -1185,7 +1254,7 @@ export default function TournamentPlayersScreen() {
                   }
                 >
                   <Text style={styles.modalBtnAddTextInline}>
-                    {t(language, "save") || "Save"}
+                    {t(language, "save")}
                   </Text>
                 </AnimatedPressable>
               </View>
@@ -1194,87 +1263,16 @@ export default function TournamentPlayersScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <CustomAlert
-        visible={isBackModalVisible}
-        title={t(language, "backToSettings") || "Back to settings?"}
-        message={
-          t(language, "backToSettingsMsg") ||
-          "The current player selection will not be saved if you go back."
-        }
-        onRequestClose={() => setBackModalVisible(false)}
-        buttons={[
-          { text: t(language, "cancel") || "Cancel", style: "cancel" },
-          {
-            text: t(language, "goBack") || "Go back",
-            style: "destructive",
-            onPress: async () => {
-              if (!hasExistingBracket && selectedPlayersKey) {
-                await AsyncStorage.removeItem(selectedPlayersKey);
-                await AsyncStorage.removeItem(bracketStorageKey);
-              }
-              setSelectedPlayerIds([]);
-              setBackModalVisible(false);
-              isExiting.current = true;
-              if (pendingNavAction.current) {
-                navigation.dispatch(pendingNavAction.current);
-              } else {
-                router.back();
-              }
-            },
-          },
-        ]}
+      <SeedOrderModal
+        visible={isSeedModalVisible}
+        onClose={() => setSeedModalVisible(false)}
+        players={selectedPlayersOrdered}
+        onReorder={handleReorderSeeds}
+        theme={theme}
+        language={language}
       />
 
-      <CustomAlert
-        visible={duplicateErrorVisible}
-        title={t(language, "error") || "Error"}
-        message={
-          t(language, "playerExistsMsg") ||
-          "A player with this name already exists."
-        }
-        onRequestClose={() => setDuplicateErrorVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setDuplicateErrorVisible(false),
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={duplicateTeamErrorVisible}
-        title={t(language, "error") || "Error"}
-        message={
-          t(language, "teamAlreadyExists") ||
-          "A team with these players already exists."
-        }
-        onRequestClose={() => setDuplicateTeamErrorVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setDuplicateTeamErrorVisible(false),
-          },
-        ]}
-      />
-
-      <CustomAlert
-        visible={overlapAlertVisible}
-        title={t(language, "teamOverlapTitle") || "Player Conflict"}
-        message={
-          t(language, "teamOverlapMsg") ||
-          "One of the players is already in another selected team."
-        }
-        onRequestClose={() => setOverlapAlertVisible(false)}
-        buttons={[
-          {
-            text: t(language, "ok") || "OK",
-            style: "default",
-            onPress: () => setOverlapAlertVisible(false),
-          },
-        ]}
-      />
+      <CustomAlert {...alertProps} />
     </View>
   );
 }
@@ -1282,7 +1280,7 @@ export default function TournamentPlayersScreen() {
 const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
   StyleSheet.create({
     summaryCard: {
-      backgroundColor: theme.colors.primaryLight || "rgba(0, 122, 255, 0.1)",
+      backgroundColor: theme.colors.primaryLight,
       borderRadius: 16,
       padding: 16,
       marginBottom: 20,
@@ -1349,6 +1347,28 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       color: theme.colors.textMain,
       marginBottom: 16,
     },
+    sectionTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 16,
+    },
+    editSeedBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      backgroundColor: theme.colors.primaryLight,
+    },
+    editSeedBtnText: {
+      color: theme.colors.primary,
+      fontWeight: "700",
+      fontSize: 13,
+    },
     searchContainer: {
       flexDirection: "row",
       alignItems: "center",
@@ -1403,8 +1423,8 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       marginLeft: 10,
     },
     checkboxActive: {
-      backgroundColor: theme.colors.success || "#28a745",
-      borderColor: theme.colors.success || "#28a745",
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
     },
     emptyPlayersText: {
       color: theme.colors.textMuted,
@@ -1538,7 +1558,7 @@ const getSpecificStyles = (theme: { colors: Record<string, string> }) =>
       fontSize: 16,
     },
     modalBtnAddInline: {
-      backgroundColor: theme.colors.success || "#28a745",
+      backgroundColor: theme.colors.success,
       paddingVertical: 10,
       paddingHorizontal: 20,
       borderRadius: 8,

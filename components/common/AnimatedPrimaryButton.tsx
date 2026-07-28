@@ -82,7 +82,7 @@ export function AnimatedPrimaryButton({
           styles.button,
           { backgroundColor: bgColor, shadowColor: bgColor },
           disabled && {
-            backgroundColor: theme.colors.primaryDisabled || "#ccc",
+            backgroundColor: theme.colors.primaryDisabled,
             elevation: 0,
             shadowOpacity: 0,
           },

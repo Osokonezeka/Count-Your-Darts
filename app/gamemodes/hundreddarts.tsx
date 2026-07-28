@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import dayjs from "dayjs";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { current, produce } from "immer";
 import React, {
@@ -34,12 +32,13 @@ import { useTheme } from "../../context/ThemeContext";
 import { useBotDelay } from "../../hooks/useBotDelay";
 import { useBotTurn } from "../../hooks/useBotTurn";
 import { useGameModals } from "../../hooks/useGameModals";
+import { useMatchLifecycle } from "../../hooks/useMatchLifecycle";
 import {
   breakdownScoreToDarts,
   resolveBotAverage,
   simulateBotTurn,
 } from "../../lib/bot";
-import { IMPOSSIBLE_SCORES, formatTime } from "../../lib/gameUtils";
+import { formatThrow, IMPOSSIBLE_SCORES } from "../../lib/gameUtils";
 import { t } from "../../lib/i18n";
 import { getPlayersHistoricalBaseline, isBot } from "../../lib/statsUtils";
 
@@ -74,13 +73,6 @@ type GameState = {
   history: GameState[];
   speechEvent?: { text: string; id: number } | null;
   isUndoing?: boolean;
-};
-
-const formatThrow = (t: Throw) => {
-  if (t.value === 0) return "0";
-  if (t.value === 25) return t.multiplier === 2 ? "D25" : "25";
-  const prefix = t.multiplier === 3 ? "T" : t.multiplier === 2 ? "D" : "";
-  return `${prefix}${t.value}`;
 };
 
 type Action =
@@ -293,7 +285,7 @@ const scoringReducer = produce((draft: GameState, action: Action) => {
 });
 
 export default function OneHundredDarts() {
-  const { players } = useGame();
+  const { selectedPlayers } = useGame();
   const { language } = useLanguage();
   const { theme } = useTheme();
   const { triggerHaptic } = useHaptics();
@@ -310,7 +302,12 @@ export default function OneHundredDarts() {
   const [matchId] = useState(() =>
     parsedResume ? parsedResume.id : Date.now().toString(),
   );
-  const isExiting = useRef(false);
+
+  const {
+    saveMatchToHistory: persistMatchToHistory,
+    useExitGuard,
+    confirmExit,
+  } = useMatchLifecycle(matchId);
 
   const styles = useMemo(
     () => ({
@@ -325,7 +322,7 @@ export default function OneHundredDarts() {
     parsedResume
       ? parsedResume.gameState
       : {
-          playerStates: players.map((name) => ({
+          playerStates: selectedPlayers.map((name) => ({
             name,
             score: 0,
             dartsCount: 0,
@@ -364,7 +361,7 @@ export default function OneHundredDarts() {
 
   useEffect(() => {
     if (state.speechEvent) {
-      speak(state.speechEvent.text);
+      speak(t(language, state.speechEvent.text));
     }
   }, [state.speechEvent]);
 
@@ -378,8 +375,8 @@ export default function OneHundredDarts() {
   const [isBaselineLoaded, setIsBaselineLoaded] = useState(false);
   useEffect(() => {
     const fetchBaseline = async () => {
-      if (players) {
-        const humanNames = players.filter((p: string) => !isBot(p));
+      if (selectedPlayers) {
+        const humanNames = selectedPlayers.filter((p: string) => !isBot(p));
         const baseline = await getPlayersHistoricalBaseline(
           humanNames,
           "100 Darts",
@@ -389,7 +386,7 @@ export default function OneHundredDarts() {
       }
     };
     fetchBaseline();
-  }, [players]);
+  }, [selectedPlayers]);
 
   const botAvg = resolveBotAverage(
     activePlayer?.name || "",
@@ -446,123 +443,84 @@ export default function OneHundredDarts() {
   }, [allDone]);
 
   const saveScoringStats = async (navigateAway: boolean = true) => {
-    try {
-      if (navigateAway) isExiting.current = true;
-      const formattedDate = dayjs().format("DD.MM.YYYY, HH:mm");
-
-      const isUnfinished = !allDone;
-      const historyItem = {
-        id: matchId,
-        date: formattedDate,
-        duration: formatTime(matchTimeRef.current),
-        mode: "100 Darts",
-        isUnfinished,
-        gameState: isUnfinished
-          ? { ...state, history: [], savedMatchTime: matchTimeRef.current }
-          : undefined,
-        players: state.playerStates
-          .map((p, idx) => {
-            let validTurns = [];
-            if (p.allTurns) {
-              validTurns = [...p.allTurns];
-              if (
-                !p.isFinished &&
-                p.turnThrows &&
-                p.turnThrows.length > 0 &&
-                state.currentIndex === idx
-              ) {
-                validTurns.push(p.turnThrows);
-              }
-            } else {
-              const rawTurns = state.history
-                ? state.history.map((h) => h.playerStates[idx].turnThrows)
-                : [];
-              rawTurns.push(p.turnThrows);
-              validTurns = rawTurns.filter((turn, i, arr) => {
-                const nextTurn = arr[i + 1];
-                return (
-                  turn &&
-                  turn.length > 0 &&
-                  (!nextTurn || nextTurn.length < turn.length)
-                );
-              });
-            }
-
-            const validTurnsFormatted = validTurns.map((turn) =>
-              turn.map((t: Throw) => ({
-                v: t.value,
-                m: t.multiplier,
-                d: t.darts,
-                i: t.isScoreInput,
-                c: t.coords,
-              })),
+    const mappedPlayers = state.playerStates
+      .map((p, idx) => {
+        let validTurns = [];
+        if (p.allTurns) {
+          validTurns = [...p.allTurns];
+          if (
+            !p.isFinished &&
+            p.turnThrows &&
+            p.turnThrows.length > 0 &&
+            state.currentIndex === idx
+          ) {
+            validTurns.push(p.turnThrows);
+          }
+        } else {
+          const rawTurns = state.history
+            ? state.history.map((h) => h.playerStates[idx].turnThrows)
+            : [];
+          rawTurns.push(p.turnThrows);
+          validTurns = rawTurns.filter((turn, i, arr) => {
+            const nextTurn = arr[i + 1];
+            return (
+              turn &&
+              turn.length > 0 &&
+              (!nextTurn || nextTurn.length < turn.length)
             );
+          });
+        }
 
-            return {
-              name: p.name,
-              score: p.score,
-              darts: p.dartsCount,
-              rank: p.rank,
-              avg:
-                p.dartsCount > 0
-                  ? ((p.score / p.dartsCount) * 3).toFixed(1)
-                  : "0.0",
-              s180: p.s180,
-              s140: p.s140,
-              s100: p.s100,
-              s60: p.s60,
-              allTurns: validTurnsFormatted,
-            };
-          })
-          .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
-      };
+        const validTurnsFormatted = validTurns.map((turn) =>
+          turn.map((t: Throw) => ({
+            v: t.value,
+            m: t.multiplier,
+            d: t.darts,
+            i: t.isScoreInput,
+            c: t.coords,
+          })),
+        );
 
-      const existingHistoryStr = await AsyncStorage.getItem(
-        "@dart_match_history",
-      );
-      const existingHistory = existingHistoryStr
-        ? JSON.parse(existingHistoryStr)
-        : [];
+        return {
+          name: p.name,
+          score: p.score,
+          darts: p.dartsCount,
+          rank: p.rank,
+          avg:
+            p.dartsCount > 0
+              ? ((p.score / p.dartsCount) * 3).toFixed(1)
+              : "0.0",
+          s180: p.s180,
+          s140: p.s140,
+          s100: p.s100,
+          s60: p.s60,
+          allTurns: validTurnsFormatted,
+        };
+      })
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0));
 
-      const existingIndex = existingHistory.findIndex(
-        (h: { id: string }) => h.id === matchId,
-      );
-      if (existingIndex > -1) {
-        existingHistory[existingIndex] = historyItem;
-      } else {
-        existingHistory.unshift(historyItem);
-      }
-
-      await AsyncStorage.setItem(
-        "@dart_match_history",
-        JSON.stringify(existingHistory),
-      );
-      if (navigateAway) router.push("/play");
-    } catch (e) {
-      console.error("Save 100 Darts error", e);
-      if (navigateAway) router.push("/play");
-    }
+    await persistMatchToHistory({
+      mode: "100 Darts",
+      players: mappedPlayers,
+      isUnfinished: !allDone,
+      gameState: { ...state, history: [], savedMatchTime: matchTimeRef.current },
+      matchTimeSeconds: matchTimeRef.current,
+      navigateAway,
+    });
   };
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
-      if (isExiting.current || allDone) return;
-      e.preventDefault();
-      const hasStarted = state.playerStates.some((p) => p.dartsCount > 0);
-      if (!hasStarted) {
-        isExiting.current = true;
-        navigation.dispatch(e.data.action);
-        return;
-      }
-      showExitConfirm(() => {
-        saveScoringStats(false).then(() => {
-          isExiting.current = true;
-          navigation.dispatch(e.data.action);
-        });
-      });
+  const hasMatchStarted = state.playerStates.some((p) => p.dartsCount > 0);
+
+  useExitGuard(hasMatchStarted || allDone, () => {
+    if (allDone) {
+      saveScoringStats(false).then(confirmExit);
+      return;
+    }
+
+    showExitConfirm(() => {
+      saveScoringStats(false).then(confirmExit);
     });
-    return unsubscribe;
-  }, [navigation, allDone, state]);
+  });
 
   const handleThrow = (
     value: number,
@@ -647,10 +605,10 @@ export default function OneHundredDarts() {
         </AnimatedPressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
-            {t(language, "100Darts")?.toUpperCase() || "100 DARTS"}
+            {t(language, "100Darts")?.toUpperCase()}
           </Text>
           <Text style={styles.headerSub}>
-            {t(language, "highScore")?.toUpperCase() || "HIGH SCORE"}
+            {t(language, "highScore")?.toUpperCase()}
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -752,7 +710,7 @@ export default function OneHundredDarts() {
                         })}
                       </View>
                       <Text style={styles.targetLabel}>
-                        {t(language, "thrown")?.toUpperCase() || "THROWN"}:{" "}
+                        {t(language, "thrown")?.toUpperCase()}:{" "}
                         {p.dartsCount} / {MAX_DARTS}
                       </Text>
                     </View>
@@ -761,7 +719,7 @@ export default function OneHundredDarts() {
                   <View style={styles.statsCol}>
                     <View style={styles.statRow}>
                       <Text style={styles.statLabel}>
-                        {t(language, "avgShort") || "AVG"}
+                        {t(language, "avgShort")}
                       </Text>
                       <Text style={styles.statBold}>
                         {p.dartsCount > 0
@@ -834,16 +792,13 @@ export default function OneHundredDarts() {
 
       <FinishModal
         visible={allDone}
-        title={t(language, "trainingFinished") || "Training Finished!"}
-        subtitle={
-          t(language, "trainingSaved") ||
-          "Your results have been saved to history."
-        }
+        title={t(language, "trainingFinished")}
+        subtitle={t(language, "trainingSaved")}
         theme={theme}
       >
         <View style={styles.modalActionsCol}>
           <AnimatedPrimaryButton
-            title={t(language, "endMatch") || "End"}
+            title={t(language, "endMatch")}
             theme={theme}
             onPress={() => saveScoringStats(true)}
           />
